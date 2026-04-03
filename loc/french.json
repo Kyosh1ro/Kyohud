@@ -1,0 +1,27 @@
+{
+  "ky_menu_title": "Kyosh1ro HUD",
+  "ky_menu_desc": "Affichage circulaire des buffs et killfeed autour du viseur",
+
+  "ky_opt_enable_killfeed": "Activer le KillFeed",
+  "ky_opt_enable_killfeed_desc": "Affiche les ennemis éliminés en arc sous le viseur",
+  "ky_opt_enable_buffs": "Activer l'affichage des buffs",
+  "ky_opt_enable_buffs_desc": "Affiche les buffs actifs en cercle autour du viseur",
+  "ky_opt_radius": "Rayon du cercle",
+  "ky_opt_radius_desc": "Distance depuis le centre du viseur (100-500 pixels)",
+  "ky_opt_angle_start": "Angle de départ (degrés)",
+  "ky_opt_angle_start_desc": "Angle de début de l'arc (0-360). Par défaut : 360",
+  "ky_opt_angle_end": "Angle de fin (degrés)",
+  "ky_opt_angle_end_desc": "Angle de fin de l'arc (0-360). Par défaut : 270",
+  "ky_opt_duration": "Durée d'affichage (secondes)",
+  "ky_opt_duration_desc": "Durée de visibilité des buffs et kills (1-10s). Par défaut : 5s",
+  "ky_opt_opacity": "Opacité",
+  "ky_opt_opacity_desc": "Opacité des éléments du HUD (0.1 à 1.0). Par défaut : 0.9",
+  "ky_opt_icon_size": "Taille des icônes (pixels)",
+  "ky_opt_icon_size_desc": "Taille des icônes de buff et kill (16-64 pixels). Par défaut : 32",
+  "ky_opt_reset": "Réinitialiser par défaut",
+  "ky_opt_reset_desc": "Remettre tous les paramètres à leurs valeurs par défaut",
+  "ky_opt_debug_sim": "Debug : Simuler buffs et kills",
+  "ky_opt_debug_sim_desc": "Affiche 8 buffs et 5 kills de démo pendant 8 secondes",
+  "ky_opt_debug_clear": "Debug : Tout effacer",
+  "ky_opt_debug_clear_desc": "Supprime tous les buffs et kills actifs du HUD"
+}

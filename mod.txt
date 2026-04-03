@@ -1,0 +1,17 @@
+{
+  "name": "Kyosh1ro HUD",
+  "description": "Circular buff display and kill feed around the crosshair. Works alongside VanillaHUD+.",
+  "author": "Kyosh1ro",
+  "version": "1.0.0",
+  "blt_version": 2,
+  "superblt_version": 1,
+  "image": "mod.png",
+  "color": "0.20 0.80 1.00",
+
+  "hooks": [
+    { "hook_id": "lib/managers/localizationmanager", "script_path": "ky_localization.lua" },
+    { "hook_id": "lib/managers/menumanager",         "script_path": "ky_options.lua" },
+    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "ky_buffhud.lua" },
+    { "hook_id": "lib/managers/playermanager",       "script_path": "ky_hooks.lua" }
+  ]
+}

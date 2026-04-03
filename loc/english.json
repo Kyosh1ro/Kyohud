@@ -1,0 +1,27 @@
+{
+  "ky_menu_title": "Kyosh1ro HUD",
+  "ky_menu_desc": "Circular buff display & killfeed around the crosshair",
+
+  "ky_opt_enable_killfeed": "Enable KillFeed",
+  "ky_opt_enable_killfeed_desc": "Show eliminated enemies in an arc below the crosshair",
+  "ky_opt_enable_buffs": "Enable Buffs Display",
+  "ky_opt_enable_buffs_desc": "Show active buffs in a circle around the crosshair",
+  "ky_opt_radius": "Circle Radius",
+  "ky_opt_radius_desc": "Distance from crosshair center (100-500 pixels)",
+  "ky_opt_angle_start": "Start Angle (degrees)",
+  "ky_opt_angle_start_desc": "Starting angle of the arc (0-360). Default: 360",
+  "ky_opt_angle_end": "End Angle (degrees)",
+  "ky_opt_angle_end_desc": "Ending angle of the arc (0-360). Default: 270",
+  "ky_opt_duration": "Display Duration (seconds)",
+  "ky_opt_duration_desc": "How long buffs and kills stay visible (1-10s). Default: 5s",
+  "ky_opt_opacity": "Opacity",
+  "ky_opt_opacity_desc": "HUD element opacity (0.1 to 1.0). Default: 0.9",
+  "ky_opt_icon_size": "Icon Size (pixels)",
+  "ky_opt_icon_size_desc": "Size of buff and kill icons (16-64 pixels). Default: 32",
+  "ky_opt_reset": "Reset to Defaults",
+  "ky_opt_reset_desc": "Reset all settings to their default values",
+  "ky_opt_debug_sim": "Debug: Simulate Buffs & Kills",
+  "ky_opt_debug_sim_desc": "Show 8 demo buffs and 5 demo kills for 8 seconds",
+  "ky_opt_debug_clear": "Debug: Clear All",
+  "ky_opt_debug_clear_desc": "Remove all active buffs and kills from the HUD"
+}
