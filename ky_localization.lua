@@ -1,5 +1,5 @@
 -- ky_localization.lua — Chargement des traductions + fallbacks
--- Kyosh1ro HUD v1.0.0
+-- Kyosh1ro HUD v1.1.0
 
 local MOD_NAME = "Kyosh1ro HUD"
 
@@ -14,7 +14,7 @@ local function add_fallbacks(loc)
         ky_menu_title = "Kyosh1ro HUD",
         ky_menu_desc  = "Circular buff display & killfeed around the crosshair",
 
-        -- Options
+        -- Options de base
         ky_opt_enable_killfeed      = "Enable KillFeed",
         ky_opt_enable_killfeed_desc = "Show eliminated enemies in an arc below the crosshair",
         ky_opt_enable_buffs         = "Enable Buffs",
@@ -37,7 +37,82 @@ local function add_fallbacks(loc)
         ky_opt_debug_sim_desc       = "Show 8 demo buffs + 5 demo kills for 8 seconds",
         ky_opt_debug_clear          = "Debug: Clear",
         ky_opt_debug_clear_desc     = "Remove all active buffs and kills from the HUD",
+
+        -- Sous-menu filtres
+        ky_opt_buff_filter          = "Buff Filters",
+        ky_opt_buff_filter_desc     = "Toggle buff categories and individual buffs",
+
+        -- Catégories
+        ky_opt_cat_mastermind           = "Mastermind",
+        ky_opt_cat_mastermind_desc      = "Show/hide all Mastermind buffs",
+        ky_opt_cat_mastermind_buffs     = "Mastermind Buffs",
+        ky_opt_cat_mastermind_buffs_desc = "Toggle individual Mastermind buffs",
+
+        ky_opt_cat_enforcer             = "Enforcer",
+        ky_opt_cat_enforcer_desc        = "Show/hide all Enforcer buffs",
+        ky_opt_cat_enforcer_buffs       = "Enforcer Buffs",
+        ky_opt_cat_enforcer_buffs_desc  = "Toggle individual Enforcer buffs",
+
+        ky_opt_cat_technician           = "Technician",
+        ky_opt_cat_technician_desc      = "Show/hide all Technician buffs",
+        ky_opt_cat_technician_buffs     = "Technician Buffs",
+        ky_opt_cat_technician_buffs_desc = "Toggle individual Technician buffs",
+
+        ky_opt_cat_ghost                = "Ghost",
+        ky_opt_cat_ghost_desc           = "Show/hide all Ghost buffs",
+        ky_opt_cat_ghost_buffs          = "Ghost Buffs",
+        ky_opt_cat_ghost_buffs_desc     = "Toggle individual Ghost buffs",
+
+        ky_opt_cat_fugitive             = "Fugitive",
+        ky_opt_cat_fugitive_desc        = "Show/hide all Fugitive buffs",
+        ky_opt_cat_fugitive_buffs       = "Fugitive Buffs",
+        ky_opt_cat_fugitive_buffs_desc  = "Toggle individual Fugitive buffs",
+
+        ky_opt_cat_perk                 = "Perk Decks",
+        ky_opt_cat_perk_desc            = "Show/hide all Perk Deck buffs",
+        ky_opt_cat_perk_buffs           = "Perk Deck Buffs",
+        ky_opt_cat_perk_buffs_desc      = "Toggle individual Perk Deck buffs",
+
+        ky_opt_cat_debuff               = "Debuffs",
+        ky_opt_cat_debuff_desc          = "Show/hide all debuffs",
+        ky_opt_cat_debuff_buffs         = "Debuffs List",
+        ky_opt_cat_debuff_buffs_desc    = "Toggle individual debuffs",
+
+        ky_opt_cat_team                 = "Team Buffs",
+        ky_opt_cat_team_desc            = "Show/hide all team buffs",
+        ky_opt_cat_team_buffs           = "Team Buffs List",
+        ky_opt_cat_team_buffs_desc      = "Toggle individual team buffs",
+
+        ky_opt_cat_player_action            = "Player Actions",
+        ky_opt_cat_player_action_desc       = "Show/hide player action buffs",
+        ky_opt_cat_player_action_buffs      = "Player Action Buffs",
+        ky_opt_cat_player_action_buffs_desc = "Toggle individual player action buffs",
+
+        ky_opt_cat_gage                 = "Gage Boosts",
+        ky_opt_cat_gage_desc            = "Show/hide Gage boosts",
+        ky_opt_cat_gage_buffs           = "Gage Boosts List",
+        ky_opt_cat_gage_buffs_desc      = "Toggle individual Gage boosts",
+
+        ky_opt_cat_ai                   = "AI Skills",
+        ky_opt_cat_ai_desc              = "Show/hide AI crew skill buffs",
+        ky_opt_cat_ai_buffs             = "AI Skill Buffs",
+        ky_opt_cat_ai_buffs_desc        = "Toggle individual AI skill buffs",
     })
+
+    -- Fallbacks dynamiques pour les buffs individuels
+    -- Les noms lisibles seront fournis par les fichiers JSON
+    -- Ici on met juste le buff_id formaté comme fallback
+    if Kyosh1roHUD and Kyosh1roHUD.BUFF_MAP then
+        local buff_fallbacks = {}
+        for buff_id, _ in pairs(Kyosh1roHUD.BUFF_MAP) do
+            local nice_name = buff_id:gsub("_", " "):gsub("(%a)([%w_']*)", function(a, b)
+                return string.upper(a) .. b
+            end)
+            buff_fallbacks["ky_opt_buff_" .. buff_id] = nice_name
+            buff_fallbacks["ky_opt_buff_" .. buff_id .. "_desc"] = "Toggle " .. nice_name
+        end
+        loc:add_localized_strings(buff_fallbacks)
+    end
 end
 
 Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
