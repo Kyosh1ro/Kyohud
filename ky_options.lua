@@ -1,5 +1,5 @@
 -- ky_options.lua — Menu BLT + sauvegarde/chargement des paramètres
--- Kyosh1ro HUD v1.0.0
+-- Kyosh1ro HUD v1.1.0
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
 local KH = Kyosh1roHUD
@@ -14,12 +14,38 @@ KH._defaults = {
     enable_buffs    = true,
 
     circle_radius = 250,
-    angle_start   = 360,
-    angle_end     = 270,
+    angle_start   = 315,
+    angle_end     = 90,
     buff_duration = 5,
     opacity       = 0.9,
     icon_size     = 32,
 }
+
+-- Catégories par défaut (toutes activées)
+KH._default_categories = {
+    mastermind    = true,
+    enforcer      = true,
+    technician    = true,
+    ghost         = true,
+    fugitive      = true,
+    perk          = true,
+    debuff        = true,
+    team          = true,
+    player_action = true,
+    gage          = true,
+    ai            = true,
+}
+
+-- Génère les toggles individuels par défaut depuis BUFF_MAP
+local function build_default_buff_toggles()
+    local t = {}
+    if KH.BUFF_MAP then
+        for buff_id, def in pairs(KH.BUFF_MAP) do
+            t[buff_id] = (def.default_show ~= false)
+        end
+    end
+    return t
+end
 
 -- Initialise les settings à partir des defaults si pas encore fait
 if not KH.settings then
@@ -27,6 +53,19 @@ if not KH.settings then
     for k, v in pairs(KH._defaults) do
         KH.settings[k] = v
     end
+end
+
+-- Initialise buff_categories
+if not KH.settings.buff_categories then
+    KH.settings.buff_categories = {}
+    for k, v in pairs(KH._default_categories) do
+        KH.settings.buff_categories[k] = v
+    end
+end
+
+-- Initialise buff_toggles (sera complété après le chargement de BUFF_MAP)
+if not KH.settings.buff_toggles then
+    KH.settings.buff_toggles = build_default_buff_toggles()
 end
 
 -- ── Sauvegarde ──
@@ -46,12 +85,38 @@ function KH.Load()
         f:close()
         local ok, data = pcall(json.decode, raw)
         if ok and type(data) == "table" then
+            -- Charger les settings simples
             for k, default_v in pairs(KH._defaults) do
                 if data[k] ~= nil then
                     KH.settings[k] = data[k]
                 else
                     KH.settings[k] = default_v
                 end
+            end
+
+            -- Charger buff_categories
+            if type(data.buff_categories) == "table" then
+                for k, v in pairs(KH._default_categories) do
+                    if data.buff_categories[k] ~= nil then
+                        KH.settings.buff_categories[k] = data.buff_categories[k]
+                    else
+                        KH.settings.buff_categories[k] = v
+                    end
+                end
+            end
+
+            -- Charger buff_toggles
+            if type(data.buff_toggles) == "table" then
+                KH.settings.buff_toggles = data.buff_toggles
+                -- Ajouter les nouveaux buffs qui n'existent pas encore dans la sauvegarde
+                local defaults = build_default_buff_toggles()
+                for buff_id, default_val in pairs(defaults) do
+                    if KH.settings.buff_toggles[buff_id] == nil then
+                        KH.settings.buff_toggles[buff_id] = default_val
+                    end
+                end
+            else
+                KH.settings.buff_toggles = build_default_buff_toggles()
             end
         end
     end
@@ -63,6 +128,10 @@ function KH.ResetDefaults()
     for k, v in pairs(KH._defaults) do
         KH.settings[k] = v
     end
+    for k, v in pairs(KH._default_categories) do
+        KH.settings.buff_categories[k] = v
+    end
+    KH.settings.buff_toggles = build_default_buff_toggles()
     KH.Save()
     if KH.RefreshHUD then KH:RefreshHUD() end
 end
@@ -131,14 +200,54 @@ MenuCallbackHandler.KY_DebugClear = function()
     if KH.DebugClear then KH:DebugClear() end
 end
 
+-- ── Callbacks dynamiques pour catégories ──
+-- Crée un callback par catégorie : KY_ToggleCat_mastermind, KY_ToggleCat_enforcer, etc.
+local CAT_ORDER = {
+    "mastermind", "enforcer", "technician", "ghost", "fugitive",
+    "perk", "debuff", "team", "player_action", "gage", "ai",
+}
+
+for _, cat_id in ipairs(CAT_ORDER) do
+    local cb_name = "KY_ToggleCat_" .. cat_id
+    MenuCallbackHandler[cb_name] = function(self, item)
+        KH.settings.buff_categories[cat_id] = (item:value() == "on")
+        KH.Save()
+        if KH.RefreshHUD then KH:RefreshHUD() end
+    end
+end
+
+-- ── Callbacks dynamiques pour buffs individuels ──
+-- Crée un callback par buff : KY_ToggleBuff_inspire, KY_ToggleBuff_overkill, etc.
+local function register_buff_callbacks()
+    if not KH.BUFF_MAP then return end
+    for buff_id, _ in pairs(KH.BUFF_MAP) do
+        local cb_name = "KY_ToggleBuff_" .. buff_id
+        local bid = buff_id -- capture locale
+        MenuCallbackHandler[cb_name] = function(self, item)
+            KH.settings.buff_toggles[bid] = (item:value() == "on")
+            KH.Save()
+            if KH.RefreshHUD then KH:RefreshHUD() end
+        end
+    end
+end
+register_buff_callbacks()
+
 -- ═══════════════════════════════════════════════════
 -- 3) Construction du menu BLT
 -- ═══════════════════════════════════════════════════
 Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, nodes)
     local MENU_ID = "ky_hud_options"
-    MenuHelper:NewMenu(MENU_ID)
+    local MENU_CATS = "ky_hud_buff_categories"
+    local MENU_BUFFS_PREFIX = "ky_hud_buffs_"
 
-    -- ── Toggles ──
+    MenuHelper:NewMenu(MENU_ID)
+    MenuHelper:NewMenu(MENU_CATS)
+
+    -- ══════════════════════════════════════════════
+    -- Menu principal
+    -- ══════════════════════════════════════════════
+
+    -- ── Toggles principaux ──
     MenuHelper:AddToggle({
         id       = "ky_enable_killfeed",
         title    = "ky_opt_enable_killfeed",
@@ -272,9 +381,82 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         priority = 4,
     })
 
-    -- Construire et enregistrer le nœud du menu
+    -- ══════════════════════════════════════════════
+    -- Sous-menu : Catégories de buffs
+    -- ══════════════════════════════════════════════
+    local cat_prio = 100
+    for _, cat_id in ipairs(CAT_ORDER) do
+        local cat_name = (KH.BUFF_CATEGORIES and KH.BUFF_CATEGORIES[cat_id]) or cat_id
+
+        -- Toggle de la catégorie
+        MenuHelper:AddToggle({
+            id       = "ky_cat_" .. cat_id,
+            title    = "ky_opt_cat_" .. cat_id,
+            desc     = "ky_opt_cat_" .. cat_id .. "_desc",
+            callback = "KY_ToggleCat_" .. cat_id,
+            value    = KH.settings.buff_categories[cat_id] ~= false,
+            menu_id  = MENU_CATS,
+            priority = cat_prio,
+        })
+
+        -- Sous-sous-menu pour les buffs individuels de cette catégorie
+        local sub_menu_id = MENU_BUFFS_PREFIX .. cat_id
+        MenuHelper:NewMenu(sub_menu_id)
+
+        local buff_prio = 100
+        if KH.BUFF_MAP then
+            -- Trier les buffs par nom pour un menu lisible
+            local sorted_buffs = {}
+            for buff_id, def in pairs(KH.BUFF_MAP) do
+                if def.category == cat_id then
+                    table.insert(sorted_buffs, buff_id)
+                end
+            end
+            table.sort(sorted_buffs)
+
+            for _, buff_id in ipairs(sorted_buffs) do
+                local toggle_val = true
+                if KH.settings.buff_toggles and KH.settings.buff_toggles[buff_id] ~= nil then
+                    toggle_val = KH.settings.buff_toggles[buff_id]
+                elseif KH.BUFF_MAP[buff_id] then
+                    toggle_val = KH.BUFF_MAP[buff_id].default_show ~= false
+                end
+
+                MenuHelper:AddToggle({
+                    id       = "ky_buff_" .. buff_id,
+                    title    = "ky_opt_buff_" .. buff_id,
+                    desc     = "ky_opt_buff_" .. buff_id .. "_desc",
+                    callback = "KY_ToggleBuff_" .. buff_id,
+                    value    = toggle_val,
+                    menu_id  = sub_menu_id,
+                    priority = buff_prio,
+                })
+                buff_prio = buff_prio - 1
+            end
+        end
+
+        -- Construire le sous-sous-menu et l'ajouter à la catégorie
+        nodes[sub_menu_id] = MenuHelper:BuildMenu(sub_menu_id)
+        MenuHelper:AddMenuItem(
+            nodes[MENU_CATS] or MenuHelper:BuildMenu(MENU_CATS),
+            sub_menu_id,
+            "ky_opt_cat_" .. cat_id .. "_buffs",
+            "ky_opt_cat_" .. cat_id .. "_buffs_desc"
+        )
+
+        cat_prio = cat_prio - 1
+    end
+
+    -- Construire le menu catégories
+    nodes[MENU_CATS] = nodes[MENU_CATS] or MenuHelper:BuildMenu(MENU_CATS)
+
+    -- Lien vers le sous-menu catégories depuis le menu principal
+    MenuHelper:AddMenuItem(nodes[MENU_ID] or MenuHelper:BuildMenu(MENU_ID),
+        MENU_CATS, "ky_opt_buff_filter", "ky_opt_buff_filter_desc", 80)
+
+    -- Construire et enregistrer le menu principal
     nodes[MENU_ID] = MenuHelper:BuildMenu(MENU_ID)
     MenuHelper:AddMenuItem(nodes.blt_options, MENU_ID, "ky_menu_title", "ky_menu_desc")
 
-    log("[Kyosh1ro HUD] Menu BLT construit.")
+    log("[Kyosh1ro HUD] Menu BLT construit avec " .. tostring(#CAT_ORDER) .. " catégories.")
 end)
