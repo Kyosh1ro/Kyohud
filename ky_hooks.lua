@@ -1,101 +1,11 @@
 -- ky_hooks.lua — Hooks sur PlayerManager pour détecter les buffs et les kills
--- Kyosh1ro HUD v1.0.0
+-- Kyosh1ro HUD v1.1.0
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
 local KH = Kyosh1roHUD
 
 local function HLOG(msg)
     pcall(function() log("[Kyosh1ro HUD][Hooks] " .. tostring(msg)) end)
-end
-
--- ═══════════════════════════════════════════════════
--- Résolution d'icônes depuis le skilltree
--- ═══════════════════════════════════════════════════
-local TILE = 64
-local ICON_ATLAS = "guis/textures/pd2/skilltree/icons_atlas"
-
-local function has_texture(path)
-    return path and DB and DB:has(Idstring("texture"), Idstring(path))
-end
-
--- Tente de récupérer l'icône depuis le skilltree (plus fiable pour le rect)
-local function icon_from_skill(skill_id)
-    local skills = tweak_data and tweak_data.skilltree and tweak_data.skilltree.skills
-    local s = skills and skills[skill_id]
-    if s and s.icon_xy and type(s.icon_xy) == "table" then
-        local x, y = s.icon_xy[1], s.icon_xy[2]
-        if x and y and has_texture(ICON_ATLAS) then
-            return { texture = ICON_ATLAS, rect = { x * TILE, y * TILE, TILE, TILE } }
-        end
-    end
-    return nil
-end
-
--- Tente de récupérer depuis hud_icons
-local function icon_from_hud(icon_name)
-    if not icon_name then return nil end
-    local ok, tx, rect = pcall(function()
-        return tweak_data.hud_icons:get_icon_data(icon_name)
-    end)
-    if ok and tx and has_texture(tx) and rect and type(rect) == "table" and #rect >= 4 then
-        return { texture = tx, rect = rect }
-    end
-    return nil
-end
-
--- ═══════════════════════════════════════════════════
--- Mapping upgrade → skill/icon pour meilleure résolution
--- ═══════════════════════════════════════════════════
-local UPGRADE_TO_SKILL = {
-    unseen_strike               = "unseen_strike",
-    second_wind                 = "second_wind",
-    damage_speed_multiplier     = "duck_and_cover",
-    movement_speed_multiplier   = "duck_and_cover",
-    overkill_damage_multiplier  = "overkill",
-    dmg_multiplier_outnumbered  = "underdog",
-    bullet_storm                = "bullet_storm",
-    iron_man                    = "iron_man",
-    inspire                     = "inspire",
-    inspire_cooldown            = "inspire",
-    ammo_efficiency             = "ammo_efficiency",
-    hostage_taker               = "hostage_taker",
-    berserker_damage_multiplier = "berserker",
-    swan_song                   = "swan_song",
-    bloodthirst                 = "bloodthirst",
-    armor_break_invulnerable    = "armorer",
-    crew_inspire_debuff         = "inspire",
-}
-
-local UPGRADE_TO_HUDICON = {
-    unseen_strike               = "skill_unseen_strike",
-    overkill_damage_multiplier  = "skill_overkill",
-    berserker_damage_multiplier = "skill_berserker",
-    swan_song                   = "skill_swan_song",
-    inspire                     = "skill_inspire",
-    bullet_storm                = "skill_bullet_storm",
-    hostage_taker               = "skill_hostage_taker",
-    iron_man                    = "skill_iron_man",
-    second_wind                 = "skill_second_wind",
-    bloodthirst                 = "skill_bloodthirst",
-}
-
-local FALLBACK_TEX = "guis/textures/pd2/skilltree/drillgui_icon_faster"
-
-local function pick_icon(upgrade_id)
-    -- 1) Skilltree (meilleur rect)
-    local sk = UPGRADE_TO_SKILL[upgrade_id]
-    if sk then
-        local ico = icon_from_skill(sk)
-        if ico then return ico end
-    end
-    -- 2) hud_icons
-    local hid = UPGRADE_TO_HUDICON[upgrade_id]
-    if hid then
-        local ico2 = icon_from_hud(hid)
-        if ico2 then return ico2 end
-    end
-    -- 3) Fallback
-    return { texture = has_texture(FALLBACK_TEX) and FALLBACK_TEX or "guis/textures/pd2/hud_timer" }
 end
 
 -- ═══════════════════════════════════════════════════
@@ -136,15 +46,26 @@ end
 Hooks:PostHook(PlayerManager, "activate_temporary_upgrade", "KH_OnBuffOn", function(pm, category, upgrade)
     if category ~= "temporary" or not upgrade then return end
 
-    local icon = pick_icon(upgrade)
-    local dur = get_temp_duration(pm, upgrade)
-    local buff_id = "temp_" .. tostring(upgrade)
-
-    if KH.add_buff then
-        KH:add_buff(buff_id, icon, dur, upgrade)
+    -- Résoudre le buff_id via la table de mapping
+    local buff_id = upgrade
+    if KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[upgrade] then
+        buff_id = KH.UPGRADE_TO_BUFF[upgrade]
     end
 
-    HLOG(string.format("BUFF ON: %s (dur=%.1fs)", tostring(upgrade), dur))
+    -- Vérifier que ce buff existe dans BUFF_MAP
+    local map_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
+    if not map_entry then
+        HLOG(string.format("BUFF ON ignoré (pas dans BUFF_MAP): %s → %s", tostring(upgrade), tostring(buff_id)))
+        return
+    end
+
+    local dur = get_temp_duration(pm, upgrade)
+
+    if KH.add_buff then
+        KH:add_buff(buff_id, nil, dur, upgrade)
+    end
+
+    HLOG(string.format("BUFF ON: %s → %s (dur=%.1fs)", tostring(upgrade), tostring(buff_id), dur))
 end)
 
 -- ═══════════════════════════════════════════════════
@@ -153,31 +74,30 @@ end)
 Hooks:PostHook(PlayerManager, "deactivate_temporary_upgrade", "KH_OnBuffOff", function(pm, category, upgrade)
     if category ~= "temporary" or not upgrade then return end
 
-    local buff_id = "temp_" .. tostring(upgrade)
+    -- Résoudre le buff_id via la table de mapping
+    local buff_id = upgrade
+    if KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[upgrade] then
+        buff_id = KH.UPGRADE_TO_BUFF[upgrade]
+    end
+
     if KH.remove_buff then
         KH:remove_buff(buff_id)
     end
 
-    HLOG(string.format("BUFF OFF: %s", tostring(upgrade)))
+    HLOG(string.format("BUFF OFF: %s → %s", tostring(upgrade), tostring(buff_id)))
 end)
 
 -- ═══════════════════════════════════════════════════
 -- Hook : Détection des kills (KillFeed)
 -- ═══════════════════════════════════════════════════
--- On hook CopDamage:die() pour intercepter les morts d'ennemis
 if CopDamage then
     Hooks:PostHook(CopDamage, "die", "KH_OnEnemyDie", function(self, attack_data)
-        -- Vérifier que c'est le joueur local qui a tué
         if not attack_data then return end
 
         local attacker = attack_data.attacker_unit
         if not attacker or not alive(attacker) then return end
 
         -- Seuls les kills du joueur local comptent
-        local local_peer_id = managers.network and managers.network:session()
-            and managers.network:session():local_peer()
-            and managers.network:session():local_peer():id()
-
         local is_local = false
         if attacker == managers.player:player_unit() then
             is_local = true
@@ -193,13 +113,11 @@ if CopDamage then
         local enemy_type = "default"
 
         if self._unit and alive(self._unit) then
-            -- Essayer de récupérer le tweak_table (nom interne)
             local ok, tweak = pcall(function()
                 return self._unit:base()._tweak_table
             end)
             if ok and tweak then
                 enemy_type = tostring(tweak)
-                -- Noms plus lisibles
                 local NAMES = {
                     swat_heavy          = "Heavy SWAT",
                     shield              = "Shield",
