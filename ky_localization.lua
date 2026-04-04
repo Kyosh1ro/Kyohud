@@ -7,6 +7,13 @@ local MOD_NAME = "Kyosh1ro HUD"
 -- car le global ModPath sera écrasé par BLT quand d'autres mods se chargent.
 local MY_MOD_PATH = ModPath
 
+local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "ky_buff_catalog.lua")
+if not catalog_ok then
+    pcall(function()
+        log("[" .. MOD_NAME .. "][Loc] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
+    end)
+end
+
 local function logi(msg)
     pcall(function() log("[" .. MOD_NAME .. "][Loc] " .. tostring(msg)) end)
 end

@@ -3,6 +3,14 @@
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
 local KH = Kyosh1roHUD
+local MY_MOD_PATH = ModPath
+
+local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "ky_buff_catalog.lua")
+if not catalog_ok then
+    pcall(function()
+        log("[Kyosh1ro HUD][Hooks] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
+    end)
+end
 
 local function HLOG(msg)
     pcall(function() log("[Kyosh1ro HUD][Hooks] " .. tostring(msg)) end)
