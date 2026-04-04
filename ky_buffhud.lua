@@ -107,8 +107,13 @@ KH.BUFF_CATEGORIES = {
 
 KH.BUFF_MAP = {
     -- ══ Mastermind ══
+    single_shot_fast_reload = {
+        skills_new = {1, 0},
+        category = "mastermind",
+        default_show = true,
+    },
     aggressive_reload_aced = {
-        skills_new = {1, 1}, -- placeholder, utilise tweak_data in-game
+        skills_new = {1, 1},
         category = "mastermind",
         default_show = true,
     },
@@ -593,6 +598,10 @@ KH.UPGRADE_TO_BUFF = {
     messiah                     = "messiah",
     crew_inspire_debuff         = "crew_inspire_debuff",
     invulnerable_buff           = "invulnerable_buff",
+
+    -- Noms d'upgrade qui diffèrent du buff_id
+    single_shot_fast_reload     = "single_shot_fast_reload",
+    dmg_dampener_close_contact  = "close_contact",
 }
 
 -- ═══════════════════════════════════════════════════

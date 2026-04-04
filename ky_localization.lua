@@ -1,11 +1,17 @@
 -- ky_localization.lua — Chargement des traductions + fallbacks
--- Kyosh1ro HUD v1.1.0
+-- Kyosh1ro HUD v1.1.1
 
 local MOD_NAME = "Kyosh1ro HUD"
+
+-- IMPORTANT : capturer ModPath immédiatement à l'exécution du fichier,
+-- car le global ModPath sera écrasé par BLT quand d'autres mods se chargent.
+local MY_MOD_PATH = ModPath
 
 local function logi(msg)
     pcall(function() log("[" .. MOD_NAME .. "][Loc] " .. tostring(msg)) end)
 end
+
+logi("ModPath capturé: " .. tostring(MY_MOD_PATH))
 
 -- Fallbacks intégrés pour garantir aucun "ERROR:" dans les menus
 local function add_fallbacks(loc)
@@ -100,8 +106,6 @@ local function add_fallbacks(loc)
     })
 
     -- Fallbacks dynamiques pour les buffs individuels
-    -- Les noms lisibles seront fournis par les fichiers JSON
-    -- Ici on met juste le buff_id formaté comme fallback
     if Kyosh1roHUD and Kyosh1roHUD.BUFF_MAP then
         local buff_fallbacks = {}
         for buff_id, _ in pairs(Kyosh1roHUD.BUFF_MAP) do
@@ -116,8 +120,11 @@ local function add_fallbacks(loc)
 end
 
 Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
-    local base = ModPath .. "loc/"
+    -- Utiliser MY_MOD_PATH (capturé au chargement) et PAS le global ModPath
+    local base = MY_MOD_PATH .. "loc/"
     local loaded = false
+
+    logi("Recherche des fichiers dans: " .. tostring(base))
 
     -- Détecter la langue BLT
     local blt_lang = ""
@@ -140,14 +147,26 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
     table.insert(try_files, base .. "english.json") -- Toujours en fallback
 
     for _, path in ipairs(try_files) do
-        if io.file_is_readable and io.file_is_readable(path) then
+        local readable = false
+        if io.file_is_readable then
+            readable = io.file_is_readable(path)
+        elseif file and file.FileExists then
+            readable = file.FileExists(path)
+        else
+            -- Tenter d'ouvrir pour vérifier
+            local test = io.open(path, "r")
+            if test then
+                test:close()
+                readable = true
+            end
+        end
+
+        if readable then
             loc:load_localization_file(path)
             logi("Chargé: " .. path)
             loaded = true
-        elseif file and file.FileExists and file.FileExists(path) then
-            loc:load_localization_file(path)
-            logi("Chargé: " .. path)
-            loaded = true
+        else
+            logi("Non trouvé: " .. path)
         end
     end
 

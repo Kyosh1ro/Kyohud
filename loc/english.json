@@ -83,6 +83,8 @@
   "ky_opt_cat_ai_buffs": "AI Skill Buffs",
   "ky_opt_cat_ai_buffs_desc": "Toggle individual AI skill buffs",
 
+  "ky_opt_buff_single_shot_fast_reload": "Single Shot Fast Reload",
+  "ky_opt_buff_single_shot_fast_reload_desc": "Toggle Graze/Single Shot fast reload buff",
   "ky_opt_buff_aggressive_reload_aced": "Aggressive Reload (Aced)",
   "ky_opt_buff_aggressive_reload_aced_desc": "Toggle Aggressive Reload aced buff",
   "ky_opt_buff_inspire": "Inspire",

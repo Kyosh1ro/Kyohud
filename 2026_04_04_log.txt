@@ -1,0 +1,838 @@
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\debug\blt_debug.cpp:124) Command line: "G:\SteamLibrary\steamapps\common\PAYDAY 2\payday2_win32_release.exe" -NewCPU -disable_pagefile_check
+01:09:11 PM Log:  (C:\projects\payday2-superblt\platforms\w32\signatures\signatures.cpp:351) Scanning for signatures in payday2_win32_release.exe
+01:09:11 PM Log:  (C:\projects\payday2-superblt\platforms\w32\signatures\signatures.cpp:403) Scanned for 58 signatures in 0 milliseconds with 0 cache misses
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\dbutil\DB.cpp:127) Start loading DB info
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: b95e912868768c8d.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 81294ed3bfd51870.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 5bfc2821c130cbff.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: f0fc563ef0440949.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 46fdd95e0187bce4.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: c178d3916c6dda51.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: ed58a5cba37a9603.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 9e06325dae2b5434.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 0f6fedaca3c5d7d2.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 30a8cb1759c5aa50.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: cf3576e0c1669989.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 75488ad89282ec0c.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 67f7f2e37617cd5d.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 8628bd5b11bec792.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: ef7669a67115a238.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: a3515286614f346b.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: ef29c7e7d9b66b8c.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: e0f34b46a9e3f82b.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: 5323636ad0405682.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Register tweak: f7404abeb53ee5ee.7dbca958ad01668f
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] Loading module BeardLib/AssetLoader
+01:09:11 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:09:17 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:09:17 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:09:17 PM Lua: [INFO] [BLT] Removing log: 2026_04_03_log.txt
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:09:17 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:09:17 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:09:17 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:09:17 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:09:17 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:09:17 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:09:18 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:09:18 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:09:18 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:09:36 PM Log:  (C:\projects\payday2-superblt\src\dbutil\DB.cpp:254) Finished loading DB info: 273335 files in 25616 ms
+01:09:37 PM Lua: [Kyosh1ro HUD][Hooks] ky_hooks.lua chargé — hooks buffs et kills actifs.
+01:09:37 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/menumanager -> lua/menus
+01:09:37 PM Log:  (C:\projects\payday2-superblt\src\xaudio\XAudio.cpp:142) Loaded OpenAL XAudio API
+01:09:37 PM Lua: mods/Killstreaks from Halo/: QuickAnimate version 4 already exists
+01:09:38 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/localizationmanager -> lua/localization
+01:09:38 PM Lua: [Kyosh1ro HUD][Loc] ModPath capturé: mods/Kyosh1ro_HUD/
+01:09:38 PM Lua: [FOffCheaters: Debug] Routing hook lib/network/base/networkpeer -> lua/test
+01:09:38 PM Lua: [FOffCheaters: Debug] Setting up network peer hooks
+01:09:38 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/hudmanagerpd2 -> lua/test
+01:09:38 PM Lua: [FOffCheaters: Debug] Setting up hud manager hooks
+01:09:39 PM Lua: [Kyosh1ro HUD] ky_buffhud.lua v2.0 chargé.
+01:09:39 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:09:39 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:09:39 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:09:39 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:09:39 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:09:39 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:09:39 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:09:39 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:09:39 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:09:39 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:09:39 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:09:39 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:09:39 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:09:42 PM Lua: [Kyosh1ro HUD][Loc] Recherche des fichiers dans: mods/Kyosh1ro_HUD/loc/
+01:09:42 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/french.json
+01:09:42 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/english.json
+01:09:44 PM FATAL ERROR:  (C:\projects\payday2-superblt\src\InitiateState.cpp:248) [string "core/lib/system/coremodule.lua"]:124: core:_lookup(...) is for debugging only!
+stack traceback:
+	[C]: in function 'assert'
+	[string "core/lib/system/coremodule.lua"]:124: in function 'class_name'
+	[string "core/lib/utils/coreevent.lua"]:34: in function 'callback'
+	[string "core/lib/managers/menu/items/coremenuitem.lua"]:120: in function 'set_callback_handler'
+	[string "core/lib/managers/menu/coremenunode.lua"]:147: in function 'add_item'
+	mods/base/req/core/MenuHelper.lua:416: in function 'BuildMenu'
+	mods/Kyosh1ro_HUD/ky_options.lua:397: in function <mods/Kyosh1ro_HUD/ky_options.lua:239>
+	[C]: in function 'pcall'
+	mods/Kyosh1ro_HUD/ky_options.lua:239: in function 'func'
+	mods/base/req/core/Hooks.lua:85: in function 'Call'
+	mods/base/lua/MenuManager.lua:80: in function '_base_process_menu'
+	...
+	mods/base/lua/MenuManager.lua:5: in function 'func'
+	mods/base/req/core/Hooks.lua:274: in function 'init'
+	[string "core/lib/utils/coreclass.lua"]:35: in function 'new'
+	[string "lib/setups/setup.lua"]:415: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers_original'
+	mods/VanillaHUD Plus/lua/WaypointsManager.lua:93: in function 'init_managers'
+	[string "lib/setups/menusetup.lua"]:296: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers'
+	mods/Extra Heist Info/lua/MenuSetup.lua:9: in function 'init_managers'
+	[string "core/lib/setups/coresetup.lua"]:401: in function <[string "core/lib/setups/coresetup.lua"]:295>
+
+01:09:44 PM Lua: [Kyosh1ro HUD] ERREUR construction menu: nil
+01:09:44 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1071) Checking for updates
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/14924/version
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\http\http.cpp:39) CURL_INITD
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/24730/version
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/29641/version
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/29585/version
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/38637/version
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.github.com/repos/irbizzelus/Peer-Mod-List-Highlighter/releases/latest
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to http://pd2mods.z77.fr/update/SimpleModUpdater_33.zip
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://sblt-update.znix.xyz/pd2update/updates/meta.php?id=payday2blt
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://sblt-update.znix.xyz/pd2update/updates/meta.php?id=payday2bltwsockdll
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://updates.hoppip.at/pd2-hoplib
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to http://pd2mods.z77.fr/update/MoreWeaponStats_74.zip
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.livaco.dev/payday_mod_updates.json
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://gitlab.com/steam-test1/alternative-updates/-/raw/main/updates_metas/meta_vanhudplus.json
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://raw.githubusercontent.com/Pd2VoidTeam/VoidUI/master/updates/meta_voidui.json
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://updates.hoppip.at/pd2-kill-feed
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://www.dropbox.com/s/4su2vvgbsn7sfdf/meta.json?raw=1
+01:09:46 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://www.dropbox.com/s/cs301vm4awt3o7i/meta.json?raw=1
+01:09:46 PM Lua: [INFO] [Updates] Received update data for 'voidui'
+01:09:46 PM Lua: [INFO] [Updates] Received update data for 'pd2-hoplib'
+01:09:46 PM Lua: [INFO] [Updates] Comparing hash data for 'pd2-hoplib':
+Server: 611db232792dc562e9315ac86ce36ea4510f918a47e67313f5473abc1f9a2e37
+ Local: 611db232792dc562e9315ac86ce36ea4510f918a47e67313f5473abc1f9a2e37
+01:09:46 PM Lua: [INFO] [Updates] Received update data for 'pd2-kill-feed'
+01:09:46 PM Lua: [INFO] [Updates] Comparing hash data for 'pd2-kill-feed':
+Server: de545c60c4e22740d4510abb99d525d82c4de0ad15570e5e5811817596100fb1
+ Local: de545c60c4e22740d4510abb99d525d82c4de0ad15570e5e5811817596100fb1
+01:09:46 PM Lua: [INFO] [Updates] Received update data for 'foffcheaters_updates'
+01:09:46 PM Lua: [INFO] [Updates] Received update data for 'vanhudplus'
+01:09:46 PM Lua: [INFO] [Updates] Received update data for 'payday2bltwsockdll'
+01:09:46 PM Lua: [INFO] [Updates] Received update data for 'payday2blt'
+01:09:46 PM Lua: [INFO] [Updates] Comparing hash data for 'payday2bltwsockdll':
+Server: a7d370bddecaec837b82935364c587754a6f184c972de717bfe038635d20a904
+ Local: a7d370bddecaec837b82935364c587754a6f184c972de717bfe038635d20a904
+01:09:47 PM Lua: [INFO] [Updates] Received update data for 'EHI'
+01:09:47 PM Lua: [INFO] [Updates] Received update data for 'BAI'
+01:09:48 PM Lua: [WARN] Mod image 'mods/FuckOffCheaters/mod.png' does not exist
+01:09:48 PM Lua: [WARN] Mod image 'mods/Killstreaks from Halo/icon.png' does not exist
+01:09:48 PM Lua: [WARN] Mod image 'mods/Kyosh1ro_HUD/mod.png' does not exist
+01:09:50 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] XML-Tweaking (DB) Bundle File 5bfc2821c130cbff.7dbca958ad01668f
+01:09:51 PM Log:  (C:\projects\payday2-superblt\src\tweaker\wrenloader.cpp:49) [WREN] XML-Tweaking (DB) Bundle File f0fc563ef0440949.7dbca958ad01668f
+01:09:55 PM Lua: [INFO] [BLT] Performing save...
+01:09:56 PM Lua: [WARN] Mod image 'mods/FuckOffCheaters/mod.png' does not exist
+01:09:56 PM Lua: [WARN] Mod image 'mods/Killstreaks from Halo/icon.png' does not exist
+01:09:56 PM Lua: [WARN] Mod image 'mods/Kyosh1ro_HUD/mod.png' does not exist
+01:09:56 PM Lua: [INFO] [BLT] Performing save...
+01:10:04 PM Lua: [INFO] [BLT] Performing save...
+01:10:05 PM Lua: [WARN] Mod image 'mods/FuckOffCheaters/mod.png' does not exist
+01:10:05 PM Lua: [WARN] Mod image 'mods/Killstreaks from Halo/icon.png' does not exist
+01:10:05 PM Lua: [WARN] Mod image 'mods/Kyosh1ro_HUD/mod.png' does not exist
+01:10:08 PM Lua: [INFO] [BLT] Performing save...
+01:10:08 PM Lua: [WARN] Mod image 'mods/FuckOffCheaters/mod.png' does not exist
+01:10:08 PM Lua: [WARN] Mod image 'mods/Killstreaks from Halo/icon.png' does not exist
+01:10:08 PM Lua: [WARN] Mod image 'mods/Kyosh1ro_HUD/mod.png' does not exist
+01:10:08 PM Lua: [INFO] [BLT] Performing save...
+01:10:18 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:10:18 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:10:18 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:10:18 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:10:18 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:10:18 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:10:18 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:10:18 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:10:18 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:10:18 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:10:18 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:10:18 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:10:18 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:10:18 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:10:18 PM Lua: [Kyosh1ro HUD][Hooks] ky_hooks.lua chargé — hooks buffs et kills actifs.
+01:10:19 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/menumanager -> lua/menus
+01:10:19 PM Lua: mods/Killstreaks from Halo/: QuickAnimate version 4 already exists
+01:10:19 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/localizationmanager -> lua/localization
+01:10:19 PM Lua: [Kyosh1ro HUD][Loc] ModPath capturé: mods/Kyosh1ro_HUD/
+01:10:19 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/localizationmanager -> lua/localization
+01:10:19 PM Lua: [Kyosh1ro HUD][Loc] ModPath capturé: mods/Kyosh1ro_HUD/
+01:10:19 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/hudmanagerpd2 -> lua/test
+01:10:19 PM Lua: [FOffCheaters: Debug] Setting up hud manager hooks
+01:10:19 PM Lua: [Kyosh1ro HUD] ky_buffhud.lua v2.0 chargé.
+01:10:20 PM Lua: [FOffCheaters: Debug] Routing hook lib/network/base/networkpeer -> lua/test
+01:10:20 PM Lua: [FOffCheaters: Debug] Setting up network peer hooks
+01:10:21 PM Lua: [Kyosh1ro HUD][Loc] Recherche des fichiers dans: mods/Kyosh1ro_HUD/loc/
+01:10:21 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/french.json
+01:10:21 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/english.json
+01:10:22 PM FATAL ERROR:  (C:\projects\payday2-superblt\src\InitiateState.cpp:248) [string "core/lib/system/coremodule.lua"]:124: core:_lookup(...) is for debugging only!
+stack traceback:
+	[C]: in function 'assert'
+	[string "core/lib/system/coremodule.lua"]:124: in function 'class_name'
+	[string "core/lib/utils/coreevent.lua"]:34: in function 'callback'
+	[string "core/lib/managers/menu/items/coremenuitem.lua"]:120: in function 'set_callback_handler'
+	[string "core/lib/managers/menu/coremenunode.lua"]:147: in function 'add_item'
+	mods/base/req/core/MenuHelper.lua:416: in function 'BuildMenu'
+	mods/Kyosh1ro_HUD/ky_options.lua:397: in function <mods/Kyosh1ro_HUD/ky_options.lua:239>
+	[C]: in function 'pcall'
+	mods/Kyosh1ro_HUD/ky_options.lua:239: in function 'func'
+	mods/base/req/core/Hooks.lua:85: in function 'Call'
+	mods/base/lua/MenuManager.lua:80: in function '_base_process_menu'
+	...
+	mods/base/req/core/Hooks.lua:274: in function 'init'
+	[string "core/lib/utils/coreclass.lua"]:35: in function 'new'
+	[string "lib/setups/setup.lua"]:415: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers_original'
+	mods/VanillaHUD Plus/lua/WaypointsManager.lua:93: in function 'init_managers'
+	mods/Extra Heist Info/lua/Setup.lua:39: in function 'init_managers'
+	[string "lib/setups/gamesetup.lua"]:656: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers'
+	[string "lib/setups/networkgamesetup.lua"]:10: in function 'init_managers'
+	[string "core/lib/setups/coresetup.lua"]:401: in function <[string "core/lib/setups/coresetup.lua"]:295>
+
+01:10:22 PM Lua: [Kyosh1ro HUD] ERREUR construction menu: nil
+01:10:25 PM Lua: [BAI] VoidUI detected. VoidUI compatibility applied.
+01:10:25 PM Lua: [BAI] HUDList in VanillaHUD Plus detected. Compatibility applied.
+01:10:25 PM Lua: [BAI] No Mod detected. Vanilla mod compatibility applied.
+01:10:25 PM Lua: [BAI] Custom assault text loaded
+01:10:25 PM Lua: [BAI] Successfully initialized
+01:10:25 PM Lua: AGGREGATE STEALTH UPDATE
+01:10:25 PM Lua: NON SECURITY
+01:10:25 PM Lua: [Kyosh1ro HUD] Panneau HUD initialisé.
+01:10:30 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to http://steamcommunity.com/profiles/76561197992266388/?l=english
+01:10:33 PM Lua: [FOffCheaters: Info] Checking peer kyosh1ro (76561197992266388)
+01:10:33 PM Lua: [FOffCheaters: Info] Peer 76561197992266388 was cleared.
+01:10:50 PM Lua: [Kyosh1ro HUD][Hooks] BUFF ON ignoré (pas dans BUFF_MAP): single_shot_fast_reload → single_shot_fast_reload
+01:11:29 PM Lua: [INFO] [BLT] Performing save...
+01:11:32 PM Lua: [Kyosh1ro HUD][Hooks] BUFF ON ignoré (pas dans BUFF_MAP): single_shot_fast_reload → single_shot_fast_reload
+01:12:34 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:12:34 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:12:34 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:12:34 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:12:34 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:12:34 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:12:34 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:12:34 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:12:34 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:12:34 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:12:34 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:12:34 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:12:34 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:12:34 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:12:34 PM Lua: [Kyosh1ro HUD][Hooks] ky_hooks.lua chargé — hooks buffs et kills actifs.
+01:12:35 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/menumanager -> lua/menus
+01:12:35 PM Lua: mods/Killstreaks from Halo/: QuickAnimate version 4 already exists
+01:12:35 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/localizationmanager -> lua/localization
+01:12:35 PM Lua: [Kyosh1ro HUD][Loc] ModPath capturé: mods/Kyosh1ro_HUD/
+01:12:35 PM Lua: [FOffCheaters: Debug] Routing hook lib/network/base/networkpeer -> lua/test
+01:12:35 PM Lua: [FOffCheaters: Debug] Setting up network peer hooks
+01:12:35 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/hudmanagerpd2 -> lua/test
+01:12:35 PM Lua: [FOffCheaters: Debug] Setting up hud manager hooks
+01:12:35 PM Lua: [Kyosh1ro HUD] ky_buffhud.lua v2.0 chargé.
+01:12:35 PM Lua: [Kyosh1ro HUD][Loc] Recherche des fichiers dans: mods/Kyosh1ro_HUD/loc/
+01:12:35 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/french.json
+01:12:35 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/english.json
+01:12:37 PM FATAL ERROR:  (C:\projects\payday2-superblt\src\InitiateState.cpp:248) [string "core/lib/system/coremodule.lua"]:124: core:_lookup(...) is for debugging only!
+stack traceback:
+	[C]: in function 'assert'
+	[string "core/lib/system/coremodule.lua"]:124: in function 'class_name'
+	[string "core/lib/utils/coreevent.lua"]:34: in function 'callback'
+	[string "core/lib/managers/menu/items/coremenuitem.lua"]:120: in function 'set_callback_handler'
+	[string "core/lib/managers/menu/coremenunode.lua"]:147: in function 'add_item'
+	mods/base/req/core/MenuHelper.lua:416: in function 'BuildMenu'
+	mods/Kyosh1ro_HUD/ky_options.lua:397: in function <mods/Kyosh1ro_HUD/ky_options.lua:239>
+	[C]: in function 'pcall'
+	mods/Kyosh1ro_HUD/ky_options.lua:239: in function 'func'
+	mods/base/req/core/Hooks.lua:85: in function 'Call'
+	mods/base/lua/MenuManager.lua:80: in function '_base_process_menu'
+	...
+	mods/base/lua/MenuManager.lua:5: in function 'func'
+	mods/base/req/core/Hooks.lua:274: in function 'init'
+	[string "core/lib/utils/coreclass.lua"]:35: in function 'new'
+	[string "lib/setups/setup.lua"]:415: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers_original'
+	mods/VanillaHUD Plus/lua/WaypointsManager.lua:93: in function 'init_managers'
+	[string "lib/setups/menusetup.lua"]:296: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers'
+	mods/Extra Heist Info/lua/MenuSetup.lua:9: in function 'init_managers'
+	[string "core/lib/setups/coresetup.lua"]:401: in function <[string "core/lib/setups/coresetup.lua"]:295>
+
+01:12:37 PM Lua: [Kyosh1ro HUD] ERREUR construction menu: nil
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/14924/version
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/24730/version
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/29641/version
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/29585/version
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/38637/version
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://sblt-update.znix.xyz/pd2update/updates/meta.php?id=payday2blt
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://sblt-update.znix.xyz/pd2update/updates/meta.php?id=payday2bltwsockdll
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://updates.hoppip.at/pd2-hoplib
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.livaco.dev/payday_mod_updates.json
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://gitlab.com/steam-test1/alternative-updates/-/raw/main/updates_metas/meta_vanhudplus.json
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://raw.githubusercontent.com/Pd2VoidTeam/VoidUI/master/updates/meta_voidui.json
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://updates.hoppip.at/pd2-kill-feed
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://www.dropbox.com/s/4su2vvgbsn7sfdf/meta.json?raw=1
+01:12:37 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://www.dropbox.com/s/cs301vm4awt3o7i/meta.json?raw=1
+01:12:37 PM Lua: [INFO] [Updates] Received update data for 'foffcheaters_updates'
+01:12:37 PM Lua: [INFO] [Updates] Received update data for 'pd2-kill-feed'
+01:12:37 PM Lua: [INFO] [Updates] Comparing hash data for 'pd2-kill-feed':
+Server: de545c60c4e22740d4510abb99d525d82c4de0ad15570e5e5811817596100fb1
+ Local: de545c60c4e22740d4510abb99d525d82c4de0ad15570e5e5811817596100fb1
+01:12:37 PM Lua: [INFO] [Updates] Received update data for 'pd2-hoplib'
+01:12:37 PM Lua: [INFO] [Updates] Comparing hash data for 'pd2-hoplib':
+Server: 611db232792dc562e9315ac86ce36ea4510f918a47e67313f5473abc1f9a2e37
+ Local: 611db232792dc562e9315ac86ce36ea4510f918a47e67313f5473abc1f9a2e37
+01:12:37 PM Lua: [INFO] [Updates] Received update data for 'payday2bltwsockdll'
+01:12:37 PM Lua: [INFO] [Updates] Received update data for 'payday2blt'
+01:12:37 PM Lua: [INFO] [Updates] Received update data for 'vanhudplus'
+01:12:37 PM Lua: [INFO] [Updates] Comparing hash data for 'payday2bltwsockdll':
+Server: a7d370bddecaec837b82935364c587754a6f184c972de717bfe038635d20a904
+ Local: a7d370bddecaec837b82935364c587754a6f184c972de717bfe038635d20a904
+01:12:37 PM Lua: [INFO] [Updates] Received update data for 'voidui'
+01:12:38 PM Lua: [INFO] [Updates] Received update data for 'EHI'
+01:12:38 PM Lua: [INFO] [Updates] Received update data for 'BAI'
+01:12:53 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:12:53 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:12:53 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:12:53 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:12:53 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:12:53 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:12:53 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:12:53 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:12:53 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:12:53 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:12:54 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:12:54 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:12:54 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:12:54 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:12:54 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:12:54 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:12:54 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:12:54 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:12:54 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:12:54 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:12:54 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:12:54 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:12:54 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:12:54 PM Lua: [Kyosh1ro HUD][Hooks] ky_hooks.lua chargé — hooks buffs et kills actifs.
+01:12:54 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/menumanager -> lua/menus
+01:12:54 PM Lua: mods/Killstreaks from Halo/: QuickAnimate version 4 already exists
+01:12:54 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/localizationmanager -> lua/localization
+01:12:54 PM Lua: [Kyosh1ro HUD][Loc] ModPath capturé: mods/Kyosh1ro_HUD/
+01:12:54 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/localizationmanager -> lua/localization
+01:12:54 PM Lua: [Kyosh1ro HUD][Loc] ModPath capturé: mods/Kyosh1ro_HUD/
+01:12:54 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/hudmanagerpd2 -> lua/test
+01:12:54 PM Lua: [FOffCheaters: Debug] Setting up hud manager hooks
+01:12:54 PM Lua: [Kyosh1ro HUD] ky_buffhud.lua v2.0 chargé.
+01:12:55 PM Lua: [FOffCheaters: Debug] Routing hook lib/network/base/networkpeer -> lua/test
+01:12:55 PM Lua: [FOffCheaters: Debug] Setting up network peer hooks
+01:12:55 PM Lua: [Kyosh1ro HUD][Loc] Recherche des fichiers dans: mods/Kyosh1ro_HUD/loc/
+01:12:55 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/french.json
+01:12:55 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/english.json
+01:12:56 PM FATAL ERROR:  (C:\projects\payday2-superblt\src\InitiateState.cpp:248) [string "core/lib/system/coremodule.lua"]:124: core:_lookup(...) is for debugging only!
+stack traceback:
+	[C]: in function 'assert'
+	[string "core/lib/system/coremodule.lua"]:124: in function 'class_name'
+	[string "core/lib/utils/coreevent.lua"]:34: in function 'callback'
+	[string "core/lib/managers/menu/items/coremenuitem.lua"]:120: in function 'set_callback_handler'
+	[string "core/lib/managers/menu/coremenunode.lua"]:147: in function 'add_item'
+	mods/base/req/core/MenuHelper.lua:416: in function 'BuildMenu'
+	mods/Kyosh1ro_HUD/ky_options.lua:397: in function <mods/Kyosh1ro_HUD/ky_options.lua:239>
+	[C]: in function 'pcall'
+	mods/Kyosh1ro_HUD/ky_options.lua:239: in function 'func'
+	mods/base/req/core/Hooks.lua:85: in function 'Call'
+	mods/base/lua/MenuManager.lua:80: in function '_base_process_menu'
+	...
+	mods/base/req/core/Hooks.lua:274: in function 'init'
+	[string "core/lib/utils/coreclass.lua"]:35: in function 'new'
+	[string "lib/setups/setup.lua"]:415: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers_original'
+	mods/VanillaHUD Plus/lua/WaypointsManager.lua:93: in function 'init_managers'
+	mods/Extra Heist Info/lua/Setup.lua:39: in function 'init_managers'
+	[string "lib/setups/gamesetup.lua"]:656: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers'
+	[string "lib/setups/networkgamesetup.lua"]:10: in function 'init_managers'
+	[string "core/lib/setups/coresetup.lua"]:401: in function <[string "core/lib/setups/coresetup.lua"]:295>
+
+01:12:56 PM Lua: [Kyosh1ro HUD] ERREUR construction menu: nil
+01:12:59 PM Lua: [BAI] VoidUI detected. VoidUI compatibility applied.
+01:12:59 PM Lua: [BAI] HUDList in VanillaHUD Plus detected. Compatibility applied.
+01:12:59 PM Lua: [BAI] No Mod detected. Vanilla mod compatibility applied.
+01:12:59 PM Lua: [BAI] Custom assault text loaded
+01:12:59 PM Lua: [BAI] Successfully initialized
+01:12:59 PM Lua: AGGREGATE STEALTH UPDATE
+01:12:59 PM Lua: NON SECURITY
+01:12:59 PM Lua: [Kyosh1ro HUD] Panneau HUD initialisé.
+01:13:06 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to http://steamcommunity.com/profiles/76561197992266388/?l=english
+01:13:09 PM Lua: [FOffCheaters: Info] Checking peer kyosh1ro (76561197992266388)
+01:13:09 PM Lua: [FOffCheaters: Info] Peer 76561197992266388 was cleared.
+01:13:18 PM Lua: [Kyosh1ro HUD][Hooks] BUFF ON ignoré (pas dans BUFF_MAP): dmg_dampener_close_contact → dmg_dampener_close_contact
+01:13:19 PM Lua: [Kyosh1ro HUD][Hooks] BUFF ON: overkill_damage_multiplier → overkill (dur=5.0s)
+01:14:23 PM Lua: [INFO] [BLT] Performing save...
+01:14:28 PM Lua: [INFO] [BLT] Performing save...
+01:15:21 PM Lua: [INFO] [BLT] Performing save...
+01:15:28 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:15:28 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:15:28 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:15:28 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:15:28 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:15:28 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:15:28 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:15:28 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:15:28 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:15:28 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:15:28 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:15:28 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:15:28 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:15:29 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:15:29 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:15:29 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:15:29 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:15:29 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:1040) Initiating Hook
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTLogs'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTModManager'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTDownloadManager'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTKeybindsManager'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTPersistScripts'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTLocalization'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTNotificationsManager'
+01:15:29 PM Lua: [INFO] [BLT] Loading module 'BLTAssetManager'
+01:15:29 PM Lua: [INFO] [BLT] Cleaning logs folder, lifetime 1 day(s)
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Simple Mod Updater'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'SuperBLT'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'BeardLib'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'HopLib'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'More Weapon Stats'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Fuck Off Cheaters'
+01:15:29 PM Lua: [INFO] [Keybind] Registered keybind 'foffcheaters_force_check_keybind'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Advanced Crosshairs, Hitmarkers, and Hitsounds'
+01:15:29 PM Lua: [INFO] [Keybind] Registered keybind 'ach_crosshairs_toggle_crosshair_visibility'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Killstreaks from Halo'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'VanillaHUDPlus'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Void UI'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Low Violence Mode'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Peer mod list highlighter'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Kyosh1ro HUD'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Colorpicker'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Joy's Score Counter'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Kill Feed'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Better Assault Indicator'
+01:15:29 PM Lua: [INFO] [BLT] Setting up mod 'Extra Heist Info'
+01:15:29 PM Lua: [Kyosh1ro HUD][Hooks] ky_hooks.lua chargé — hooks buffs et kills actifs.
+01:15:29 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/menumanager -> lua/menus
+01:15:29 PM Lua: mods/Killstreaks from Halo/: QuickAnimate version 4 already exists
+01:15:30 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/localizationmanager -> lua/localization
+01:15:30 PM Lua: [Kyosh1ro HUD][Loc] ModPath capturé: mods/Kyosh1ro_HUD/
+01:15:30 PM Lua: [FOffCheaters: Debug] Routing hook lib/network/base/networkpeer -> lua/test
+01:15:30 PM Lua: [FOffCheaters: Debug] Setting up network peer hooks
+01:15:30 PM Lua: [FOffCheaters: Debug] Routing hook lib/managers/hudmanagerpd2 -> lua/test
+01:15:30 PM Lua: [FOffCheaters: Debug] Setting up hud manager hooks
+01:15:30 PM Lua: [Kyosh1ro HUD] ky_buffhud.lua v2.0 chargé.
+01:15:30 PM Lua: [Kyosh1ro HUD][Loc] Recherche des fichiers dans: mods/Kyosh1ro_HUD/loc/
+01:15:30 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/french.json
+01:15:30 PM Lua: [Kyosh1ro HUD][Loc] Chargé: mods/Kyosh1ro_HUD/loc/english.json
+01:15:31 PM FATAL ERROR:  (C:\projects\payday2-superblt\src\InitiateState.cpp:248) [string "core/lib/system/coremodule.lua"]:124: core:_lookup(...) is for debugging only!
+stack traceback:
+	[C]: in function 'assert'
+	[string "core/lib/system/coremodule.lua"]:124: in function 'class_name'
+	[string "core/lib/utils/coreevent.lua"]:34: in function 'callback'
+	[string "core/lib/managers/menu/items/coremenuitem.lua"]:120: in function 'set_callback_handler'
+	[string "core/lib/managers/menu/coremenunode.lua"]:147: in function 'add_item'
+	mods/base/req/core/MenuHelper.lua:416: in function 'BuildMenu'
+	mods/Kyosh1ro_HUD/ky_options.lua:397: in function <mods/Kyosh1ro_HUD/ky_options.lua:239>
+	[C]: in function 'pcall'
+	mods/Kyosh1ro_HUD/ky_options.lua:239: in function 'func'
+	mods/base/req/core/Hooks.lua:85: in function 'Call'
+	mods/base/lua/MenuManager.lua:80: in function '_base_process_menu'
+	...
+	mods/base/lua/MenuManager.lua:5: in function 'func'
+	mods/base/req/core/Hooks.lua:274: in function 'init'
+	[string "core/lib/utils/coreclass.lua"]:35: in function 'new'
+	[string "lib/setups/setup.lua"]:415: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers_original'
+	mods/VanillaHUD Plus/lua/WaypointsManager.lua:93: in function 'init_managers'
+	[string "lib/setups/menusetup.lua"]:296: in function 'original'
+	mods/base/req/core/Hooks.lua:266: in function 'init_managers'
+	mods/Extra Heist Info/lua/MenuSetup.lua:9: in function 'init_managers'
+	[string "core/lib/setups/coresetup.lua"]:401: in function <[string "core/lib/setups/coresetup.lua"]:295>
+
+01:15:31 PM Lua: [Kyosh1ro HUD] ERREUR construction menu: nil
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/14924/version
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/24730/version
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/29641/version
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/29585/version
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.modworkshop.net/mods/38637/version
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://sblt-update.znix.xyz/pd2update/updates/meta.php?id=payday2blt
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://sblt-update.znix.xyz/pd2update/updates/meta.php?id=payday2bltwsockdll
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://updates.hoppip.at/pd2-hoplib
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://api.livaco.dev/payday_mod_updates.json
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://gitlab.com/steam-test1/alternative-updates/-/raw/main/updates_metas/meta_vanhudplus.json
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://raw.githubusercontent.com/Pd2VoidTeam/VoidUI/master/updates/meta_voidui.json
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://updates.hoppip.at/pd2-kill-feed
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://www.dropbox.com/s/4su2vvgbsn7sfdf/meta.json?raw=1
+01:15:32 PM Log:  (C:\projects\payday2-superblt\src\InitiateState.cpp:486) HTTP request to https://www.dropbox.com/s/cs301vm4awt3o7i/meta.json?raw=1
+01:15:32 PM Lua: [INFO] [Updates] Received update data for 'voidui'
+01:15:32 PM Lua: [INFO] [Updates] Received update data for 'vanhudplus'
+01:15:32 PM Lua: [INFO] [Updates] Received update data for 'pd2-hoplib'
+01:15:32 PM Lua: [INFO] [Updates] Comparing hash data for 'pd2-hoplib':
+Server: 611db232792dc562e9315ac86ce36ea4510f918a47e67313f5473abc1f9a2e37
+ Local: 611db232792dc562e9315ac86ce36ea4510f918a47e67313f5473abc1f9a2e37
+01:15:32 PM Lua: [INFO] [Updates] Received update data for 'pd2-kill-feed'
+01:15:32 PM Lua: [INFO] [Updates] Comparing hash data for 'pd2-kill-feed':
+Server: de545c60c4e22740d4510abb99d525d82c4de0ad15570e5e5811817596100fb1
+ Local: de545c60c4e22740d4510abb99d525d82c4de0ad15570e5e5811817596100fb1
+01:15:32 PM Lua: [INFO] [Updates] Received update data for 'foffcheaters_updates'
+01:15:32 PM Lua: [INFO] [Updates] Received update data for 'payday2blt'
+01:15:32 PM Lua: [INFO] [Updates] Received update data for 'payday2bltwsockdll'
+01:15:32 PM Lua: [INFO] [Updates] Comparing hash data for 'payday2bltwsockdll':
+Server: a7d370bddecaec837b82935364c587754a6f184c972de717bfe038635d20a904
+ Local: a7d370bddecaec837b82935364c587754a6f184c972de717bfe038635d20a904
+01:15:33 PM Lua: [INFO] [Updates] Received update data for 'EHI'
+01:15:33 PM Lua: [INFO] [Updates] Received update data for 'BAI'
+01:15:34 PM Lua: [WARN] Mod image 'mods/FuckOffCheaters/mod.png' does not exist
+01:15:34 PM Lua: [WARN] Mod image 'mods/Killstreaks from Halo/icon.png' does not exist
+01:15:34 PM Lua: [WARN] Mod image 'mods/Kyosh1ro_HUD/mod.png' does not exist
+01:15:43 PM Lua: [INFO] [BLT] Performing save...
+01:15:43 PM Lua: [WARN] Mod image 'mods/FuckOffCheaters/mod.png' does not exist
+01:15:43 PM Lua: [WARN] Mod image 'mods/Killstreaks from Halo/icon.png' does not exist
+01:15:43 PM Lua: [WARN] Mod image 'mods/Kyosh1ro_HUD/mod.png' does not exist
+01:15:44 PM Lua: [INFO] [BLT] Performing save...
+01:15:48 PM Lua: [INFO] [BLT] Performing save...
+01:1

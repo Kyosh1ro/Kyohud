@@ -83,6 +83,8 @@
   "ky_opt_cat_ai_buffs": "Buffs compétences IA",
   "ky_opt_cat_ai_buffs_desc": "Configurer les buffs IA individuels",
 
+  "ky_opt_buff_single_shot_fast_reload": "Rechargement rapide tir unique",
+  "ky_opt_buff_single_shot_fast_reload_desc": "Activer/désactiver le buff rechargement rapide tir unique",
   "ky_opt_buff_aggressive_reload_aced": "Rechargement agressif (Expert)",
   "ky_opt_buff_aggressive_reload_aced_desc": "Activer/désactiver le buff Rechargement agressif expert",
   "ky_opt_buff_inspire": "Inspire",
