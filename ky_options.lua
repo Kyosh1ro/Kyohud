@@ -4,6 +4,12 @@
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
 local KH = Kyosh1roHUD
+local MY_MOD_PATH = ModPath
+
+local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "ky_buff_catalog.lua")
+if not catalog_ok then
+    log("[Kyosh1ro HUD] Erreur chargement catalogue buffs (options): " .. tostring(catalog_err))
+end
 
 -- ═══════════════════════════════════════════════════
 -- 1) Paramètres par défaut & persistence
@@ -28,9 +34,15 @@ KH._default_categories = {
 }
 
 local function build_default_buff_toggles()
+    if KH.BuildDefaultBuffToggles then
+        return KH.BuildDefaultBuffToggles()
+    end
+
     local t = {}
     if KH.BUFF_MAP then
-        for bid, _ in pairs(KH.BUFF_MAP) do t[bid] = true end
+        for bid, _ in pairs(KH.BUFF_MAP) do
+            t[bid] = true
+        end
     end
     return t
 end
@@ -297,13 +309,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
 
             -- Ajouter les toggles de buffs individuels
             if KH.BUFF_MAP then
-                local sorted = {}
-                for bid, def in pairs(KH.BUFF_MAP) do
-                    if def.category == cat_id then
-                        table.insert(sorted, bid)
-                    end
-                end
-                table.sort(sorted)
+                local sorted = KH.GetSortedBuffIdsForCategory and KH.GetSortedBuffIdsForCategory(cat_id) or {}
 
                 for _, bid in ipairs(sorted) do
                     local val = true
