@@ -1,7 +1,6 @@
 -- ky_options.lua — Menu BLT + sauvegarde/chargement des paramètres
--- Kyosh1ro HUD v1.4.0
--- Pattern 3-hooks BLT (Setup → Populate → Build)
--- Sous-menus par catégorie pour les buffs individuels
+-- Kyosh1ro HUD v1.5.0
+-- UN SEUL BuildMenu (SuperBLT limitation), sous-menus par deep_clone
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
 local KH = Kyosh1roHUD
@@ -124,7 +123,6 @@ local CAT_ORDER = {
     "perk", "debuff", "team", "player_action", "gage", "ai",
 }
 
--- Callbacks catégories
 for _, cat_id in ipairs(CAT_ORDER) do
     local cid = cat_id
     MenuCallbackHandler["KY_ToggleCat_" .. cat_id] = function(self, item)
@@ -133,7 +131,6 @@ for _, cat_id in ipairs(CAT_ORDER) do
     end
 end
 
--- Callbacks buffs individuels
 if KH.BUFF_MAP then
     for buff_id, _ in pairs(KH.BUFF_MAP) do
         local bid = buff_id
@@ -145,32 +142,23 @@ if KH.BUFF_MAP then
 end
 
 -- ═══════════════════════════════════════════════════
--- 3) Construction du menu — pattern 3 hooks
+-- 3) Construction du menu
 -- ═══════════════════════════════════════════════════
 local MENU_ID = "ky_hud_options"
 
--- IDs des sous-menus par catégorie
 local CAT_MENU_IDS = {}
 for _, cat_id in ipairs(CAT_ORDER) do
     CAT_MENU_IDS[cat_id] = "ky_buffs_" .. cat_id
 end
 
--- ────────────────────────────────────────────────────
--- HOOK 1 : Créer les menus vides
--- ────────────────────────────────────────────────────
+-- ── HOOK 1 : Setup ──
 Hooks:Add("MenuManagerSetupCustomMenus", "KY_SetupMenu", function(menu_manager, nodes)
     MenuHelper:NewMenu(MENU_ID)
-    for _, cat_id in ipairs(CAT_ORDER) do
-        MenuHelper:NewMenu(CAT_MENU_IDS[cat_id])
-    end
+    -- PAS de NewMenu pour les sous-menus, on les crée par clonage
 end)
 
--- ────────────────────────────────────────────────────
--- HOOK 2 : Remplir les menus d'items
--- ────────────────────────────────────────────────────
+-- ── HOOK 2 : Populate (items du menu principal uniquement) ──
 Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
-
-    -- ══ Menu principal ══
     MenuHelper:AddToggle({
         id = "ky_enable_killfeed", title = "ky_opt_enable_killfeed",
         desc = "ky_opt_enable_killfeed_desc", callback = "KY_ToggleKillfeed",
@@ -219,22 +207,6 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
         menu_id = MENU_ID, priority = 945,
     })
 
-    -- ── Toggles catégories (dans le menu principal, au-dessus des liens sous-menus) ──
-    local prio = 800
-    for _, cat_id in ipairs(CAT_ORDER) do
-        MenuHelper:AddToggle({
-            id       = "ky_cat_" .. cat_id,
-            title    = "ky_opt_cat_" .. cat_id,
-            desc     = "ky_opt_cat_" .. cat_id .. "_desc",
-            callback = "KY_ToggleCat_" .. cat_id,
-            value    = KH.settings.buff_categories[cat_id] ~= false,
-            menu_id  = MENU_ID,
-            priority = prio,
-        })
-        prio = prio - 1
-    end
-
-    -- ── Boutons utilitaires ──
     MenuHelper:AddButton({
         id = "ky_reset_defaults", title = "ky_opt_reset", desc = "ky_opt_reset_desc",
         callback = "KY_ResetDefaults", menu_id = MENU_ID, priority = 10,
@@ -247,49 +219,34 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
         id = "ky_debug_clear", title = "ky_opt_debug_clear", desc = "ky_opt_debug_clear_desc",
         callback = "KY_DebugClear", menu_id = MENU_ID, priority = 4,
     })
-
-    -- ══ Sous-menus : buffs individuels par catégorie ══
-    if KH.BUFF_MAP then
-        for _, cat_id in ipairs(CAT_ORDER) do
-            local sub_menu_id = CAT_MENU_IDS[cat_id]
-
-            -- Collecter et trier les buffs de cette catégorie
-            local sorted = {}
-            for bid, def in pairs(KH.BUFF_MAP) do
-                if def.category == cat_id then
-                    table.insert(sorted, bid)
-                end
-            end
-            table.sort(sorted)
-
-            local bp = 100
-            for _, bid in ipairs(sorted) do
-                local val = true
-                if KH.settings.buff_toggles and KH.settings.buff_toggles[bid] ~= nil then
-                    val = KH.settings.buff_toggles[bid]
-                end
-
-                MenuHelper:AddToggle({
-                    id       = "ky_buff_" .. bid,
-                    title    = "ky_opt_buff_" .. bid,
-                    desc     = "ky_opt_buff_" .. bid .. "_desc",
-                    callback = "KY_ToggleBuff_" .. bid,
-                    value    = val,
-                    menu_id  = sub_menu_id,
-                    priority = bp,
-                })
-                bp = bp - 1
-            end
-        end
-    end
 end)
 
--- ────────────────────────────────────────────────────
--- HOOK 3 : Construire et enregistrer les menus
--- ────────────────────────────────────────────────────
+-- ── Utilitaire : créer un item toggle sur un noeud existant ──
+local function add_toggle_to_node(node, id, title_id, desc_id, callback_name, value)
+    local ok, err = pcall(function()
+        local data = { type = "CoreMenuItemToggle.ItemToggle" }
+        local params = {
+            name         = id,
+            text_id      = title_id,
+            help_id      = desc_id,
+            callback     = callback_name,
+            icon_by_text = true,
+        }
+        local item = node:create_item(data, params)
+        if item then
+            item:set_value(value and "on" or "off")
+            node:add_item(item)
+        end
+    end)
+    if not ok then
+        log("[Kyosh1ro HUD] Erreur ajout toggle " .. id .. ": " .. tostring(err))
+    end
+end
+
+-- ── HOOK 3 : Build ──
 Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, nodes)
 
-    -- 3a. Construire le menu principal
+    -- 3a. UN SEUL BuildMenu — le menu principal
     local main_ok, main_err = pcall(function()
         nodes[MENU_ID] = MenuHelper:BuildMenu(MENU_ID, { back_callback = "KY_BackCallback" })
     end)
@@ -299,16 +256,57 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         return
     end
 
-    -- 3b. Construire les sous-menus catégories
+    -- 3b. Créer les sous-menus par CLONAGE du noeud principal
     local sub_count = 0
     for _, cat_id in ipairs(CAT_ORDER) do
         local sub_id = CAT_MENU_IDS[cat_id]
-        local sub_ok, sub_err = pcall(function()
-            nodes[sub_id] = MenuHelper:BuildMenu(sub_id, { back_callback = "KY_BackCallback" })
+
+        local clone_ok, clone_err = pcall(function()
+            -- Cloner le noeud du menu principal (récupère le renderer, layout, etc.)
+            local sub_node = deep_clone(nodes[MENU_ID])
+            sub_node:clean_items()
+
+            -- Ajouter le toggle de la catégorie en premier
+            add_toggle_to_node(
+                sub_node,
+                "ky_cat_" .. cat_id,
+                "ky_opt_cat_" .. cat_id,
+                "ky_opt_cat_" .. cat_id .. "_desc",
+                "KY_ToggleCat_" .. cat_id,
+                KH.settings.buff_categories[cat_id] ~= false
+            )
+
+            -- Ajouter les toggles de buffs individuels
+            if KH.BUFF_MAP then
+                local sorted = {}
+                for bid, def in pairs(KH.BUFF_MAP) do
+                    if def.category == cat_id then
+                        table.insert(sorted, bid)
+                    end
+                end
+                table.sort(sorted)
+
+                for _, bid in ipairs(sorted) do
+                    local val = true
+                    if KH.settings.buff_toggles and KH.settings.buff_toggles[bid] ~= nil then
+                        val = KH.settings.buff_toggles[bid]
+                    end
+                    add_toggle_to_node(
+                        sub_node,
+                        "ky_buff_" .. bid,
+                        "ky_opt_buff_" .. bid,
+                        "ky_opt_buff_" .. bid .. "_desc",
+                        "KY_ToggleBuff_" .. bid,
+                        val
+                    )
+                end
+            end
+
+            nodes[sub_id] = sub_node
         end)
 
-        if sub_ok then
-            -- Ajouter le lien dans le menu principal
+        if clone_ok then
+            -- Ajouter le lien vers ce sous-menu dans le menu principal
             MenuHelper:AddMenuItem(
                 nodes[MENU_ID],
                 sub_id,
@@ -317,12 +315,12 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
             )
             sub_count = sub_count + 1
         else
-            log("[Kyosh1ro HUD] ERREUR sous-menu " .. cat_id .. ": " .. tostring(sub_err))
+            log("[Kyosh1ro HUD] ERREUR clone sous-menu " .. cat_id .. ": " .. tostring(clone_err))
         end
     end
 
     -- 3c. Lier au menu BLT Options
     MenuHelper:AddMenuItem(nodes.blt_options, MENU_ID, "ky_menu_title", "ky_menu_desc")
 
-    log("[Kyosh1ro HUD] Menu construit: principal + " .. sub_count .. "/" .. #CAT_ORDER .. " sous-menus.")
+    log("[Kyosh1ro HUD] Menu construit: principal + " .. sub_count .. "/11 sous-menus (deep_clone).")
 end)
