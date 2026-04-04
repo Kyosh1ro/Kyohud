@@ -222,9 +222,28 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
 end)
 
 -- ── Utilitaire : créer un item toggle sur un noeud existant ──
+-- Le toggle PD2 a BESOIN des options on/off avec les textures tickbox
 local function add_toggle_to_node(node, id, title_id, desc_id, callback_name, value)
     local ok, err = pcall(function()
-        local data = { type = "CoreMenuItemToggle.ItemToggle" }
+        local data = {
+            type = "CoreMenuItemToggle.ItemToggle",
+            {
+                _meta    = "option",
+                icon     = "guis/textures/menu_tickbox",
+                value    = "on",
+                x = 24, y = 0, w = 24, h = 24,
+                s_icon   = "guis/textures/menu_tickbox",
+                s_x = 24, s_y = 24, s_w = 24, s_h = 24,
+            },
+            {
+                _meta    = "option",
+                icon     = "guis/textures/menu_tickbox",
+                value    = "off",
+                x = 0, y = 0, w = 24, h = 24,
+                s_icon   = "guis/textures/menu_tickbox",
+                s_x = 0, s_y = 24, s_w = 24, s_h = 24,
+            },
+        }
         local params = {
             name         = id,
             text_id      = title_id,
