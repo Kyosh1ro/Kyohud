@@ -791,8 +791,8 @@ local function compute_sequential_arc_positions(count, start_deg, end_deg, radiu
     if count == 0 then return positions end
 
     -- Espacement angulaire entre chaque icône (basé sur la taille de l'icône)
-    -- L'arc-length entre deux icônes = icon_size + marge
-    local margin = 4
+    -- L'arc-length entre deux icônes = icon_size + marge (1px)
+    local margin = 1
     local spacing_px = icon_size + margin
     -- angle_step en degrés = (spacing_px / circumference) * 360
     local angle_step = (spacing_px / (2 * math.pi * radius)) * 360
@@ -1036,6 +1036,15 @@ end
 Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
     KH:ensure_panel(true)
     log("[Kyosh1ro HUD] Panneau HUD initialisé.")
+
+    -- AUTO-DEBUG: lance 8 buffs de démo pour vérifier le layout
+    -- SUPPRIMER CETTE LIGNE quand le menu fonctionne
+    DelayedCalls:Add("KH_AutoDebug", 3, function()
+        if KH.DebugSimulate then
+            KH:DebugSimulate(8, 30)
+            log("[Kyosh1ro HUD] AUTO-DEBUG: 8 buffs simulés pour 30s.")
+        end
+    end)
 end)
 
 Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
