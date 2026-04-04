@@ -147,11 +147,12 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
 
     -- Charger le fichier de langue approprié
     local try_files = {}
+    local wants_french = blt_lang:match("^fr") or blt_lang:match("french") or game_french
 
-    if blt_lang == "fr" or blt_lang == "french" or game_french then
+    table.insert(try_files, base .. "english.json")
+    if wants_french then
         table.insert(try_files, base .. "french.json")
     end
-    table.insert(try_files, base .. "english.json") -- Toujours en fallback
 
     for _, path in ipairs(try_files) do
         local readable = false
