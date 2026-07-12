@@ -12,6 +12,7 @@
     { "hook_id": "lib/managers/localizationmanager", "script_path": "ky_localization.lua" },
     { "hook_id": "lib/managers/menumanager",         "script_path": "ky_options.lua" },
     { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "ky_buffhud.lua" },
-    { "hook_id": "lib/managers/playermanager",       "script_path": "ky_hooks.lua" }
+    { "hook_id": "lib/managers/playermanager",       "script_path": "ky_hooks.lua" },
+    { "hook_id": "lib/units/enemies/cop/copdamage",  "script_path": "ky_killfeed.lua" }
   ]
 }

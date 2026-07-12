@@ -133,6 +133,10 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
 
     logi("Recherche des fichiers dans: " .. tostring(base))
 
+    -- Fallbacks EN PREMIER : add_localized_strings ÉCRASE les clés existantes,
+    -- donc les fichiers chargés ensuite (english puis french) ont priorité.
+    add_fallbacks(loc)
+
     -- Détecter la langue BLT
     local blt_lang = ""
     if BLT and BLT.Localization and BLT.Localization._current then
@@ -181,7 +185,4 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
     if not loaded then
         logi("Aucun fichier de localisation trouvé, utilisation des fallbacks internes.")
     end
-
-    -- Toujours ajouter les fallbacks (ils ne remplacent pas les clés déjà chargées)
-    add_fallbacks(loc)
 end)

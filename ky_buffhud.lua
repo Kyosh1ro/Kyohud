@@ -527,15 +527,6 @@ end
 Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
     KH:ensure_panel(true)
     log("[Kyosh1ro HUD] Panneau HUD initialisé.")
-
-    -- AUTO-DEBUG: lance 8 buffs de démo pour vérifier le layout
-    -- SUPPRIMER CETTE LIGNE quand le menu fonctionne
-    DelayedCalls:Add("KH_AutoDebug", 3, function()
-        if KH.DebugSimulate then
-            KH:DebugSimulate(8, 30)
-            log("[Kyosh1ro HUD] AUTO-DEBUG: 8 buffs simulés pour 30s.")
-        end
-    end)
 end)
 
 Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)

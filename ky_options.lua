@@ -70,12 +70,21 @@ function KH.Load()
         local raw = f:read("*all"); f:close()
         local ok, data = pcall(json.decode, raw)
         if ok and type(data) == "table" then
+            -- PAS de `x and y or z` ici : il renvoie le défaut quand la valeur sauvée est `false`
             for k, dv in pairs(KH._defaults) do
-                KH.settings[k] = (data[k] ~= nil) and data[k] or dv
+                if data[k] ~= nil then
+                    KH.settings[k] = data[k]
+                else
+                    KH.settings[k] = dv
+                end
             end
             if type(data.buff_categories) == "table" then
                 for k, v in pairs(KH._default_categories) do
-                    KH.settings.buff_categories[k] = (data.buff_categories[k] ~= nil) and data.buff_categories[k] or v
+                    if data.buff_categories[k] ~= nil then
+                        KH.settings.buff_categories[k] = data.buff_categories[k]
+                    else
+                        KH.settings.buff_categories[k] = v
+                    end
                 end
             end
             if type(data.buff_toggles) == "table" then
