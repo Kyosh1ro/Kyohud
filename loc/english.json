@@ -25,6 +25,11 @@
   "ky_opt_debug_clear": "Debug: Clear All",
   "ky_opt_debug_clear_desc": "Remove all active buffs and kills from the HUD",
 
+  "ky_hud_double_kill": "DOUBLE KILL",
+  "ky_hud_triple_kill": "TRIPLE KILL",
+  "ky_hud_quad_kill": "QUAD KILL",
+  "ky_hud_multi_kill": "MULTI KILL",
+
   "ky_opt_buff_filter": "Buff Filters",
   "ky_opt_buff_filter_desc": "Toggle buff categories and individual buffs on/off",
 

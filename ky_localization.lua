@@ -29,7 +29,7 @@ local function add_fallbacks(loc)
 
         -- Options de base
         ky_opt_enable_killfeed      = "Enable KillFeed",
-        ky_opt_enable_killfeed_desc = "Show eliminated enemies in an arc below the crosshair",
+        ky_opt_enable_killfeed_desc = "Show kill streaks and a scrolling killfeed below the crosshair",
         ky_opt_enable_buffs         = "Enable Buffs",
         ky_opt_enable_buffs_desc    = "Show active buffs in a circle around the crosshair",
         ky_opt_radius               = "Circle Radius",
@@ -50,6 +50,12 @@ local function add_fallbacks(loc)
         ky_opt_debug_sim_desc       = "Keep 8 demo buffs and 5 demo kills visible until cleared",
         ky_opt_debug_clear          = "Debug: Clear",
         ky_opt_debug_clear_desc     = "Remove all active buffs and kills from the HUD",
+
+        -- Bandeau des séries de kills
+        ky_hud_double_kill = "DOUBLE KILL",
+        ky_hud_triple_kill = "TRIPLE KILL",
+        ky_hud_quad_kill   = "QUAD KILL",
+        ky_hud_multi_kill  = "MULTI KILL",
 
         -- Sous-menu filtres
         ky_opt_buff_filter          = "Buff Filters",
