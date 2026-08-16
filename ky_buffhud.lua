@@ -450,8 +450,9 @@ function KH:draw()
     -- ── Dessiner le killfeed ──
     if s.enable_killfeed and #self._kills > 0 then
         local kill_radius = radius + size + 20
+        -- Arc dédié au killfeed, entièrement placé dans le quadrant bas-gauche.
         local kill_positions = compute_sequential_arc_positions(
-            #self._kills, 250, 290, kill_radius, cx, cy, size * 0.8
+            #self._kills, 210, 250, kill_radius, cx, cy, size * 0.8
         )
 
         for idx, kill in ipairs(self._kills) do

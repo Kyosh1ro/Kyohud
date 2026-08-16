@@ -3,7 +3,7 @@
   "ky_menu_desc": "Affichage circulaire des buffs et killfeed autour du viseur",
 
   "ky_opt_enable_killfeed": "Activer le KillFeed",
-  "ky_opt_enable_killfeed_desc": "Affiche les ennemis éliminés en arc sous le viseur",
+  "ky_opt_enable_killfeed_desc": "Affiche les ennemis éliminés en arc en bas à gauche du viseur",
   "ky_opt_enable_buffs": "Activer l'affichage des buffs",
   "ky_opt_enable_buffs_desc": "Affiche les buffs actifs en cercle autour du viseur",
   "ky_opt_radius": "Rayon du cercle",
