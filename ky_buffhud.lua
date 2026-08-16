@@ -31,9 +31,8 @@ local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 -- État interne
 -- ═══════════════════════════════════════════════════
 KH._panel       = nil
-KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end, category} }
-KH._kills       = {}           -- { {name, icon, t_end} }
-KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
+KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end?, category} }
+KH._kills       = {}           -- { {name, icon, start_t, t_end?} }
 KH._update_acc  = 0
 
 local MAX_KILL_HISTORY = 20
@@ -388,7 +387,7 @@ function KH:draw()
     -- Purger les kills expirés
     local i = 1
     while i <= #self._kills do
-        if self._kills[i].t_end <= t then
+        if self._kills[i].t_end and self._kills[i].t_end <= t then
             table.remove(self._kills, i)
         else
             i = i + 1
@@ -482,8 +481,8 @@ function KH:draw()
                 bmp:set_alpha(alpha * (0.4 + 0.6 * life))
 
                 -- Timer texte sous l'icône
-                local remaining = math.max(0, buff.t_end - t)
-                if remaining > 0 then
+                local remaining = buff.t_end and math.max(0, buff.t_end - t)
+                if remaining and remaining > 0 then
                     self._panel:text({
                         text      = string.format("%.1f", remaining),
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
@@ -502,65 +501,13 @@ function KH:draw()
         end
     end
 
-    -- ── Dessiner le bandeau de série et le killfeed vertical ──
-    local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
-    if s.enable_killfeed and (#self._kills > 0 or combo_active) then
-        local kill_icon_size = clamp(size * 0.72, 18, 36)
-        local row_h = math.max(28, kill_icon_size + 6)
-        local feed_w = clamp(size * 7.5, 220, 320)
-        local banner_h = math.max(38, size + 8)
-        local block_h = banner_h + 8 + MAX_VISIBLE_KILLS * row_h
-        local preferred_top = cy + clamp(radius * 0.55, 70, 160)
-        local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
-        local rows_top = block_top + banner_h + 8
-
-        if combo_active then
-            local remaining = combo.last_t + KILL_COMBO_WINDOW - t
-            if remaining > 0 then
-                local intro = clamp((t - (combo.updated_t or t)) / 0.15, 0, 1)
-                local fade_out = clamp(remaining / 0.35, 0, 1)
-                local banner_alpha = alpha * fade_out
-                local scale = 1 + (1 - intro) * 0.06
-                local bw = feed_w * scale
-                local bh = banner_h * scale
-                local bx = cx - bw / 2
-                local by = block_top - (bh - banner_h) / 2
-                local border = 2
-                local color = combo_color(combo.count)
-
-                self._panel:rect({
-                    x = bx, y = by, w = bw, h = bh,
-                    color = Color.black, alpha = banner_alpha * 0.72, layer = 103,
-                })
-                self._panel:rect({
-                    x = bx, y = by, w = bw, h = border,
-                    color = color, alpha = banner_alpha, layer = 104,
-                })
-                self._panel:rect({
-                    x = bx, y = by + bh - border, w = bw, h = border,
-                    color = color, alpha = banner_alpha, layer = 104,
-                })
-                self._panel:rect({
-                    x = bx, y = by, w = border, h = bh,
-                    color = color, alpha = banner_alpha, layer = 104,
-                })
-                self._panel:rect({
-                    x = bx + bw - border, y = by, w = border, h = bh,
-                    color = color, alpha = banner_alpha, layer = 104,
-                })
-                self._panel:text({
-                    text = combo_label(combo.count),
-                    font = tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
-                    font_size = clamp(size * 0.72, 21, 30),
-                    color = color,
-                    align = "center",
-                    vertical = "center",
-                    x = bx, y = by, w = bw, h = bh,
-                    layer = 105,
-                    alpha = banner_alpha,
-                })
-            end
-        end
+    -- ── Dessiner le killfeed ──
+    if s.enable_killfeed and #self._kills > 0 then
+        local kill_radius = radius + size + 20
+        -- Arc dédié au killfeed, entièrement placé dans le quadrant bas-gauche.
+        local kill_positions = compute_sequential_arc_positions(
+            #self._kills, 210, 250, kill_radius, cx, cy, size * 0.8
+        )
 
         local newest = self._kills[#self._kills]
         local scroll = 1
@@ -646,10 +593,9 @@ end
 -- ═══════════════════════════════════════════════════
 -- Debug : simulation
 -- ═══════════════════════════════════════════════════
-function KH:DebugSimulate(n, dur)
+function KH:DebugSimulate(n)
     self:DebugClear()
     n = n or 8
-    dur = dur or 8
 
     local demo_buffs = {
         "unseen_strike", "overkill", "berserker", "swan_song",
@@ -666,15 +612,20 @@ function KH:DebugSimulate(n, dur)
             icon     = icon,
             order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n le long de l'arc
             start_t  = t_now,
-            duration = dur,
-            t_end    = t_now + dur,
+            -- Pas de t_end : les buffs de debug restent visibles jusqu'à DebugClear.
         }
     end
 
     -- Simuler quelques kills
     local demo_names = { "SWAT", "Shield", "Bulldozer", "Cloaker", "Sniper" }
+    local t_now = now()
     for i = 1, 5 do
-        self:add_kill(demo_names[i], "default")
+        table.insert(self._kills, {
+            name    = demo_names[i],
+            icon    = icon_for_enemy("default"),
+            start_t = t_now,
+            -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
+        })
     end
 end
 

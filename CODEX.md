@@ -1,6 +1,6 @@
 # Kyosh1ro HUD — dossier technique
 
-État observé le 16 août 2026 sur la branche `codex/hud-arc-workflow`.
+État observé le 16 août 2026 sur la branche `fix/hud-arc-workflow`.
 
 ## Résumé
 

@@ -3,7 +3,7 @@
   "ky_menu_desc": "Circular buff display & killfeed around the crosshair",
 
   "ky_opt_enable_killfeed": "Enable KillFeed",
-  "ky_opt_enable_killfeed_desc": "Show kill streaks and a scrolling killfeed below the crosshair",
+  "ky_opt_enable_killfeed_desc": "Show eliminated enemies in an arc at the lower left of the crosshair",
   "ky_opt_enable_buffs": "Enable Buffs Display",
   "ky_opt_enable_buffs_desc": "Show active buffs in a circle around the crosshair",
   "ky_opt_radius": "Circle Radius",
@@ -21,7 +21,7 @@
   "ky_opt_reset": "Reset to Defaults",
   "ky_opt_reset_desc": "Reset all settings to their default values",
   "ky_opt_debug_sim": "Debug: Simulate Buffs & Kills",
-  "ky_opt_debug_sim_desc": "Show 8 demo buffs and 5 demo kills for 8 seconds",
+  "ky_opt_debug_sim_desc": "Keep 8 demo buffs and 5 demo kills visible until cleared",
   "ky_opt_debug_clear": "Debug: Clear All",
   "ky_opt_debug_clear_desc": "Remove all active buffs and kills from the HUD",
 

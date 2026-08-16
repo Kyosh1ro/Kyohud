@@ -47,7 +47,7 @@ local function add_fallbacks(loc)
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
         ky_opt_debug_sim            = "Debug: Simulate",
-        ky_opt_debug_sim_desc       = "Show 8 demo buffs + 5 demo kills for 8 seconds",
+        ky_opt_debug_sim_desc       = "Keep 8 demo buffs and 5 demo kills visible until cleared",
         ky_opt_debug_clear          = "Debug: Clear",
         ky_opt_debug_clear_desc     = "Remove all active buffs and kills from the HUD",
 
