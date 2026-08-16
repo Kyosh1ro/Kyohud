@@ -21,7 +21,7 @@
   "ky_opt_reset": "Reset to Defaults",
   "ky_opt_reset_desc": "Reset all settings to their default values",
   "ky_opt_debug_sim": "Debug: Simulate Buffs & Kills",
-  "ky_opt_debug_sim_desc": "Show 8 demo buffs and 5 demo kills for 8 seconds",
+  "ky_opt_debug_sim_desc": "Keep 8 demo buffs visible until cleared; demo kills remain temporary",
   "ky_opt_debug_clear": "Debug: Clear All",
   "ky_opt_debug_clear_desc": "Remove all active buffs and kills from the HUD",
 
