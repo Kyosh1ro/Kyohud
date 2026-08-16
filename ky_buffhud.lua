@@ -32,7 +32,7 @@ local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 -- ═══════════════════════════════════════════════════
 KH._panel       = nil
 KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end?, category} }
-KH._kills       = {}           -- { {name, icon, t_end} }
+KH._kills       = {}           -- { {name, icon, start_t, t_end?} }
 KH._update_acc  = 0
 
 -- ═══════════════════════════════════════════════════
@@ -341,7 +341,7 @@ function KH:draw()
     -- Purger les kills expirés
     local i = 1
     while i <= #self._kills do
-        if self._kills[i].t_end <= t then
+        if self._kills[i].t_end and self._kills[i].t_end <= t then
             table.remove(self._kills, i)
         else
             i = i + 1
@@ -537,8 +537,14 @@ function KH:DebugSimulate(n)
 
     -- Simuler quelques kills
     local demo_names = { "SWAT", "Shield", "Bulldozer", "Cloaker", "Sniper" }
+    local t_now = now()
     for i = 1, 5 do
-        self:add_kill(demo_names[i], "default")
+        table.insert(self._kills, {
+            name    = demo_names[i],
+            icon    = icon_for_enemy("default"),
+            start_t = t_now,
+            -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
+        })
     end
 end
 
