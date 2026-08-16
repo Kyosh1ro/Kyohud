@@ -3,7 +3,7 @@
   "ky_menu_desc": "Circular buff display & killfeed around the crosshair",
 
   "ky_opt_enable_killfeed": "Enable KillFeed",
-  "ky_opt_enable_killfeed_desc": "Show eliminated enemies in an arc below the crosshair",
+  "ky_opt_enable_killfeed_desc": "Show eliminated enemies in an arc at the lower left of the crosshair",
   "ky_opt_enable_buffs": "Enable Buffs Display",
   "ky_opt_enable_buffs_desc": "Show active buffs in a circle around the crosshair",
   "ky_opt_radius": "Circle Radius",
