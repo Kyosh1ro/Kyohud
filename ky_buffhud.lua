@@ -193,9 +193,14 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id)
     local dur = tonumber(duration) or (self.settings.buff_duration or 5)
     local t = now()
 
+    -- Un buff rafraîchi garde sa position dans l'arc (order_t d'origine),
+    -- seuls son timer et son fondu (start_t) repartent de zéro
+    local existing = self._buffs[resolved_id]
+
     self._buffs[resolved_id] = {
         id       = resolved_id,
         icon     = icon_data or icon_for_buff(resolved_id),
+        order_t  = existing and existing.order_t or t,
         start_t  = t,
         duration = dur,
         t_end    = t + dur,
@@ -281,9 +286,10 @@ local function compute_sequential_arc_positions(count, start_deg, end_deg, radiu
     local positions = {}
     if count == 0 then return positions end
 
-    -- Espacement angulaire entre chaque icône (basé sur la taille de l'icône)
-    -- L'arc-length entre deux icônes = icon_size + marge (1px)
-    local margin = 1
+    -- Espacement le long de l'arc : icône + marge proportionnelle, pour que
+    -- les icônes ET leur timer (16px sous l'icône) ne se chevauchent pas
+    -- sur les portions diagonales de l'arc
+    local margin = math.max(12, icon_size * 0.6)
     local spacing_px = icon_size + margin
     -- angle_step en degrés = (spacing_px / circumference) * 360
     local angle_step = (spacing_px / (2 * math.pi * radius)) * 360
@@ -294,12 +300,14 @@ local function compute_sequential_arc_positions(count, start_deg, end_deg, radiu
     local span = end_deg - start_deg
     if span < 0 then span = span + 360 end
 
-    for i = 0, count - 1 do
-        local angle_offset = angle_step * i
-        -- Ne pas dépasser le span total
-        if angle_offset > span then break end
+    -- Trop d'icônes pour l'arc : compresser l'espacement plutôt que de
+    -- masquer silencieusement le surplus
+    if count > 1 and angle_step * (count - 1) > span then
+        angle_step = span / (count - 1)
+    end
 
-        local angle_deg = start_deg + angle_offset
+    for i = 0, count - 1 do
+        local angle_deg = start_deg + angle_step * i
         -- Normaliser à [0, 360)
         if angle_deg >= 360 then angle_deg = angle_deg - 360 end
 
@@ -361,13 +369,28 @@ function KH:draw()
                 table.insert(buff_list, b)
             end
         end
-        -- Tri stable par ID pour un ordre constant
-        table.sort(buff_list, function(a, b) return a.id < b.id end)
+        -- Tri par ordre d'arrivée : les nouveaux buffs s'ajoutent à la suite
+        -- en bout d'arc au lieu de réordonner les icônes existantes
+        table.sort(buff_list, function(a, b)
+            local oa = a.order_t or a.start_t or 0
+            local ob = b.order_t or b.start_t or 0
+            if oa ~= ob then return oa < ob end
+            return a.id < b.id
+        end)
 
         -- Positions séquentielles le long de l'arc
         local positions = compute_sequential_arc_positions(
             #buff_list, start_deg, end_deg, radius, cx, cy, size
         )
+
+        -- DEBUG TEMPORAIRE : trace les positions quand le nombre de buffs change
+        local dbg = (#buff_list ~= KH._dbg_last_count)
+        if dbg then
+            KH._dbg_last_count = #buff_list
+            log(string.format(
+                "[Kyosh1ro HUD][DBG] panel=%.0fx%.0f centre=(%.0f;%.0f) rayon=%.0f taille=%.0f angles=%d->%d buffs=%d",
+                w, h, cx, cy, radius, size, start_deg, end_deg, #buff_list))
+        end
 
         for idx, buff in ipairs(buff_list) do
             local pos = positions[idx]
@@ -388,6 +411,13 @@ function KH:draw()
                 end
 
                 local bmp = self._panel:bitmap(params)
+
+                -- DEBUG TEMPORAIRE : position calculée vs position réelle du bitmap
+                if dbg then
+                    log(string.format(
+                        "[Kyosh1ro HUD][DBG]  #%d %s calc=(%.0f;%.0f) reel=(%.0f;%.0f)",
+                        idx, tostring(buff.id), pos.x, pos.y, bmp:x(), bmp:y()))
+                end
 
                 -- Alpha dynamique : diminue quand le buff expire
                 local life = 1
@@ -500,6 +530,7 @@ function KH:DebugSimulate(n, dur)
         self._buffs["demo_" .. base .. "_" .. tostring(i)] = {
             id       = "demo_" .. base .. "_" .. tostring(i),
             icon     = icon,
+            order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n le long de l'arc
             start_t  = t_now,
             duration = dur,
             t_end    = t_now + dur,
