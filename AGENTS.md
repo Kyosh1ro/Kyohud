@@ -110,7 +110,8 @@ Une vérification statique ne remplace pas le test en jeu, car les classes et te
 
 ## Git et branches
 
-- Travailler sur une branche dédiée par sujet, nommée `codex/<sujet-court>` par défaut.
+- Travailler sur une branche dédiée par sujet : `fix/<sujet-court>` pour une correction et `feature/<sujet-court>` pour une nouvelle fonctionnalité.
+- Choisir le préfixe selon l'objectif principal de la branche. La documentation directement liée à une correction ou une fonctionnalité reste sur la même branche.
 - Faire `git status --short --branch` avant toute modification et préserver les changements locaux déjà présents.
 - Ne jamais inclure dans un commit une modification utilisateur préexistante sans l'identifier clairement.
 - Garder les commits ciblés : documentation, correction de rendu, catalogue ou options doivent rester séparables quand cela aide la revue.
