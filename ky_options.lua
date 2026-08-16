@@ -135,7 +135,7 @@ MenuCallbackHandler.KY_SetDuration    = make_slider_cb("buff_duration", false)
 MenuCallbackHandler.KY_SetOpacity     = make_slider_cb("opacity", false)
 MenuCallbackHandler.KY_SetIconSize    = make_slider_cb("icon_size", true)
 MenuCallbackHandler.KY_ResetDefaults  = function() KH.ResetDefaults() end
-MenuCallbackHandler.KY_DebugSimulate  = function() if KH.DebugSimulate then KH:DebugSimulate(8, 8) end end
+MenuCallbackHandler.KY_DebugSimulate  = function() if KH.DebugSimulate then KH:DebugSimulate(8) end end
 MenuCallbackHandler.KY_DebugClear     = function() if KH.DebugClear then KH:DebugClear() end end
 MenuCallbackHandler.KY_BackCallback   = function() end
 

@@ -31,7 +31,7 @@ local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 -- État interne
 -- ═══════════════════════════════════════════════════
 KH._panel       = nil
-KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end, category} }
+KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end?, category} }
 KH._kills       = {}           -- { {name, icon, t_end} }
 KH._update_acc  = 0
 
@@ -427,8 +427,8 @@ function KH:draw()
                 bmp:set_alpha(alpha * (0.4 + 0.6 * life))
 
                 -- Timer texte sous l'icône
-                local remaining = math.max(0, buff.t_end - t)
-                if remaining > 0 then
+                local remaining = buff.t_end and math.max(0, buff.t_end - t)
+                if remaining and remaining > 0 then
                     self._panel:text({
                         text      = string.format("%.1f", remaining),
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
@@ -512,10 +512,9 @@ end
 -- ═══════════════════════════════════════════════════
 -- Debug : simulation
 -- ═══════════════════════════════════════════════════
-function KH:DebugSimulate(n, dur)
+function KH:DebugSimulate(n)
     self:DebugClear()
     n = n or 8
-    dur = dur or 8
 
     local demo_buffs = {
         "unseen_strike", "overkill", "berserker", "swan_song",
@@ -532,8 +531,7 @@ function KH:DebugSimulate(n, dur)
             icon     = icon,
             order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n le long de l'arc
             start_t  = t_now,
-            duration = dur,
-            t_end    = t_now + dur,
+            -- Pas de t_end : les buffs de debug restent visibles jusqu'à DebugClear.
         }
     end
 
