@@ -303,9 +303,9 @@ local function compute_sequential_arc_positions(count, start_deg, end_deg, radiu
         -- Normaliser à [0, 360)
         if angle_deg >= 360 then angle_deg = angle_deg - 360 end
 
-        local rad = math.rad(angle_deg)
-        local x = cx + math.cos(rad) * radius
-        local y = cy - math.sin(rad) * radius
+        -- Diesel expose les fonctions trigonométriques en degrés.
+        local x = cx + math.cos(angle_deg) * radius
+        local y = cy - math.sin(angle_deg) * radius
         positions[#positions + 1] = { x = x, y = y }
     end
 
