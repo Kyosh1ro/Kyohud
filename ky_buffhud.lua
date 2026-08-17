@@ -942,17 +942,40 @@ function KH:draw()
         end
     end
 
-    -- ── Dessiner le bandeau de série et le killfeed vertical ──
+    -- ── Dessiner le bandeau de série et le killfeed horizontal ──
     local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
     if s.enable_killfeed and (#self._kills > 0 or combo_active) then
-        local row_h = clamp(size * 0.72 + 6, 28, 42)
+        local killfeed_limit = killfeed_size(s)
+        local visible_count = math.min(#self._kills, killfeed_limit)
+        local item_h = clamp(size * 0.72 + 6, 28, 42)
+        local item_gap = clamp(size * 0.3, 8, 14)
+        local desired_item_w = clamp(size * 5.2, 150, 220)
+        local available_w = math.max(1, w - 16)
+
+        if visible_count > 1 then
+            item_gap = math.min(
+                item_gap,
+                math.max(0, (available_w - visible_count) / (visible_count - 1))
+            )
+        end
+
+        local item_w = desired_item_w
+        if visible_count > 0 then
+            item_w = math.min(
+                desired_item_w,
+                math.max(1, (available_w - item_gap * (visible_count - 1)) / visible_count)
+            )
+        end
+
+        local feed_row_w = visible_count > 0
+            and item_w * visible_count + item_gap * (visible_count - 1)
+            or 0
         local banner_w = clamp(size * 7.5, 220, 320)
-        local feed_w = clamp(size * 6.25, 180, 270)
         local banner_h = math.max(38, size + 8)
-        local block_h = banner_h + 8 + killfeed_limit * row_h
+        local block_h = banner_h + 8 + (visible_count > 0 and item_h or 0)
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
         local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
-        local rows_top = block_top + banner_h + 8
+        local feed_y = block_top + banner_h + 8
         local feed_color = HUD_ACCENT_COLOR
 
         if combo_active then
@@ -1029,15 +1052,13 @@ function KH:draw()
             scroll = clamp((t - newest.start_t) / KILL_SCROLL_TIME, 0, 1)
         end
 
-        local visible_count = math.min(#self._kills, killfeed_limit)
-        local feed_x = cx - feed_w / 2
-        for row = 1, visible_count do
-            -- Le kill le plus récent reste en haut ; les précédents descendent.
-            local kill = self._kills[#self._kills - row + 1]
-            local row_y = rows_top + (row - 1) * row_h
-            if row > 1 then
-                row_y = row_y - row_h * (1 - scroll)
-            end
+        local feed_x = clamp(cx - feed_row_w * 0.5, 8, math.max(8, w - 8 - feed_row_w))
+        local first_kill = #self._kills - visible_count + 1
+        for slot = 1, visible_count do
+            -- Ordre chronologique : le kill le plus ancien est à gauche,
+            -- le plus récent s'ajoute à droite.
+            local kill = self._kills[first_kill + slot - 1]
+            local item_x = feed_x + (slot - 1) * (item_w + item_gap)
 
             local life = 1
             if kill.start_t and kill.t_end then
@@ -1047,41 +1068,40 @@ function KH:draw()
                 end
             end
 
-            local row_alpha = alpha * (0.25 + 0.75 * life)
-            local row_x = feed_x
-            if row == 1 then
-                row_alpha = row_alpha * scroll
-                row_x = row_x + 18 * (1 - scroll)
+            local item_alpha = alpha * (0.25 + 0.75 * life)
+            if slot == visible_count then
+                item_alpha = item_alpha * scroll
+                item_x = item_x + 18 * (1 - scroll)
             end
 
             self._panel:gradient({
-                x = row_x,
-                y = row_y + 1,
-                w = feed_w,
-                h = row_h - 2,
+                x = item_x,
+                y = feed_y + 1,
+                w = item_w,
+                h = item_h - 2,
                 orientation = "horizontal",
                 gradient_points = {
-                    0, Color.black:with_alpha(row_alpha * 0.68),
-                    0.72, Color.black:with_alpha(row_alpha * 0.42),
-                    1, Color.black:with_alpha(row_alpha * 0.05),
+                    0, Color.black:with_alpha(item_alpha * 0.68),
+                    0.72, Color.black:with_alpha(item_alpha * 0.42),
+                    1, Color.black:with_alpha(item_alpha * 0.05),
                 },
                 layer = 101,
             })
             self._panel:rect({
-                x = row_x, y = row_y + 2, w = 2, h = row_h - 4,
-                color = feed_color, alpha = row_alpha * 0.9, layer = 102,
+                x = item_x, y = feed_y + 2, w = 2, h = item_h - 4,
+                color = feed_color, alpha = item_alpha * 0.9, layer = 102,
             })
             self._panel:rect({
-                x = row_x + 2, y = row_y + 1, w = feed_w - 4, h = 1,
-                color = feed_color, alpha = row_alpha * 0.5, layer = 102,
+                x = item_x + 2, y = feed_y + 1, w = item_w - 4, h = 1,
+                color = feed_color, alpha = item_alpha * 0.5, layer = 102,
             })
             self._panel:rect({
-                x = row_x + 2, y = row_y + row_h - 2, w = feed_w - 4, h = 1,
-                color = feed_color, alpha = row_alpha * 0.5, layer = 102,
+                x = item_x + 2, y = feed_y + item_h - 2, w = item_w - 4, h = 1,
+                color = feed_color, alpha = item_alpha * 0.5, layer = 102,
             })
             self._panel:rect({
-                x = row_x + feed_w - 2, y = row_y + 2, w = 2, h = row_h - 4,
-                color = feed_color, alpha = row_alpha * 0.9, layer = 102,
+                x = item_x + item_w - 2, y = feed_y + 2, w = 2, h = item_h - 4,
+                color = feed_color, alpha = item_alpha * 0.9, layer = 102,
             })
 
             self._panel:text({
@@ -1089,14 +1109,14 @@ function KH:draw()
                 font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
                 font_size = clamp(size * 0.42, 13, 18),
                 color = Color(0.86, 0.96, 1),
-                align = "left",
+                align = "center",
                 vertical = "center",
-                x = row_x + 9,
-                y = row_y,
-                w = feed_w - 18,
-                h = row_h,
+                x = item_x + 9,
+                y = feed_y,
+                w = item_w - 18,
+                h = item_h,
                 layer = 102,
-                alpha = row_alpha,
+                alpha = item_alpha,
             })
         end
     end
@@ -1132,7 +1152,7 @@ function KH:DebugSimulate(n)
         self._buffs["demo_" .. base .. "_" .. tostring(i)] = {
             id       = "demo_" .. base .. "_" .. tostring(i),
             icon     = icon,
-            order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n le long de l'arc
+            order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n dans la rangée
             start_t  = t_now,
             -- Pas de t_end : les buffs de debug restent visibles jusqu'à DebugClear.
         }
