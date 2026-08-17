@@ -29,7 +29,7 @@ local function add_fallbacks(loc)
 
         -- Options de base
         ky_opt_enable_killfeed      = "Enable KillFeed",
-        ky_opt_enable_killfeed_desc = "Show kill streaks and a scrolling killfeed below the crosshair",
+        ky_opt_enable_killfeed_desc = "Show kill streaks and a horizontal tactical killfeed below the crosshair",
         ky_opt_killfeed_size        = "Killfeed Size",
         ky_opt_killfeed_size_desc   = "Number of kills shown in the killfeed (1-3)",
         ky_opt_enable_buffs         = "Enable Buffs",

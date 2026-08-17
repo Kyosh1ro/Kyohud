@@ -3,7 +3,7 @@
   "ky_menu_desc": "Horizontal buff display and tactical killfeed",
 
   "ky_opt_enable_killfeed": "Enable KillFeed",
-  "ky_opt_enable_killfeed_desc": "Show eliminated enemies in a tactical list beneath the crosshair",
+  "ky_opt_enable_killfeed_desc": "Show eliminated enemies in a horizontal tactical row beneath the crosshair",
   "ky_opt_killfeed_size": "Killfeed Size",
   "ky_opt_killfeed_size_desc": "Number of kills shown in the killfeed (1-3). Default: 3",
   "ky_opt_enable_buffs": "Enable Buffs Display",
