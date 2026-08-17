@@ -50,7 +50,7 @@ Une réactivation du même buff doit rafraîchir son timer sans dupliquer son en
 1. `CopDamage:die` déclenche le PostHook de `ky_killfeed.lua`.
 2. Le hook rejette les kills qui ne proviennent pas du joueur local ou d'un objet lancé par lui.
 3. `KH:add_kill` ajoute une entrée chronologique dans `KH._kills`, avec une limite configurable de 1 à 3 entrées.
-4. `KH:draw` purge puis dessine les kills dans la liste tactique dédiée.
+4. `KH:draw` purge puis dessine les kills dans la rangée tactique horizontale dédiée.
 
 ## Invariants du rendu
 
@@ -67,7 +67,7 @@ Les icônes sont centrées verticalement sur cette position et leur timer est pl
 
 Les éléments doivent être séquentiels de gauche à droite. Le pas horizontal dépend de la taille de l'icône, de son cadre et d'une marge. Si tous les éléments ne tiennent pas, adapter l'espacement sans perdre silencieusement des entrées. Un buff qui expire peut libérer sa place et recentrer les autres autour de la position configurée.
 
-Le killfeed utilise actuellement une liste verticale tactique sous le viseur. Le réglage historique `circle_radius` sert désormais de décalage vertical de ce bloc. Si ce comportement devient configurable autrement, ajouter ou renommer les réglages, leur persistance et les traductions dans la même branche.
+Le killfeed utilise une rangée tactique horizontale sous le viseur, limitée à 1-3 entrées. L'ordre est chronologique de gauche à droite : le kill le plus ancien visible reste à gauche et le plus récent s'ajoute à droite. La rangée est centrée et doit se resserrer pour rester dans le panneau. Le bandeau de série reste centré au-dessus. Le réglage historique `circle_radius` sert de décalage vertical de ce bloc.
 
 Le panneau est vidé puis reconstruit environ toutes les 0,05 seconde. Éviter les allocations ou logs permanents inutiles dans `KH:draw` ; tout diagnostic temporaire doit être clairement marqué et retiré une fois le problème validé.
 
@@ -103,7 +103,7 @@ Avant de considérer une modification terminée :
 1. Valider que `mod.txt` et les JSON de `loc/` sont syntaxiquement corrects.
 2. Relire le diff pour repérer un changement involontaire de fins de ligne ou de fichier utilisateur.
 3. Lancer PAYDAY 2 avec SuperBLT et ouvrir les options de Kyosh1ro HUD.
-4. Utiliser **Debug: Simulate** pour vérifier plusieurs icônes, les timers, l'ordre, la rangée horizontale, le killfeed et différentes valeurs de position X/Y et de taille.
+4. Utiliser **Debug: Simulate** pour vérifier plusieurs icônes, les timers, l'ordre, les deux rangées horizontales, l'ajout d'un kill à droite et différentes valeurs de position X/Y, de taille et de largeur d'écran.
 5. Utiliser **Debug: Clear**, puis tester en partie un vrai buff, son rafraîchissement et un kill direct ainsi qu'un kill par projectile si le hook concerné a changé.
 6. Contrôler le journal SuperBLT pour les erreurs `[Kyosh1ro HUD]` et supprimer les traces de debug temporaires avant livraison.
 
@@ -114,7 +114,10 @@ Une vérification statique ne remplace pas le test en jeu, car les classes et te
 - Travailler sur une branche dédiée par sujet : `fix/<sujet-court>` pour une correction et `feature/<sujet-court>` pour une nouvelle fonctionnalité.
 - Choisir le préfixe selon l'objectif principal de la branche. La documentation directement liée à une correction ou une fonctionnalité reste sur la même branche.
 - Faire `git status --short --branch` avant toute modification et préserver les changements locaux déjà présents.
+- Créer la branche depuis la branche cible réellement à jour. Après `git fetch`, préférer `origin/main` à un `main` local en retard ; ne jamais fusionner un ancien `main` local dans une branche de fonctionnalité.
 - Une fois les changements d'un sujet commités sur leur branche, ne pas réutiliser cette branche pour une reprise ou une correction ultérieure : créer une nouvelle branche dédiée depuis la branche cible à jour.
+- Lors d'un conflit, ne pas accepter tout `ky_buffhud.lua` depuis un seul côté. Comparer la base commune, la branche cible et la branche de travail, puis conserver ensemble les invariants des buffs horizontaux et du killfeed horizontal.
+- Après une résolution de conflit dans le rendu, confirmer que `compute_horizontal_positions`, `buff_position_x`, `buff_position_y`, `killfeed_size` et la rangée horizontale du killfeed sont toujours présents avant de committer.
 - Ne jamais inclure dans un commit une modification utilisateur préexistante sans l'identifier clairement.
 - Garder les commits ciblés : documentation, correction de rendu, catalogue ou options doivent rester séparables quand cela aide la revue.
 - Ne pas pousser, fusionner, réécrire l'historique ou supprimer une branche sans demande explicite.
