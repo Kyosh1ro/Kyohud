@@ -16,6 +16,8 @@ local function HLOG(msg)
     pcall(function() log("[Kyosh1ro HUD][Hooks] " .. tostring(msg)) end)
 end
 
+KH._unknown_temp_upgrades = KH._unknown_temp_upgrades or {}
+
 -- ═══════════════════════════════════════════════════
 -- Récupération de la durée d'un upgrade temporaire
 -- ═══════════════════════════════════════════════════
@@ -50,49 +52,91 @@ end
 -- ═══════════════════════════════════════════════════
 -- Hook : Activation de buff temporaire
 -- ═══════════════════════════════════════════════════
-Hooks:PostHook(PlayerManager, "activate_temporary_upgrade", "KH_OnBuffOn", function(pm, category, upgrade)
+local function on_temporary_upgrade_activated(pm, category, upgrade)
     if category ~= "temporary" or not upgrade then return end
+    if KH._gameinfo_bridge_active then return end
 
-    -- Résoudre le buff_id via la table de mapping
-    local buff_id = upgrade
-    if KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[upgrade] then
-        buff_id = KH.UPGRADE_TO_BUFF[upgrade]
-    end
-
-    -- Vérifier que ce buff existe dans BUFF_MAP
-    local map_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
-    if not map_entry then
-        HLOG(string.format("BUFF ON ignoré (pas dans BUFF_MAP): %s → %s", tostring(upgrade), tostring(buff_id)))
+    local targets = KH.GetBuffTargets and KH.GetBuffTargets(upgrade) or {}
+    if #targets == 0 then
+        if not KH._unknown_temp_upgrades[upgrade] then
+            KH._unknown_temp_upgrades[upgrade] = true
+            HLOG("Buff temporaire non catalogué (ignoré une seule fois): " .. tostring(upgrade))
+        end
         return
     end
 
     local dur = get_temp_duration(pm, upgrade)
-
-    if KH.add_buff then
-        KH:add_buff(buff_id, nil, dur, upgrade)
+    if KH.handle_buff_event then
+        KH:handle_buff_event("activate", upgrade, { duration = dur }, "temporary")
+    elseif KH.add_buff then
+        for _, buff_id in ipairs(targets) do
+            KH:add_buff(buff_id, nil, dur)
+        end
     end
+end
 
-    HLOG(string.format("BUFF ON: %s → %s (dur=%.1fs)", tostring(upgrade), tostring(buff_id), dur))
+Hooks:PostHook(PlayerManager, "activate_temporary_upgrade", "KH_OnBuffOn", function(pm, category, upgrade)
+    on_temporary_upgrade_activated(pm, category, upgrade)
 end)
+
+if PlayerManager.activate_temporary_upgrade_by_level then
+    Hooks:PostHook(PlayerManager, "activate_temporary_upgrade_by_level", "KH_OnBuffOnByLevel", function(pm, category, upgrade)
+        on_temporary_upgrade_activated(pm, category, upgrade)
+    end)
+end
+
+if PlayerManager.disable_cooldown_upgrade then
+    Hooks:PostHook(PlayerManager, "disable_cooldown_upgrade", "KH_OnCooldownStarted", function(pm, category, upgrade)
+        if not upgrade or KH._gameinfo_bridge_active then return end
+        local targets = KH.GetBuffTargets and KH.GetBuffTargets(upgrade) or {}
+        if #targets == 0 then return end
+
+        local duration
+        pcall(function()
+            local entry = pm._global
+                and pm._global.cooldown_upgrades
+                and pm._global.cooldown_upgrades[category]
+                and pm._global.cooldown_upgrades[category][upgrade]
+            if entry and entry.cooldown_time then
+                duration = entry.cooldown_time - Application:time()
+            end
+        end)
+        duration = tonumber(duration) or ((KH.settings and KH.settings.buff_duration) or 5)
+
+        if KH.handle_buff_event then
+            KH:handle_buff_event("activate", upgrade, { duration = duration }, "cooldown")
+        elseif KH.add_buff then
+            for _, buff_id in ipairs(targets) do
+                KH:add_buff(buff_id, nil, duration)
+            end
+        end
+    end)
+end
 
 -- ═══════════════════════════════════════════════════
 -- Hook : Désactivation de buff temporaire
 -- ═══════════════════════════════════════════════════
 Hooks:PostHook(PlayerManager, "deactivate_temporary_upgrade", "KH_OnBuffOff", function(pm, category, upgrade)
     if category ~= "temporary" or not upgrade then return end
+    if KH._gameinfo_bridge_active then return end
 
-    -- Résoudre le buff_id via la table de mapping
-    local buff_id = upgrade
-    if KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[upgrade] then
-        buff_id = KH.UPGRADE_TO_BUFF[upgrade]
+    if KH.handle_buff_event then
+        KH:handle_buff_event("deactivate", upgrade, nil, "temporary")
+    elseif KH.remove_buff then
+        local targets = KH.GetBuffTargets and KH.GetBuffTargets(upgrade) or {}
+        for _, buff_id in ipairs(targets) do
+            KH:remove_buff(buff_id)
+        end
     end
-
-    if KH.remove_buff then
-        KH:remove_buff(buff_id)
-    end
-
-    HLOG(string.format("BUFF OFF: %s → %s", tostring(upgrade), tostring(buff_id)))
 end)
+
+if PlayerManager.update_hostage_situation then
+    Hooks:PostHook(PlayerManager, "update_hostage_situation", "KH_RefreshHostageRegen", function()
+        if KH.RefreshPassiveHealthRegen then
+            KH:RefreshPassiveHealthRegen()
+        end
+    end)
+end
 
 -- Le killfeed (hook CopDamage:die) vit dans ky_killfeed.lua, accroché à
 -- lib/units/enemies/cop/copdamage : CopDamage n'existe pas encore ici.
