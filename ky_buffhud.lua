@@ -1,6 +1,6 @@
--- ky_buffhud.lua — Affichage des buffs en arc + killfeed
+-- ky_buffhud.lua — Affichage horizontal des buffs + killfeed
 -- Kyosh1ro HUD v2.0.0
--- Buffs affichés côte à côte le long d'un arc de cercle
+-- Buffs affichés côte à côte sur une rangée horizontale configurable
 -- Icônes compatibles VanillaHUD (skills_new, perks, hud_icons, etc.)
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
@@ -455,7 +455,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent)
     end
     local t = now()
 
-    -- Un buff rafraîchi garde sa position dans l'arc (order_t d'origine),
+    -- Un buff rafraîchi garde sa position dans la rangée (order_t d'origine),
     -- seuls son timer et son fondu (start_t) repartent de zéro
     local existing = self._buffs[resolved_id]
 
@@ -761,43 +761,40 @@ function KH:ensure_panel(force)
 end
 
 -- ═══════════════════════════════════════════════════
--- Layout : positions séquentielles le long d'un arc
--- Les buffs se placent côte à côte depuis la position de départ
--- Arc de [1,1] (315°) vers [0,-1] (90°) = sens anti-horaire
+-- Layout : rangée horizontale centrée sur une position en pourcentage d'écran
+-- L'espacement se resserre si nécessaire pour ne masquer aucun buff.
 -- ═══════════════════════════════════════════════════
-local function compute_sequential_arc_positions(count, start_deg, end_deg, radius, cx, cy, icon_size)
+local function compute_horizontal_positions(
+        count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y)
     local positions = {}
     if count == 0 then return positions end
 
-    -- Espacement le long de l'arc : icône + marge proportionnelle, pour que
-    -- les icônes ET leur timer (16px sous l'icône) ne se chevauchent pas
-    -- sur les portions diagonales de l'arc
-    local margin = math.max(12, icon_size * 0.6)
-    local spacing_px = icon_size + margin
-    -- angle_step en degrés = (spacing_px / circumference) * 360
-    local angle_step = (spacing_px / (2 * math.pi * radius)) * 360
+    local edge_margin = 4
+    local frame_w = icon_size + frame_pad_x * 2
+    local desired_pitch = frame_w + clamp(icon_size * 0.25, 4, 12)
+    local available_w = math.max(frame_w, panel_w - edge_margin * 2)
+    local pitch = desired_pitch
 
-    -- Direction : de start_deg vers end_deg (sens anti-horaire = angles croissants)
-    -- start_deg = 315° (bas-droite), end_deg = 90° (haut)
-    -- En traversant 0°/360°, le chemin est 315 → 360 → 0 → 90 = 135° de span
-    local span = end_deg - start_deg
-    if span < 0 then span = span + 360 end
-
-    -- Trop d'icônes pour l'arc : compresser l'espacement plutôt que de
-    -- masquer silencieusement le surplus
-    if count > 1 and angle_step * (count - 1) > span then
-        angle_step = span / (count - 1)
+    if count > 1 and frame_w + pitch * (count - 1) > available_w then
+        pitch = math.max(0, (available_w - frame_w) / (count - 1))
     end
 
-    for i = 0, count - 1 do
-        local angle_deg = start_deg + angle_step * i
-        -- Normaliser à [0, 360)
-        if angle_deg >= 360 then angle_deg = angle_deg - 360 end
+    local row_w = frame_w + pitch * (count - 1)
+    local anchor_x = panel_w * clamp(x_percent, 0, 100) / 100
+    local row_left = clamp(
+        anchor_x - row_w * 0.5,
+        edge_margin,
+        math.max(edge_margin, panel_w - edge_margin - row_w)
+    )
 
-        -- Diesel expose les fonctions trigonométriques en degrés.
-        local x = cx + math.cos(angle_deg) * radius
-        local y = cy - math.sin(angle_deg) * radius
-        positions[#positions + 1] = { x = x, y = y }
+    -- Garder le cadre et le timer sous l'icône à l'intérieur du panneau.
+    local min_y = icon_size * 0.5 + frame_pad_y + edge_margin
+    local max_y = panel_h - icon_size * 0.5 - 22
+    local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
+    local first_x = row_left + frame_w * 0.5
+
+    for i = 0, count - 1 do
+        positions[#positions + 1] = { x = first_x + pitch * i, y = y }
     end
 
     return positions
@@ -848,8 +845,6 @@ function KH:draw()
     local cx = w * 0.5
     local cy = h * 0.5
     local radius    = clamp(s.circle_radius or 250, 100, 500)
-    local start_deg = s.angle_start or 315  -- [1,1] = bas-droite = 315°
-    local end_deg   = s.angle_end or 90     -- [0,-1] = haut = 90°
     local size      = clamp(s.icon_size or 32, 16, 64)
     local alpha     = clamp(s.opacity or 0.9, 0.1, 1.0)
 
@@ -862,7 +857,7 @@ function KH:draw()
             end
         end
         -- Tri par ordre d'arrivée : les nouveaux buffs s'ajoutent à la suite
-        -- en bout d'arc au lieu de réordonner les icônes existantes
+        -- en bout de rangée au lieu de réordonner les icônes existantes
         table.sort(buff_list, function(a, b)
             local oa = a.order_t or a.start_t or 0
             local ob = b.order_t or b.start_t or 0
@@ -870,12 +865,18 @@ function KH:draw()
             return a.id < b.id
         end)
 
-        -- Positions séquentielles le long de l'arc
-        local positions = compute_sequential_arc_positions(
-            #buff_list, start_deg, end_deg, radius, cx, cy, size
-        )
         local frame_pad_x = clamp(size * 0.26, 6, 14)
         local frame_pad_y = clamp(size * 0.1, 2, 5)
+        local positions = compute_horizontal_positions(
+            #buff_list,
+            tonumber(s.buff_position_x) or 50,
+            tonumber(s.buff_position_y) or 85,
+            w,
+            h,
+            size,
+            frame_pad_x,
+            frame_pad_y
+        )
         local arrow_w = clamp(size * 0.07, 1.5, 4)
         local arrow_h = clamp(size * 0.16, 4, 9)
         local arrow_gap = clamp(size * 0.035, 0.75, 2)

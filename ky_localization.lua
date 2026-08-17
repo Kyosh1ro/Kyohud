@@ -25,7 +25,7 @@ local function add_fallbacks(loc)
     loc:add_localized_strings({
         -- Menu principal
         ky_menu_title = "Kyosh1ro HUD",
-        ky_menu_desc  = "Circular buff display & killfeed around the crosshair",
+        ky_menu_desc  = "Horizontal buff display and tactical killfeed",
 
         -- Options de base
         ky_opt_enable_killfeed      = "Enable KillFeed",
@@ -33,13 +33,13 @@ local function add_fallbacks(loc)
         ky_opt_killfeed_size        = "Killfeed Size",
         ky_opt_killfeed_size_desc   = "Number of kills shown in the killfeed (1-3)",
         ky_opt_enable_buffs         = "Enable Buffs",
-        ky_opt_enable_buffs_desc    = "Show active buffs in a circle around the crosshair",
-        ky_opt_radius               = "Circle Radius",
-        ky_opt_radius_desc          = "Distance from crosshair center (100-500 px)",
-        ky_opt_angle_start          = "Start Angle",
-        ky_opt_angle_start_desc     = "Starting angle of the arc (degrees, 0-360)",
-        ky_opt_angle_end            = "End Angle",
-        ky_opt_angle_end_desc       = "Ending angle of the arc (degrees, 0-360)",
+        ky_opt_enable_buffs_desc    = "Show active buffs in a horizontal row",
+        ky_opt_radius               = "Killfeed Vertical Offset",
+        ky_opt_radius_desc          = "Vertical distance of the killfeed from the crosshair (100-500)",
+        ky_opt_buff_position_x      = "Buff Position X (%)",
+        ky_opt_buff_position_x_desc = "Horizontal center of the buff row (0-100%). Default: 50%",
+        ky_opt_buff_position_y      = "Buff Position Y (%)",
+        ky_opt_buff_position_y_desc = "Vertical center of the buff row (0-100%). Default: 85%",
         ky_opt_duration             = "Display Duration",
         ky_opt_duration_desc        = "How long buffs/kills stay visible (seconds)",
         ky_opt_opacity              = "Opacity",
