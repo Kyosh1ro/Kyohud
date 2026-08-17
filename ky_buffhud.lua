@@ -33,6 +33,7 @@ local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 KH._panel       = nil
 KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end?, category} }
 KH._kills       = {}           -- { {name, icon, start_t, t_end?} }
+KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._update_acc  = 0
 
 local MAX_KILL_HISTORY = 20
@@ -209,6 +210,93 @@ local function combo_color(count)
     if count == 3 then return Color(1, 0.55, 0.1) end
     if count == 4 then return Color(1, 0.2, 0.1) end
     return Color(0.9, 0.15, 1)
+end
+
+-- Cadre tactique inspiré des notifications Battlefield : quatre crochets
+-- interrompus et des chevrons qui convergent vers le libellé central.
+local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer)
+    local extension = 4
+    local arm_x = math.min(18, w * 0.08)
+    local arm_y = math.min(11, h * 0.3)
+    local left = x - extension
+    local right = x + w + extension
+    local top = y
+    local bottom = y + h
+    local corners = {
+        {
+            Vector3(left + arm_x, top, 0),
+            Vector3(left, top, 0),
+            Vector3(left, top + arm_y, 0),
+        },
+        {
+            Vector3(right - arm_x, top, 0),
+            Vector3(right, top, 0),
+            Vector3(right, top + arm_y, 0),
+        },
+        {
+            Vector3(left, bottom - arm_y, 0),
+            Vector3(left, bottom, 0),
+            Vector3(left + arm_x, bottom, 0),
+        },
+        {
+            Vector3(right, bottom - arm_y, 0),
+            Vector3(right, bottom, 0),
+            Vector3(right - arm_x, bottom, 0),
+        },
+    }
+
+    for _, points in ipairs(corners) do
+        panel:polyline({
+            points = points,
+            line_width = 1,
+            color = color,
+            alpha = alpha,
+            layer = layer,
+        })
+    end
+end
+
+local function draw_chevrons(panel, x, y, direction, color, alpha, layer)
+    local count = 3
+    local arrow_w = 7
+    local arrow_h = 12
+    local gap = 3
+
+    for i = 0, count - 1 do
+        local arrow_x = x + i * (arrow_w + gap)
+        local triangles
+        if direction > 0 then
+            triangles = {
+                Vector3(0, 0, 0),
+                Vector3(0, arrow_h, 0),
+                Vector3(arrow_w, arrow_h * 0.5, 0),
+            }
+        else
+            triangles = {
+                Vector3(arrow_w, 0, 0),
+                Vector3(arrow_w, arrow_h, 0),
+                Vector3(0, arrow_h * 0.5, 0),
+            }
+        end
+
+        local prominence
+        if direction > 0 then
+            prominence = i / (count - 1)
+        else
+            prominence = (count - 1 - i) / (count - 1)
+        end
+
+        panel:polygon({
+            x = arrow_x,
+            y = y - arrow_h * 0.5,
+            w = arrow_w,
+            h = arrow_h,
+            triangles = triangles,
+            color = color,
+            alpha = alpha * (0.55 + 0.45 * prominence),
+            layer = layer,
+        })
+    end
 end
 
 -- ═══════════════════════════════════════════════════
@@ -501,13 +589,126 @@ function KH:draw()
         end
     end
 
-    -- ── Dessiner le killfeed ──
-    if s.enable_killfeed and #self._kills > 0 then
-        local kill_radius = radius + size + 20
-        -- Arc dédié au killfeed, entièrement placé dans le quadrant bas-gauche.
-        local kill_positions = compute_sequential_arc_positions(
-            #self._kills, 210, 250, kill_radius, cx, cy, size * 0.8
-        )
+    -- ── Dessiner le bandeau de série et le killfeed vertical ──
+    local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
+    if s.enable_killfeed and (#self._kills > 0 or combo_active) then
+        local kill_icon_size = clamp(size * 0.72, 18, 36)
+        local row_h = math.max(28, kill_icon_size + 6)
+        local feed_w = clamp(size * 7.5, 220, 320)
+        local banner_h = math.max(38, size + 8)
+        local block_h = banner_h + 8 + MAX_VISIBLE_KILLS * row_h
+        local preferred_top = cy + clamp(radius * 0.55, 70, 160)
+        local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
+        local rows_top = block_top + banner_h + 8
+        local feed_color = Color(0.52, 0.88, 0.92)
+
+        if combo_active then
+            local remaining = combo.last_t + KILL_COMBO_WINDOW - t
+            if remaining > 0 then
+                local intro = clamp((t - (combo.updated_t or t)) / 0.15, 0, 1)
+                local fade_out = clamp(remaining / 0.35, 0, 1)
+                local banner_alpha = alpha * fade_out
+                local scale = 1 + (1 - intro) * 0.06
+                local bw = feed_w * scale
+                local bh = banner_h * scale
+                local bx = cx - bw * 0.5
+                local by = block_top - (bh - banner_h) * 0.5
+                local color = combo_color(combo.count)
+
+                -- Fond sombre avec un centre plus dense pour préserver la lisibilité.
+                self._panel:gradient({
+                    x = bx + 2,
+                    y = by + 2,
+                    w = bw - 4,
+                    h = bh - 4,
+                    orientation = "horizontal",
+                    gradient_points = {
+                        0, Color.black:with_alpha(banner_alpha * 0.18),
+                        0.18, Color.black:with_alpha(banner_alpha * 0.68),
+                        0.5, Color.black:with_alpha(banner_alpha * 0.82),
+                        0.82, Color.black:with_alpha(banner_alpha * 0.68),
+                        1, Color.black:with_alpha(banner_alpha * 0.18),
+                    },
+                    layer = 103,
+                })
+
+                -- Halo puis traits fins, interrompus par les crochets extérieurs.
+                self._panel:rect({
+                    x = bx + 14, y = by - 1, w = bw - 28, h = 3,
+                    color = color, alpha = banner_alpha * 0.18, layer = 104,
+                })
+                self._panel:rect({
+                    x = bx + 14, y = by, w = bw - 28, h = 1,
+                    color = color, alpha = banner_alpha, layer = 105,
+                })
+                self._panel:rect({
+                    x = bx + 14, y = by + bh - 2, w = bw - 28, h = 3,
+                    color = color, alpha = banner_alpha * 0.18, layer = 104,
+                })
+                self._panel:rect({
+                    x = bx + 14, y = by + bh - 1, w = bw - 28, h = 1,
+                    color = color, alpha = banner_alpha, layer = 105,
+                })
+
+                draw_corner_brackets(
+                    self._panel, bx, by, bw, bh, color, banner_alpha, 105
+                )
+
+                local arrow_group_w = 27
+                local arrow_margin = 16
+                draw_chevrons(
+                    self._panel,
+                    bx + arrow_margin,
+                    by + bh * 0.5,
+                    1,
+                    color,
+                    banner_alpha,
+                    106
+                )
+                draw_chevrons(
+                    self._panel,
+                    bx + bw - arrow_margin - arrow_group_w,
+                    by + bh * 0.5,
+                    -1,
+                    color,
+                    banner_alpha,
+                    106
+                )
+
+                local text_x = bx + 48
+                local text_w = bw - 96
+                local font_size = clamp(size * 0.65, 17, 27)
+                local label = combo_label(combo.count)
+                self._panel:text({
+                    text = label,
+                    font = tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
+                    font_size = font_size,
+                    color = Color.black,
+                    align = "center",
+                    vertical = "center",
+                    x = text_x + 1,
+                    y = by + 1,
+                    w = text_w,
+                    h = bh,
+                    layer = 106,
+                    alpha = banner_alpha * 0.9,
+                })
+                self._panel:text({
+                    text = label,
+                    font = tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
+                    font_size = font_size,
+                    color = color,
+                    align = "center",
+                    vertical = "center",
+                    x = text_x,
+                    y = by,
+                    w = text_w,
+                    h = bh,
+                    layer = 107,
+                    alpha = banner_alpha,
+                })
+            end
+        end
 
         local newest = self._kills[#self._kills]
         local scroll = 1
@@ -540,9 +741,30 @@ function KH:draw()
                 row_x = row_x + 18 * (1 - scroll)
             end
 
+            self._panel:gradient({
+                x = row_x,
+                y = row_y + 1,
+                w = feed_w,
+                h = row_h - 2,
+                orientation = "horizontal",
+                gradient_points = {
+                    0, Color.black:with_alpha(row_alpha * 0.68),
+                    0.72, Color.black:with_alpha(row_alpha * 0.42),
+                    1, Color.black:with_alpha(row_alpha * 0.05),
+                },
+                layer = 101,
+            })
             self._panel:rect({
-                x = row_x, y = row_y + 1, w = feed_w, h = row_h - 2,
-                color = Color.black, alpha = row_alpha * 0.38, layer = 101,
+                x = row_x, y = row_y + 2, w = 2, h = row_h - 4,
+                color = feed_color, alpha = row_alpha * 0.9, layer = 102,
+            })
+            self._panel:rect({
+                x = row_x + 2, y = row_y + 1, w = feed_w * 0.72, h = 1,
+                color = feed_color, alpha = row_alpha * 0.5, layer = 102,
+            })
+            self._panel:rect({
+                x = row_x + 2, y = row_y + row_h - 2, w = feed_w * 0.48, h = 1,
+                color = feed_color, alpha = row_alpha * 0.3, layer = 102,
             })
 
             local icon_y = row_y + (row_h - kill_icon_size) / 2
@@ -561,13 +783,14 @@ function KH:draw()
             end
 
             local kill_bmp = self._panel:bitmap(icon_params)
+            kill_bmp:set_color(Color(0.88, 0.96, 1))
             kill_bmp:set_alpha(row_alpha)
 
             self._panel:text({
                 text = kill.name,
                 font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
                 font_size = clamp(size * 0.42, 13, 18),
-                color = Color(1, 0.9, 0.3),
+                color = Color(0.86, 0.96, 1),
                 align = "left",
                 vertical = "center",
                 x = row_x + kill_icon_size + 12,
@@ -627,6 +850,11 @@ function KH:DebugSimulate(n)
             -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
         })
     end
+    self._kill_combo = {
+        count = #demo_names,
+        last_t = t_now,
+        updated_t = t_now,
+    }
 end
 
 function KH:DebugClear()
