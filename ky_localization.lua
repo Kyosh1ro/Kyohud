@@ -30,6 +30,8 @@ local function add_fallbacks(loc)
         -- Options de base
         ky_opt_enable_killfeed      = "Enable KillFeed",
         ky_opt_enable_killfeed_desc = "Show kill streaks and a scrolling killfeed below the crosshair",
+        ky_opt_killfeed_size        = "Killfeed Size",
+        ky_opt_killfeed_size_desc   = "Number of kills shown in the killfeed (1-3)",
         ky_opt_enable_buffs         = "Enable Buffs",
         ky_opt_enable_buffs_desc    = "Show active buffs in a horizontal row",
         ky_opt_radius               = "Killfeed Vertical Offset",
@@ -47,7 +49,7 @@ local function add_fallbacks(loc)
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
         ky_opt_debug_sim            = "Debug: Simulate",
-        ky_opt_debug_sim_desc       = "Keep 8 demo buffs and 5 demo kills visible until cleared",
+        ky_opt_debug_sim_desc       = "Keep 8 demo buffs and up to 3 demo kills visible until cleared",
         ky_opt_debug_clear          = "Debug: Clear",
         ky_opt_debug_clear_desc     = "Remove all active buffs and kills from the HUD",
 
