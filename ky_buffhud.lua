@@ -870,6 +870,26 @@ function KH:draw()
         local positions = compute_sequential_arc_positions(
             #buff_list, start_deg, end_deg, radius, cx, cy, size
         )
+        local frame_pad_x = clamp(size * 0.26, 6, 14)
+        local frame_pad_y = clamp(size * 0.1, 2, 5)
+        local arrow_w = clamp(size * 0.07, 1.5, 4)
+        local arrow_h = clamp(size * 0.16, 4, 9)
+        local arrow_gap = clamp(size * 0.035, 0.75, 2)
+        local arrow_group_w = arrow_w * 3 + arrow_gap * 2
+        local compact_chevrons = {
+            arrow_w = arrow_w,
+            arrow_h = arrow_h,
+            gap = arrow_gap,
+        }
+        local compact_frame = {
+            inset = 2,
+            glow_alpha = 0.12,
+            brackets = {
+                extension = clamp(size * 0.055, 1, 3),
+                arm_x = clamp(size * 0.16, 3, 9),
+                arm_y = clamp(size * 0.12, 3, 7),
+            },
+        }
 
         for idx, buff in ipairs(buff_list) do
             local pos = positions[idx]
@@ -936,13 +956,7 @@ function KH:draw()
                 end
 
                 local bmp = self._panel:bitmap(params)
-
-                -- Alpha dynamique : diminue quand le buff expire
-                local life = 1
-                if buff.duration and buff.duration > 0 and buff.start_t then
-                    life = clamp(1 - ((t - buff.start_t) / buff.duration), 0, 1)
-                end
-                bmp:set_alpha(alpha * (0.4 + 0.6 * life))
+                bmp:set_alpha(buff_alpha)
 
                 -- Timer texte sous l'icône
                 local remaining = buff.t_end and math.max(0, buff.t_end - t)
