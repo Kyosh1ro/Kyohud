@@ -34,7 +34,7 @@ KH._panel       = nil
 KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end?, category} }
 KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
-KH._kills       = {}           -- { {name, icon, start_t, t_end?} }
+KH._kills       = {}           -- { {name, start_t, t_end?} }
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._update_acc  = 0
 
@@ -167,47 +167,6 @@ function KH:is_buff_visible(buff_id)
     end
 
     return true
-end
-
--- ═══════════════════════════════════════════════════
--- Icônes pour le killfeed
--- ═══════════════════════════════════════════════════
-local ENEMY_ICON_MAP = {
-    swat         = "hud_icons:mugshot_normal",
-    heavy_swat   = "hud_icons:mugshot_normal",
-    shield       = "hud_icons:mugshot_normal",
-    sniper       = "hud_icons:mugshot_normal",
-    taser        = "hud_icons:mugshot_normal",
-    cloaker      = "hud_icons:mugshot_normal",
-    medic        = "hud_icons:mugshot_normal",
-    bulldozer    = "hud_icons:mugshot_normal",
-    gangster     = "hud_icons:mugshot_normal",
-    cop          = "hud_icons:mugshot_normal",
-    default      = "hud_icons:mugshot_normal",
-}
-
-local function resolve_simple_icon(icon_ref)
-    if not icon_ref or icon_ref == "" then
-        return { texture = FALLBACK_TEXTURE }
-    end
-    local atlas, name = tostring(icon_ref):match("^([^:]+):(.+)$")
-    if atlas == "hud_icons" and name then
-        local ok, tx, rect = pcall(function()
-            return tweak_data.hud_icons:get_icon_data(name)
-        end)
-        if ok and tx and has_texture(tx) and rect then
-            return { texture = tx, rect = rect }
-        end
-    end
-    if has_texture(tostring(icon_ref)) then
-        return { texture = tostring(icon_ref) }
-    end
-    return { texture = FALLBACK_TEXTURE }
-end
-
-local function icon_for_enemy(enemy_type)
-    local ref = ENEMY_ICON_MAP[enemy_type] or ENEMY_ICON_MAP.default
-    return resolve_simple_icon(ref)
 end
 
 local function localized_text(id, fallback)
@@ -684,7 +643,7 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
-function KH:add_kill(enemy_name, enemy_type)
+function KH:add_kill(enemy_name)
     if not self.settings or not self.settings.enable_killfeed then return end
 
     local dur = self.settings.buff_duration or 5
@@ -704,7 +663,6 @@ function KH:add_kill(enemy_name, enemy_type)
 
     local entry = {
         name   = enemy_name or "Enemy",
-        icon   = icon_for_enemy(enemy_type or "default"),
         start_t = t,
         t_end  = t + dur,
     }
@@ -982,9 +940,9 @@ function KH:draw()
     -- ── Dessiner le bandeau de série et le killfeed vertical ──
     local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
     if s.enable_killfeed and (#self._kills > 0 or combo_active) then
-        local kill_icon_size = clamp(size * 0.72, 18, 36)
-        local row_h = math.max(28, kill_icon_size + 6)
-        local feed_w = clamp(size * 7.5, 220, 320)
+        local row_h = clamp(size * 0.72 + 6, 28, 42)
+        local banner_w = clamp(size * 7.5, 220, 320)
+        local feed_w = clamp(size * 6.25, 180, 270)
         local banner_h = math.max(38, size + 8)
         local block_h = banner_h + 8 + MAX_VISIBLE_KILLS * row_h
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
@@ -1001,7 +959,7 @@ function KH:draw()
                 local fade_out = clamp(remaining / 0.35, 0, 1)
                 local banner_alpha = alpha * fade_out
                 local scale = 1 + (1 - intro) * 0.06
-                local bw = feed_w * scale
+                local bw = banner_w * scale
                 local bh = banner_h * scale
                 local bx = cx - bw * 0.5
                 local by = block_top - (bh - banner_h) * 0.5
@@ -1109,32 +1067,17 @@ function KH:draw()
                 color = feed_color, alpha = row_alpha * 0.9, layer = 102,
             })
             self._panel:rect({
-                x = row_x + 2, y = row_y + 1, w = feed_w * 0.72, h = 1,
+                x = row_x + 2, y = row_y + 1, w = feed_w - 4, h = 1,
                 color = feed_color, alpha = row_alpha * 0.5, layer = 102,
             })
             self._panel:rect({
-                x = row_x + 2, y = row_y + row_h - 2, w = feed_w * 0.48, h = 1,
-                color = feed_color, alpha = row_alpha * 0.3, layer = 102,
+                x = row_x + 2, y = row_y + row_h - 2, w = feed_w - 4, h = 1,
+                color = feed_color, alpha = row_alpha * 0.5, layer = 102,
             })
-
-            local icon_y = row_y + (row_h - kill_icon_size) / 2
-            local icon_params = {
-                layer = 102,
-                w = kill_icon_size,
-                h = kill_icon_size,
-                x = row_x + 5,
-                y = icon_y,
-            }
-            if kill.icon.rect then
-                icon_params.texture = kill.icon.texture
-                icon_params.texture_rect = kill.icon.rect
-            else
-                icon_params.texture = kill.icon.texture
-            end
-
-            local kill_bmp = self._panel:bitmap(icon_params)
-            kill_bmp:set_color(Color(0.88, 0.96, 1))
-            kill_bmp:set_alpha(row_alpha)
+            self._panel:rect({
+                x = row_x + feed_w - 2, y = row_y + 2, w = 2, h = row_h - 4,
+                color = feed_color, alpha = row_alpha * 0.9, layer = 102,
+            })
 
             self._panel:text({
                 text = kill.name,
@@ -1143,9 +1086,9 @@ function KH:draw()
                 color = Color(0.86, 0.96, 1),
                 align = "left",
                 vertical = "center",
-                x = row_x + kill_icon_size + 12,
+                x = row_x + 9,
                 y = row_y,
-                w = feed_w - kill_icon_size - 18,
+                w = feed_w - 18,
                 h = row_h,
                 layer = 102,
                 alpha = row_alpha,
@@ -1196,7 +1139,6 @@ function KH:DebugSimulate(n)
     for i = 1, 5 do
         table.insert(self._kills, {
             name    = demo_names[i],
-            icon    = icon_for_enemy("default"),
             start_t = t_now,
             -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
         })
