@@ -32,6 +32,8 @@ local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 -- ═══════════════════════════════════════════════════
 KH._panel       = nil
 KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end?, category} }
+KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
+KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
 KH._kills       = {}           -- { {name, icon, start_t, t_end?} }
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._update_acc  = 0
@@ -61,14 +63,34 @@ local function get_icon_data(icon)
 
     local texture = icon.texture
     local texture_rect = icon.texture_rect
+    local skills = icon.skills
+    local skills_new = icon.skills_new
 
-    if icon.skills then
+    -- Les coordonnées de l'atlas ont changé au fil des mises à jour. Quand le
+    -- catalogue connaît le nom interne du skill, demander sa position au jeu
+    -- et conserver les coordonnées statiques uniquement comme repli.
+    if icon.skill_id then
+        local ok, icon_xy = pcall(function()
+            local skills_tweak = tweak_data and tweak_data.skilltree and tweak_data.skilltree.skills
+            local skill = skills_tweak and skills_tweak[icon.skill_id]
+            return skill and skill.icon_xy
+        end)
+        if ok and type(icon_xy) == "table" then
+            if icon.skill_atlas == "skills" then
+                skills = icon_xy
+            else
+                skills_new = icon_xy
+            end
+        end
+    end
+
+    if skills then
         texture = "guis/textures/pd2/skilltree/icons_atlas"
-        local x, y = unpack(icon.skills)
+        local x, y = unpack(skills)
         texture_rect = { x * 64, y * 64, 64, 64 }
-    elseif icon.skills_new then
+    elseif skills_new then
         texture = "guis/textures/pd2/skilltree_2/icons_atlas_2"
-        local x, y = unpack(icon.skills_new)
+        local x, y = unpack(skills_new)
         texture_rect = { x * 80, y * 80, 80, 80 }
     elseif icon.perks then
         texture = string.format("guis/%stextures/pd2/specialization/icons_atlas",
@@ -111,7 +133,8 @@ end
 -- Résolution d'icône pour un buff_id
 -- ═══════════════════════════════════════════════════
 local function icon_for_buff(buff_id)
-    local map_entry = KH.BUFF_MAP[buff_id]
+    local vhud_map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
+    local map_entry = (vhud_map and vhud_map[buff_id]) or KH.BUFF_MAP[buff_id]
     if map_entry then
         local tex, rect = get_icon_data(map_entry)
         return { texture = tex, rect = rect }
@@ -410,7 +433,7 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter/retirer des buffs
 -- ═══════════════════════════════════════════════════
-function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id)
+function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent)
     if not self.settings or not self.settings.enable_buffs then return end
 
     -- Résoudre le vrai buff_id depuis l'upgrade
@@ -422,7 +445,10 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id)
     -- Vérifier si ce buff est visible dans les settings
     if not self:is_buff_visible(resolved_id) then return end
 
-    local dur = tonumber(duration) or (self.settings.buff_duration or 5)
+    local dur = tonumber(duration)
+    if not persistent then
+        dur = dur or (self.settings.buff_duration or 5)
+    end
     local t = now()
 
     -- Un buff rafraîchi garde sa position dans l'arc (order_t d'origine),
@@ -435,7 +461,8 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id)
         order_t  = existing and existing.order_t or t,
         start_t  = t,
         duration = dur,
-        t_end    = t + dur,
+        t_end    = not persistent and dur and (t + dur) or nil,
+        persistent = persistent == true,
     }
 end
 
@@ -444,6 +471,213 @@ function KH:remove_buff(buff_id)
     self._buffs[buff_id] = nil
     if KH.UPGRADE_TO_BUFF[buff_id] then
         self._buffs[KH.UPGRADE_TO_BUFF[buff_id]] = nil
+    end
+end
+
+-- ═══════════════════════════════════════════════════
+-- Sources de buffs et pont optionnel VanillaHUD+
+-- ═══════════════════════════════════════════════════
+local function application_time()
+    local ok, t = pcall(function()
+        return Application:time()
+    end)
+    return ok and tonumber(t) or now()
+end
+
+local function source_remaining(data)
+    if type(data) ~= "table" then
+        return nil, false
+    end
+
+    local app_t = application_time()
+    local expire_t = tonumber(data.expire_t)
+    if expire_t then
+        return math.max(0, expire_t - app_t), true
+    end
+
+    local duration = tonumber(data.duration)
+    if duration then
+        local start_t = tonumber(data.t)
+        if start_t then
+            return math.max(0, start_t + duration - app_t), true
+        end
+        return math.max(0, duration), true
+    end
+
+    if type(data.stacks) == "table" then
+        local latest_expire_t
+        for _, stack in ipairs(data.stacks) do
+            local stack_expire_t = type(stack) == "table" and tonumber(stack.expire_t)
+            if stack_expire_t and (not latest_expire_t or stack_expire_t > latest_expire_t) then
+                latest_expire_t = stack_expire_t
+            end
+        end
+        if latest_expire_t then
+            return math.max(0, latest_expire_t - app_t), true
+        end
+    end
+
+    return nil, false
+end
+
+function KH:_refresh_source_target(buff_id)
+    local sources = self._buff_sources and self._buff_sources[buff_id]
+    if not sources or not next(sources) then
+        self:remove_buff(buff_id)
+        return
+    end
+
+    local has_persistent_source = false
+    local max_remaining
+    for _, source in pairs(sources) do
+        local remaining, timed = source_remaining(source)
+        if timed then
+            if remaining > 0 and (not max_remaining or remaining > max_remaining) then
+                max_remaining = remaining
+            end
+        else
+            has_persistent_source = true
+        end
+    end
+
+    if has_persistent_source then
+        self:add_buff(buff_id, nil, nil, nil, true)
+    elseif max_remaining and max_remaining > 0 then
+        self:add_buff(buff_id, nil, max_remaining)
+    else
+        self:remove_buff(buff_id)
+    end
+end
+
+function KH:handle_buff_event(event, source_id, data, source_type)
+    if not source_id or not KH.GetBuffTargets then return end
+
+    local targets = KH.GetBuffTargets(source_id)
+    if #targets == 0 then return end
+
+    source_type = source_type or "buff"
+    local source_key = tostring(source_type) .. ":" .. tostring(source_id)
+
+    if event == "deactivate" then
+        local old_targets = self._source_targets[source_key] or targets
+        for _, buff_id in ipairs(old_targets) do
+            local sources = self._buff_sources[buff_id]
+            if sources then
+                sources[source_key] = nil
+                if not next(sources) then
+                    self._buff_sources[buff_id] = nil
+                end
+            end
+            self:_refresh_source_target(buff_id)
+        end
+        self._source_targets[source_key] = nil
+        return
+    end
+
+    local activates = event == "activate"
+        or event == "set_duration"
+        or event == "add_timed_stack"
+        or event == "set_data"
+
+    if not activates and not self._source_targets[source_key] then
+        return
+    end
+
+    self._source_targets[source_key] = targets
+    for _, buff_id in ipairs(targets) do
+        self._buff_sources[buff_id] = self._buff_sources[buff_id] or {}
+        local source = self._buff_sources[buff_id][source_key] or {}
+        if type(data) == "table" then
+            for key, value in pairs(data) do
+                source[key] = value
+            end
+            if data.duration and not data.t
+                and (event == "activate" or event == "set_duration") then
+                source.t = application_time()
+            end
+        end
+        self._buff_sources[buff_id][source_key] = source
+        self:_refresh_source_target(buff_id)
+    end
+end
+
+function KH:SyncGameInfoBuffs()
+    if not (managers and managers.gameinfo) then return end
+
+    local ok_buffs, buffs = pcall(function()
+        return managers.gameinfo:get_buffs()
+    end)
+    if ok_buffs and type(buffs) == "table" then
+        for id, data in pairs(buffs) do
+            self:handle_buff_event("activate", id, data, "gameinfo_buff")
+        end
+    end
+
+    local ok_actions, actions = pcall(function()
+        return managers.gameinfo:get_player_actions()
+    end)
+    if ok_actions and type(actions) == "table" then
+        for id, data in pairs(actions) do
+            self:handle_buff_event("activate", id, data, "gameinfo_action")
+        end
+    end
+end
+
+function KH:TryRegisterGameInfoBridge()
+    if self._gameinfo_bridge_active then return true end
+    if not (managers and managers.gameinfo
+        and managers.gameinfo.register_listener
+        and managers.gameinfo.get_buffs
+        and managers.gameinfo.get_player_actions) then
+        return false
+    end
+
+    local buff_events = {
+        "activate", "deactivate", "set_duration", "set_progress",
+        "set_stack_count", "add_timed_stack", "remove_timed_stack", "set_value",
+    }
+    local action_events = { "activate", "deactivate", "set_duration", "set_data" }
+    local buff_callback = function(event, id, data)
+        KH:handle_buff_event(event, id, data, "gameinfo_buff")
+    end
+    local action_callback = function(event, id, data)
+        KH:handle_buff_event(event, id, data, "gameinfo_action")
+    end
+
+    local ok, err = pcall(function()
+        for _, event in ipairs(buff_events) do
+            managers.gameinfo:register_listener("Kyosh1roHUD_buff_bridge", "buff", event, buff_callback)
+        end
+        for _, event in ipairs(action_events) do
+            managers.gameinfo:register_listener("Kyosh1roHUD_action_bridge", "player_action", event, action_callback)
+        end
+    end)
+    if not ok then
+        if not self._gameinfo_bridge_error_logged then
+            self._gameinfo_bridge_error_logged = true
+            log("[Kyosh1ro HUD] Pont VanillaHUD+ indisponible: " .. tostring(err))
+        end
+        return false
+    end
+
+    -- Remplacer les sources locales déjà observées par l'état de référence du
+    -- gestionnaire afin qu'une désactivation future ne laisse rien bloqué.
+    self._buff_sources = {}
+    self._source_targets = {}
+    self._buffs = {}
+    self._gameinfo_bridge_active = true
+    self._gameinfo_bridge_callbacks = { buff_callback, action_callback }
+    self:SyncGameInfoBuffs()
+    log("[Kyosh1ro HUD] Détection complète reliée au gestionnaire de buffs VanillaHUD+.")
+    return true
+end
+
+function KH:RefreshDetectedBuffs()
+    if self._gameinfo_bridge_active then
+        self:SyncGameInfoBuffs()
+    end
+    for buff_id, _ in pairs(self._buff_sources or {}) do
+        self:_refresh_source_target(buff_id)
     end
 end
 
@@ -619,7 +853,7 @@ function KH:draw()
     if s.enable_buffs then
         local buff_list = {}
         for _, b in pairs(self._buffs) do
-            if b.icon then
+            if b.icon and self:is_buff_visible(b.id) then
                 table.insert(buff_list, b)
             end
         end
@@ -636,26 +870,6 @@ function KH:draw()
         local positions = compute_sequential_arc_positions(
             #buff_list, start_deg, end_deg, radius, cx, cy, size
         )
-        local frame_pad_x = clamp(size * 0.26, 6, 14)
-        local frame_pad_y = clamp(size * 0.1, 2, 5)
-        local arrow_w = clamp(size * 0.07, 1.5, 4)
-        local arrow_h = clamp(size * 0.16, 4, 9)
-        local arrow_gap = clamp(size * 0.035, 0.75, 2)
-        local arrow_group_w = arrow_w * 3 + arrow_gap * 2
-        local compact_chevrons = {
-            arrow_w = arrow_w,
-            arrow_h = arrow_h,
-            gap = arrow_gap,
-        }
-        local compact_frame = {
-            inset = 2,
-            glow_alpha = 0.12,
-            brackets = {
-                extension = clamp(size * 0.055, 1, 3),
-                arm_x = clamp(size * 0.16, 3, 9),
-                arm_y = clamp(size * 0.12, 3, 7),
-            },
-        }
 
         for idx, buff in ipairs(buff_list) do
             local pos = positions[idx]
@@ -723,7 +937,12 @@ function KH:draw()
 
                 local bmp = self._panel:bitmap(params)
 
-                bmp:set_alpha(buff_alpha)
+                -- Alpha dynamique : diminue quand le buff expire
+                local life = 1
+                if buff.duration and buff.duration > 0 and buff.start_t then
+                    life = clamp(1 - ((t - buff.start_t) / buff.duration), 0, 1)
+                end
+                bmp:set_alpha(alpha * (0.4 + 0.6 * life))
 
                 -- Timer texte sous l'icône
                 local remaining = buff.t_end and math.max(0, buff.t_end - t)
@@ -925,6 +1144,7 @@ end
 -- Rafraîchissement
 -- ═══════════════════════════════════════════════════
 function KH:RefreshHUD()
+    self:RefreshDetectedBuffs()
     if self:ensure_panel(false) then
         self:draw()
     end
@@ -939,7 +1159,7 @@ function KH:DebugSimulate(n)
 
     local demo_buffs = {
         "unseen_strike", "overkill", "berserker", "swan_song",
-        "inspire", "hostage_taker", "bullet_storm", "iron_man",
+        "inspire", "hostage_taker", "bullet_storm", "aggressive_reload_aced",
         "armor_break_invulnerable", "grinder", "sicario_dodge", "second_wind",
     }
 
@@ -989,10 +1209,25 @@ end
 -- ═══════════════════════════════════════════════════
 Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
     KH:ensure_panel(true)
+    KH:TryRegisterGameInfoBridge()
     log("[Kyosh1ro HUD] Panneau HUD initialisé.")
 end)
 
 Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
+    if not KH._gameinfo_bridge_active then
+        KH._bridge_retry_acc = (KH._bridge_retry_acc or 0) + dt
+        if KH._bridge_retry_acc >= 1 then
+            KH._bridge_retry_acc = 0
+            KH:TryRegisterGameInfoBridge()
+        end
+    elseif not KH._bridge_delayed_sync_done then
+        KH._bridge_delayed_sync_acc = (KH._bridge_delayed_sync_acc or 0) + dt
+        if KH._bridge_delayed_sync_acc >= 2 then
+            KH._bridge_delayed_sync_done = true
+            KH:SyncGameInfoBuffs()
+        end
+    end
+
     KH._update_acc = (KH._update_acc or 0) + dt
     if KH._update_acc < 0.05 then return end
     KH._update_acc = 0
