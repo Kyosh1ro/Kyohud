@@ -49,7 +49,7 @@ Une réactivation du même buff doit rafraîchir son timer sans dupliquer son en
 
 1. `CopDamage:die` déclenche le PostHook de `ky_killfeed.lua`.
 2. Le hook rejette les kills qui ne proviennent pas du joueur local ou d'un objet lancé par lui.
-3. `KH:add_kill` ajoute une entrée chronologique dans `KH._kills`, avec une limite de 20 entrées.
+3. `KH:add_kill` ajoute une entrée chronologique dans `KH._kills`, avec une limite configurable de 1 à 3 entrées.
 4. `KH:draw` purge puis dessine les kills dans la liste tactique dédiée.
 
 ## Invariants du rendu
@@ -114,6 +114,7 @@ Une vérification statique ne remplace pas le test en jeu, car les classes et te
 - Travailler sur une branche dédiée par sujet : `fix/<sujet-court>` pour une correction et `feature/<sujet-court>` pour une nouvelle fonctionnalité.
 - Choisir le préfixe selon l'objectif principal de la branche. La documentation directement liée à une correction ou une fonctionnalité reste sur la même branche.
 - Faire `git status --short --branch` avant toute modification et préserver les changements locaux déjà présents.
+- Une fois les changements d'un sujet commités sur leur branche, ne pas réutiliser cette branche pour une reprise ou une correction ultérieure : créer une nouvelle branche dédiée depuis la branche cible à jour.
 - Ne jamais inclure dans un commit une modification utilisateur préexistante sans l'identifier clairement.
 - Garder les commits ciblés : documentation, correction de rendu, catalogue ou options doivent rester séparables quand cela aide la revue.
 - Ne pas pousser, fusionner, réécrire l'historique ou supprimer une branche sans demande explicite.
