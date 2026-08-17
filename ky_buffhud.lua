@@ -38,11 +38,15 @@ KH._kills       = {}           -- { {name, icon, start_t, t_end?} }
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._update_acc  = 0
 
-local MAX_KILL_HISTORY = 20
-local MAX_VISIBLE_KILLS = 5
+local MAX_KILLFEED_SIZE = 3
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
+
+local function killfeed_size(settings)
+    local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
+    return math.floor(clamp(value, 1, MAX_KILLFEED_SIZE))
+end
 local BANNER_FRAME_STYLE = {
     inset = 2,
     glow_alpha = 0.16,
@@ -710,7 +714,7 @@ function KH:add_kill(enemy_name, enemy_type)
     }
     table.insert(self._kills, entry)
 
-    while #self._kills > MAX_KILL_HISTORY do
+    while #self._kills > killfeed_size(self.settings) do
         table.remove(self._kills, 1)
     end
 end
@@ -983,11 +987,12 @@ function KH:draw()
     -- ── Dessiner le bandeau de série et le killfeed vertical ──
     local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
     if s.enable_killfeed and (#self._kills > 0 or combo_active) then
+        local killfeed_limit = killfeed_size(s)
         local kill_icon_size = clamp(size * 0.72, 18, 36)
         local row_h = math.max(28, kill_icon_size + 6)
         local feed_w = clamp(size * 7.5, 220, 320)
         local banner_h = math.max(38, size + 8)
-        local block_h = banner_h + 8 + MAX_VISIBLE_KILLS * row_h
+        local block_h = banner_h + 8 + killfeed_limit * row_h
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
         local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
         local rows_top = block_top + banner_h + 8
@@ -1067,7 +1072,7 @@ function KH:draw()
             scroll = clamp((t - newest.start_t) / KILL_SCROLL_TIME, 0, 1)
         end
 
-        local visible_count = math.min(#self._kills, MAX_VISIBLE_KILLS)
+        local visible_count = math.min(#self._kills, killfeed_limit)
         local feed_x = cx - feed_w / 2
         for row = 1, visible_count do
             -- Le kill le plus récent reste en haut ; les précédents descendent.
@@ -1192,9 +1197,9 @@ function KH:DebugSimulate(n)
     end
 
     -- Simuler quelques kills
-    local demo_names = { "SWAT", "Shield", "Bulldozer", "Cloaker", "Sniper" }
+    local demo_names = { "SWAT", "Shield", "Bulldozer" }
     local t_now = now()
-    for i = 1, 5 do
+    for i = 1, killfeed_size(self.settings) do
         table.insert(self._kills, {
             name    = demo_names[i],
             icon    = icon_for_enemy("default"),

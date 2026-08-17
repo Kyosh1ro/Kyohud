@@ -49,8 +49,8 @@ Une réactivation du même buff doit rafraîchir son timer sans dupliquer son en
 
 1. `CopDamage:die` déclenche le PostHook de `ky_killfeed.lua`.
 2. Le hook rejette les kills qui ne proviennent pas du joueur local ou d'un objet lancé par lui.
-3. `KH:add_kill` ajoute une entrée chronologique dans `KH._kills`, avec une limite de 20 entrées.
-4. `KH:draw` purge puis dessine les kills dans la liste tactique dédiée.
+3. `KH:add_kill` ajoute une entrée chronologique dans `KH._kills`, avec une limite configurable de 1 à 3 entrées.
+4. `KH:draw` purge puis dessine les kills sur leur arc dédié.
 
 ## Invariants du rendu
 
