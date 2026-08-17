@@ -1,6 +1,6 @@
 {
   "name": "Kyosh1ro HUD",
-  "description": "Circular buff display and kill feed around the crosshair. Works alongside VanillaHUD+.",
+  "description": "Horizontal buff display and tactical kill feed. Works alongside VanillaHUD+.",
   "author": "Kyosh1ro",
   "version": "1.0.0",
   "blt_version": 2,
