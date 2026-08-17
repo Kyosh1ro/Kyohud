@@ -4,6 +4,8 @@
 
   "ky_opt_enable_killfeed": "Activer le KillFeed",
   "ky_opt_enable_killfeed_desc": "Affiche les ennemis éliminés dans une liste tactique sous le viseur",
+  "ky_opt_killfeed_size": "Taille du killfeed",
+  "ky_opt_killfeed_size_desc": "Nombre de kills affichés dans le killfeed (1-3). Par défaut : 3",
   "ky_opt_enable_buffs": "Activer l'affichage des buffs",
   "ky_opt_enable_buffs_desc": "Affiche les buffs actifs en cercle autour du viseur",
   "ky_opt_radius": "Rayon du cercle",
@@ -21,7 +23,7 @@
   "ky_opt_reset": "Réinitialiser par défaut",
   "ky_opt_reset_desc": "Remettre tous les paramètres à leurs valeurs par défaut",
   "ky_opt_debug_sim": "Debug : Simuler buffs et kills",
-  "ky_opt_debug_sim_desc": "Garde 8 buffs et 5 kills de démo affichés jusqu'à leur suppression et montre brièvement le bandeau de série",
+  "ky_opt_debug_sim_desc": "Garde 8 buffs et jusqu'à 3 kills de démo affichés jusqu'à leur suppression et montre brièvement le bandeau de série",
   "ky_opt_debug_clear": "Debug : Tout effacer",
   "ky_opt_debug_clear_desc": "Supprime tous les buffs et kills actifs du HUD",
 

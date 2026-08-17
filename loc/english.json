@@ -4,6 +4,8 @@
 
   "ky_opt_enable_killfeed": "Enable KillFeed",
   "ky_opt_enable_killfeed_desc": "Show eliminated enemies in a tactical list beneath the crosshair",
+  "ky_opt_killfeed_size": "Killfeed Size",
+  "ky_opt_killfeed_size_desc": "Number of kills shown in the killfeed (1-3). Default: 3",
   "ky_opt_enable_buffs": "Enable Buffs Display",
   "ky_opt_enable_buffs_desc": "Show active buffs in a circle around the crosshair",
   "ky_opt_radius": "Circle Radius",
@@ -21,7 +23,7 @@
   "ky_opt_reset": "Reset to Defaults",
   "ky_opt_reset_desc": "Reset all settings to their default values",
   "ky_opt_debug_sim": "Debug: Simulate Buffs & Kills",
-  "ky_opt_debug_sim_desc": "Keep 8 demo buffs and 5 demo kills visible until cleared, and briefly show the combo banner",
+  "ky_opt_debug_sim_desc": "Keep 8 demo buffs and up to 3 demo kills visible until cleared, and briefly show the combo banner",
   "ky_opt_debug_clear": "Debug: Clear All",
   "ky_opt_debug_clear_desc": "Remove all active buffs and kills from the HUD",
 

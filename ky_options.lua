@@ -18,6 +18,7 @@ KH._settings_path = SavePath .. "kyosh1ro_hud_settings.json"
 
 KH._defaults = {
     enable_killfeed = true,
+    killfeed_size   = 3,
     enable_buffs    = true,
     circle_radius   = 250,
     angle_start     = 315,
@@ -127,6 +128,18 @@ local function make_slider_cb(key, is_int)
 end
 
 MenuCallbackHandler.KY_ToggleKillfeed = make_toggle_cb("enable_killfeed")
+MenuCallbackHandler.KY_SetKillfeedSize = function(self, item)
+    local value = math.floor(tonumber(item:value()) or KH._defaults.killfeed_size)
+    KH.settings.killfeed_size = math.max(1, math.min(3, value))
+
+    if type(KH._kills) == "table" then
+        while #KH._kills > KH.settings.killfeed_size do
+            table.remove(KH._kills, 1)
+        end
+    end
+
+    KH.Save(); if KH.RefreshHUD then KH:RefreshHUD() end
+end
 MenuCallbackHandler.KY_ToggleBuffs    = make_toggle_cb("enable_buffs")
 MenuCallbackHandler.KY_SetRadius      = make_slider_cb("circle_radius", true)
 MenuCallbackHandler.KY_SetAngleStart  = make_slider_cb("angle_start", true)
@@ -185,10 +198,16 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
         desc = "ky_opt_enable_killfeed_desc", callback = "KY_ToggleKillfeed",
         value = KH.settings.enable_killfeed, menu_id = MENU_ID, priority = 1000,
     })
+    MenuHelper:AddSlider({
+        id = "ky_killfeed_size", title = "ky_opt_killfeed_size", desc = "ky_opt_killfeed_size_desc",
+        callback = "KY_SetKillfeedSize", value = KH.settings.killfeed_size,
+        min = 1, max = 3, step = 1, show_value = true,
+        menu_id = MENU_ID, priority = 999,
+    })
     MenuHelper:AddToggle({
         id = "ky_enable_buffs", title = "ky_opt_enable_buffs",
         desc = "ky_opt_enable_buffs_desc", callback = "KY_ToggleBuffs",
-        value = KH.settings.enable_buffs, menu_id = MENU_ID, priority = 999,
+        value = KH.settings.enable_buffs, menu_id = MENU_ID, priority = 998,
     })
 
     MenuHelper:AddSlider({
