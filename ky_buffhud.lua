@@ -42,6 +42,12 @@ local MAX_KILL_HISTORY = 20
 local MAX_VISIBLE_KILLS = 5
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
+local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
+local BANNER_FRAME_STYLE = {
+    inset = 2,
+    glow_alpha = 0.16,
+    brackets = { extension = 4 },
+}
 
 -- ═══════════════════════════════════════════════════
 -- Résolution d'icônes — système VanillaHUD
@@ -235,16 +241,17 @@ local function combo_color(count)
     return Color(0.9, 0.15, 1)
 end
 
--- Cadre tactique inspiré des notifications Battlefield : quatre crochets
--- interrompus et des chevrons qui convergent vers le libellé central.
-local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer)
-    local extension = 4
-    local arm_x = math.min(18, w * 0.08)
-    local arm_y = math.min(11, h * 0.3)
+-- Cadre tactique inspiré des notifications Battlefield : traits asymétriques,
+-- quatre crochets détachés et chevrons qui convergent vers le contenu.
+local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer, style)
+    local extension = style and style.extension or 4
+    local arm_x = style and style.arm_x or math.min(18, w * 0.08)
+    local arm_y = style and style.arm_y or math.min(11, h * 0.3)
+    local line_width = style and style.line_width or 1
     local left = x - extension
     local right = x + w + extension
-    local top = y
-    local bottom = y + h
+    local top = y - extension
+    local bottom = y + h + extension
     local corners = {
         {
             Vector3(left + arm_x, top, 0),
@@ -271,7 +278,7 @@ local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer)
     for _, points in ipairs(corners) do
         panel:polyline({
             points = points,
-            line_width = 1,
+            line_width = line_width,
             color = color,
             alpha = alpha,
             layer = layer,
@@ -279,11 +286,11 @@ local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer)
     end
 end
 
-local function draw_chevrons(panel, x, y, direction, color, alpha, layer)
+local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
     local count = 3
-    local arrow_w = 7
-    local arrow_h = 12
-    local gap = 3
+    local arrow_w = style and style.arrow_w or 7
+    local arrow_h = style and style.arrow_h or 12
+    local gap = style and style.gap or 3
 
     for i = 0, count - 1 do
         local arrow_x = x + i * (arrow_w + gap)
@@ -320,6 +327,107 @@ local function draw_chevrons(panel, x, y, direction, color, alpha, layer)
             layer = layer,
         })
     end
+end
+
+local TACTICAL_FRAME_SEGMENTS = {
+    { 0.09, 0, 0.2  },
+    { 0.37, 0, 0.11 },
+    { 0.6,  0, 0.27 },
+    { 0.06, 1, 0.13 },
+    { 0.27, 1, 0.3  },
+    { 0.7,  1, 0.18 },
+}
+
+local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style)
+    local glow_alpha = style and style.glow_alpha or 0.16
+    local inset = style and style.inset or 2
+
+    panel:gradient({
+        x = x + inset,
+        y = y + inset,
+        w = w - inset * 2,
+        h = h - inset * 2,
+        orientation = "horizontal",
+        gradient_points = {
+            0, Color.black:with_alpha(alpha * 0.16),
+            0.2, Color.black:with_alpha(alpha * 0.62),
+            0.5, Color.black:with_alpha(alpha * 0.78),
+            0.82, Color.black:with_alpha(alpha * 0.58),
+            1, Color.black:with_alpha(alpha * 0.1),
+        },
+        layer = layer,
+    })
+
+    -- Trois segments sur chaque bord, volontairement décalés et inégaux.
+    for _, segment in ipairs(TACTICAL_FRAME_SEGMENTS) do
+        local segment_x = x + w * segment[1]
+        local segment_y = y + (segment[2] == 1 and h - 1 or 0)
+        local segment_w = w * segment[3]
+        panel:rect({
+            x = segment_x, y = segment_y - 1, w = segment_w, h = 3,
+            color = color, alpha = alpha * glow_alpha, layer = layer + 1,
+        })
+        panel:rect({
+            x = segment_x, y = segment_y, w = segment_w, h = 1,
+            color = color, alpha = alpha, layer = layer + 2,
+        })
+    end
+
+    draw_corner_brackets(
+        panel, x, y, w, h, color, alpha, layer + 2,
+        style and style.brackets
+    )
+end
+
+local TEXT_GLOW_OFFSETS = {
+    { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 },
+}
+
+local function draw_glowing_text(panel, label, font, font_size, color, x, y, w, h, alpha, layer)
+    panel:text({
+        text = label,
+        font = font,
+        font_size = font_size,
+        color = Color.black,
+        align = "center",
+        vertical = "center",
+        x = x + 1,
+        y = y + 1,
+        w = w,
+        h = h,
+        layer = layer,
+        alpha = alpha * 0.9,
+    })
+    for _, offset in ipairs(TEXT_GLOW_OFFSETS) do
+        panel:text({
+            text = label,
+            font = font,
+            font_size = font_size,
+            color = color,
+            align = "center",
+            vertical = "center",
+            x = x + offset[1],
+            y = y + offset[2],
+            w = w,
+            h = h,
+            layer = layer,
+            alpha = alpha * 0.16,
+        })
+    end
+    panel:text({
+        text = label,
+        font = font,
+        font_size = font_size,
+        color = color,
+        align = "center",
+        vertical = "center",
+        x = x,
+        y = y,
+        w = w,
+        h = h,
+        layer = layer + 1,
+        alpha = alpha,
+    })
 end
 
 -- ═══════════════════════════════════════════════════
@@ -582,6 +690,9 @@ function KH:add_kill(enemy_name, enemy_type)
     local dur = self.settings.buff_duration or 5
     local t = now()
     local combo = self._kill_combo or { count = 0 }
+    if combo.preview then
+        combo = { count = 0 }
+    end
     if combo.last_t and (t - combo.last_t) <= KILL_COMBO_WINDOW then
         combo.count = (combo.count or 0) + 1
     else
@@ -718,7 +829,8 @@ function KH:draw()
 
     -- Une série se termine après quelques secondes sans nouveau kill.
     local combo = self._kill_combo
-    if combo and combo.last_t and (t - combo.last_t) > KILL_COMBO_WINDOW then
+    if combo and not combo.preview and combo.last_t
+            and (t - combo.last_t) > KILL_COMBO_WINDOW then
         combo.count = 0
         combo.last_t = nil
         combo.updated_t = nil
@@ -762,6 +874,52 @@ function KH:draw()
         for idx, buff in ipairs(buff_list) do
             local pos = positions[idx]
             if pos then
+                -- Alpha dynamique : diminue quand le buff expire.
+                local life = 1
+                if buff.duration and buff.duration > 0 and buff.start_t then
+                    life = clamp(1 - ((t - buff.start_t) / buff.duration), 0, 1)
+                end
+                local buff_alpha = alpha * (0.4 + 0.6 * life)
+
+                -- Version compacte du cadre tactique : les chevrons restent dans
+                -- les marges et convergent vers l'icône sans la recouvrir.
+                local frame_x = pos.x - size * 0.5 - frame_pad_x
+                local frame_y = pos.y - size * 0.5 - frame_pad_y
+                local frame_w = size + frame_pad_x * 2
+                local frame_h = size + frame_pad_y * 2
+
+                draw_tactical_frame(
+                    self._panel,
+                    frame_x,
+                    frame_y,
+                    frame_w,
+                    frame_h,
+                    HUD_ACCENT_COLOR,
+                    buff_alpha * 0.72,
+                    98,
+                    compact_frame
+                )
+                draw_chevrons(
+                    self._panel,
+                    frame_x + 1,
+                    pos.y,
+                    1,
+                    HUD_ACCENT_COLOR,
+                    buff_alpha * 0.72,
+                    100,
+                    compact_chevrons
+                )
+                draw_chevrons(
+                    self._panel,
+                    frame_x + frame_w - arrow_group_w - 1,
+                    pos.y,
+                    -1,
+                    HUD_ACCENT_COLOR,
+                    buff_alpha * 0.72,
+                    100,
+                    compact_chevrons
+                )
+
                 local params = {
                     layer = 101,
                     w     = size,
@@ -818,10 +976,12 @@ function KH:draw()
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
         local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
         local rows_top = block_top + banner_h + 8
-        local feed_color = Color(0.52, 0.88, 0.92)
+        local feed_color = HUD_ACCENT_COLOR
 
         if combo_active then
-            local remaining = combo.last_t + KILL_COMBO_WINDOW - t
+            local remaining = combo.preview
+                and KILL_COMBO_WINDOW
+                or combo.last_t + KILL_COMBO_WINDOW - t
             if remaining > 0 then
                 local intro = clamp((t - (combo.updated_t or t)) / 0.15, 0, 1)
                 local fade_out = clamp(remaining / 0.35, 0, 1)
@@ -833,43 +993,16 @@ function KH:draw()
                 local by = block_top - (bh - banner_h) * 0.5
                 local color = combo_color(combo.count)
 
-                -- Fond sombre avec un centre plus dense pour préserver la lisibilité.
-                self._panel:gradient({
-                    x = bx + 2,
-                    y = by + 2,
-                    w = bw - 4,
-                    h = bh - 4,
-                    orientation = "horizontal",
-                    gradient_points = {
-                        0, Color.black:with_alpha(banner_alpha * 0.18),
-                        0.18, Color.black:with_alpha(banner_alpha * 0.68),
-                        0.5, Color.black:with_alpha(banner_alpha * 0.82),
-                        0.82, Color.black:with_alpha(banner_alpha * 0.68),
-                        1, Color.black:with_alpha(banner_alpha * 0.18),
-                    },
-                    layer = 103,
-                })
-
-                -- Halo puis traits fins, interrompus par les crochets extérieurs.
-                self._panel:rect({
-                    x = bx + 14, y = by - 1, w = bw - 28, h = 3,
-                    color = color, alpha = banner_alpha * 0.18, layer = 104,
-                })
-                self._panel:rect({
-                    x = bx + 14, y = by, w = bw - 28, h = 1,
-                    color = color, alpha = banner_alpha, layer = 105,
-                })
-                self._panel:rect({
-                    x = bx + 14, y = by + bh - 2, w = bw - 28, h = 3,
-                    color = color, alpha = banner_alpha * 0.18, layer = 104,
-                })
-                self._panel:rect({
-                    x = bx + 14, y = by + bh - 1, w = bw - 28, h = 1,
-                    color = color, alpha = banner_alpha, layer = 105,
-                })
-
-                draw_corner_brackets(
-                    self._panel, bx, by, bw, bh, color, banner_alpha, 105
+                draw_tactical_frame(
+                    self._panel,
+                    bx,
+                    by,
+                    bw,
+                    bh,
+                    color,
+                    banner_alpha,
+                    103,
+                    BANNER_FRAME_STYLE
                 )
 
                 local arrow_group_w = 27
@@ -897,34 +1030,19 @@ function KH:draw()
                 local text_w = bw - 96
                 local font_size = clamp(size * 0.65, 17, 27)
                 local label = combo_label(combo.count)
-                self._panel:text({
-                    text = label,
-                    font = tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
-                    font_size = font_size,
-                    color = Color.black,
-                    align = "center",
-                    vertical = "center",
-                    x = text_x + 1,
-                    y = by + 1,
-                    w = text_w,
-                    h = bh,
-                    layer = 106,
-                    alpha = banner_alpha * 0.9,
-                })
-                self._panel:text({
-                    text = label,
-                    font = tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
-                    font_size = font_size,
-                    color = color,
-                    align = "center",
-                    vertical = "center",
-                    x = text_x,
-                    y = by,
-                    w = text_w,
-                    h = bh,
-                    layer = 107,
-                    alpha = banner_alpha,
-                })
+                draw_glowing_text(
+                    self._panel,
+                    label,
+                    tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
+                    font_size,
+                    color,
+                    text_x,
+                    by,
+                    text_w,
+                    bh,
+                    banner_alpha,
+                    106
+                )
             end
         end
 
@@ -1070,9 +1188,10 @@ function KH:DebugSimulate(n)
         })
     end
     self._kill_combo = {
-        count = #demo_names,
+        count = 2,
         last_t = t_now,
         updated_t = t_now,
+        preview = true,
     }
 end
 
