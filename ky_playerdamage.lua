@@ -46,11 +46,25 @@ local function is_full_health(player_damage)
     return not ok or value == true
 end
 
-local function emit(event, source_id, duration)
+local function get_upgrade_value(definition)
+    local ok, value = pcall(function()
+        return managers.player and managers.player:upgrade_value(
+            definition.category,
+            definition.upgrade,
+            0
+        )
+    end)
+    return ok and tonumber(value) or nil
+end
+
+local function emit(event, source_id, duration, value)
     if KH._gameinfo_bridge_active then return end
 
     if KH.handle_buff_event then
-        local data = duration and { duration = duration } or nil
+        local data
+        if duration ~= nil or value ~= nil then
+            data = { duration = duration, value = value }
+        end
         KH:handle_buff_event(event, source_id, data, "passive_regen")
         return
     end
@@ -78,7 +92,7 @@ local function refresh_passive_regen(player_damage)
         end
 
         if active then
-            emit("activate", source_id, duration)
+            emit("activate", source_id, duration, get_upgrade_value(definition))
         else
             emit("deactivate", source_id)
         end

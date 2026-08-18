@@ -31,7 +31,7 @@ local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 -- État interne
 -- ═══════════════════════════════════════════════════
 KH._panel       = nil
-KH._buffs       = {}           -- { [id] = {id, icon, color, start_t, duration, t_end?, is_debuff} }
+KH._buffs       = {}           -- { [id] = {id, icon, color, value_text?, start_t, duration, t_end?, is_debuff} }
 KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
 KH._kills       = {}           -- { {name, start_t, t_end?} }
@@ -426,7 +426,7 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter/retirer des buffs
 -- ═══════════════════════════════════════════════════
-function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, is_debuff)
+function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, is_debuff, value_text)
     if not self.settings or not self.settings.enable_buffs then return end
 
     -- Résoudre le vrai buff_id depuis l'upgrade
@@ -452,6 +452,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
         id       = resolved_id,
         icon     = icon_data or icon_for_buff(resolved_id),
         color    = color_for_buff(resolved_id, is_debuff),
+        value_text = value_text,
         is_debuff = is_debuff == true,
         order_t  = existing and existing.order_t or t,
         start_t  = t,
@@ -515,6 +516,49 @@ local function source_remaining(data)
     return nil, false
 end
 
+local function passive_health_regen_source_value(source)
+    local value = source and tonumber(source.value)
+    if not value then return nil end
+
+    -- VanillaHUD+ exprime la régénération de l'équipier en points de santé
+    -- internes, contrairement aux autres sources qui utilisent déjà un ratio.
+    if source.source_id == "crew_health_regen" then
+        local ok, max_health = pcall(function()
+            local player = managers.player and managers.player:player_unit()
+            local player_damage = alive(player) and player:character_damage()
+            return player_damage and player_damage:_max_health()
+        end)
+        max_health = ok and tonumber(max_health) or nil
+        if not max_health or max_health <= 0 then return nil end
+        return value / (max_health * 10)
+    end
+
+    return value
+end
+
+local BUFF_VALUE_FORMATTERS = {
+    passive_health_regen = function(sources)
+        local total = 0
+        local has_value = false
+
+        for _, source in pairs(sources) do
+            local value = passive_health_regen_source_value(source)
+            if value then
+                total = total + value
+                has_value = true
+            end
+        end
+
+        return has_value and string.format("%.1f%%", total * 100) or nil
+    end,
+}
+
+local function format_buff_value(buff_id, sources)
+    local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
+    local formatter = definition and BUFF_VALUE_FORMATTERS[definition.value_format]
+    return formatter and formatter(sources) or nil
+end
+
 function KH:_refresh_source_target(buff_id)
     local sources = self._buff_sources and self._buff_sources[buff_id]
     if not sources or not next(sources) then
@@ -526,6 +570,7 @@ function KH:_refresh_source_target(buff_id)
     local persistent_sources_are_debuffs = true
     local max_remaining
     local max_remaining_is_debuff = false
+    local value_text = format_buff_value(buff_id, sources)
     for _, source in pairs(sources) do
         local remaining, timed = source_remaining(source)
         if timed then
@@ -545,9 +590,9 @@ function KH:_refresh_source_target(buff_id)
     end
 
     if has_persistent_source then
-        self:add_buff(buff_id, nil, nil, nil, true, persistent_sources_are_debuffs)
+        self:add_buff(buff_id, nil, nil, nil, true, persistent_sources_are_debuffs, value_text)
     elseif max_remaining and max_remaining > 0 then
-        self:add_buff(buff_id, nil, max_remaining, nil, false, max_remaining_is_debuff)
+        self:add_buff(buff_id, nil, max_remaining, nil, false, max_remaining_is_debuff, value_text)
     else
         self:remove_buff(buff_id)
     end
@@ -600,6 +645,7 @@ function KH:handle_buff_event(event, source_id, data, source_type)
                 source.t = application_time()
             end
         end
+        source.source_id = source_id
         source.is_debuff = string.match(tostring(source_id), "_debuff$") ~= nil
         self._buff_sources[buff_id][source_key] = source
         self:_refresh_source_target(buff_id)
@@ -641,7 +687,7 @@ function KH:TryRegisterGameInfoBridge()
         "activate", "deactivate", "set_duration", "set_progress",
         "set_stack_count", "add_timed_stack", "remove_timed_stack", "set_value",
     }
-    local action_events = { "activate", "deactivate", "set_duration", "set_data" }
+    local action_events = { "activate", "deactivate", "set_duration", "set_value", "set_data" }
     local buff_callback = function(event, id, data)
         KH:handle_buff_event(event, id, data, "gameinfo_buff")
     end
@@ -787,8 +833,8 @@ local function compute_horizontal_positions(
         math.max(edge_margin, panel_w - edge_margin - row_w)
     )
 
-    -- Garder le cadre et le timer sous l'icône à l'intérieur du panneau.
-    local min_y = icon_size * 0.5 + frame_pad_y + edge_margin
+    -- Garder la valeur au-dessus, le cadre et le timer sous l'icône dans le panneau.
+    local min_y = icon_size * 0.5 + frame_pad_y + 18 + edge_margin
     local max_y = panel_h - icon_size * 0.5 - 22
     local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
     local first_x = row_left + frame_w * 0.5
@@ -963,6 +1009,23 @@ function KH:draw()
                 local bmp = self._panel:bitmap(params)
                 bmp:set_color(buff.color or Color.white)
                 bmp:set_alpha(buff_alpha)
+
+                if buff.value_text then
+                    self._panel:text({
+                        text      = buff.value_text,
+                        font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
+                        font_size = clamp(size * 0.38, 11, 15),
+                        color     = buff.color or Color.white,
+                        align     = "center",
+                        vertical  = "center",
+                        x         = frame_x,
+                        y         = frame_y - 17,
+                        w         = frame_w,
+                        h         = 16,
+                        layer     = 102,
+                        alpha     = buff_alpha,
+                    })
+                end
 
                 -- Timer texte sous l'icône
                 local remaining = buff.t_end and math.max(0, buff.t_end - t)
@@ -1186,7 +1249,7 @@ function KH:DebugSimulate(n)
         { id = "damage_increase" },
         { id = "damage_reduction" },
         { id = "melee_damage_increase" },
-        { id = "passive_health_regen" },
+        { id = "passive_health_regen", value_text = "4.5%" },
         { id = "total_dodge_chance" },
         { id = "armorer" },
         { id = "inspire_debuff" },
@@ -1206,6 +1269,7 @@ function KH:DebugSimulate(n)
             id       = "demo_" .. base .. "_" .. tostring(i),
             icon     = icon,
             color    = color_for_buff(base, demo.is_debuff),
+            value_text = demo.value_text,
             is_debuff = demo.is_debuff == true,
             order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n dans la rangée
             start_t  = t_now,

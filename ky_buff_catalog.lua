@@ -126,7 +126,7 @@ KH.BUFF_MAP = {
     damage_increase = { skill_id = "prison_wife", skills_new = { 2, 8 }, category = "fugitive", color = "damage_increase", default_show = true },
     damage_reduction = { skill_id = "disguise", skills_new = { 5, 2 }, category = "fugitive", color = "damage_reduction", default_show = true },
     melee_damage_increase = { skill_id = "hidden_blade", skills_new = { 4, 3 }, category = "fugitive", color = "melee_damage_increase", default_show = true },
-    passive_health_regen = { skills_new = { 1, 11 }, category = "mastermind", color = "passive_health_regen", default_show = true },
+    passive_health_regen = { skills_new = { 1, 11 }, category = "mastermind", color = "passive_health_regen", value_format = "passive_health_regen", default_show = true },
     total_dodge_chance = { skills_new = { 1, 12 }, category = "ghost", color = "total_dodge_chance", default_show = true },
 }
 
