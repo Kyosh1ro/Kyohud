@@ -1,3 +1,7 @@
+r39 (18.08.2026):
+- Les indicateurs prioritaires de régénération, cooldown et dégâts ne s'affichent plus lorsqu'ils sont inactifs ; leur ordre reste fixe lorsqu'ils apparaissent.
+- Le deck d'atouts équipé reste affiché en première position et les autres buffs actifs continuent de s'ajouter à droite.
+
 r38 (18.08.2026):
 - Ajout de sept emplacements statiques au début de la rangée des buffs : deck d'atouts équipé, régénération de santé passive, régénération d'armure standard, cooldown de bris d'armure, augmentation de dégâts, réduction de dégâts et augmentation des dégâts de mêlée.
 - Les autres buffs continuent de s'ajouter chronologiquement à droite des emplacements statiques.
