@@ -31,7 +31,7 @@ local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 -- État interne
 -- ═══════════════════════════════════════════════════
 KH._panel       = nil
-KH._buffs       = {}           -- { [id] = {id, icon, color, value_text?, start_t, duration, t_end?, is_debuff} }
+KH._buffs       = {}           -- { [id] = {id, icon, color, value_text?, stack_text?, start_t, duration, t_end?, is_debuff} }
 KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
 KH._kills       = {}           -- { {name, start_t, t_end?} }
@@ -426,7 +426,7 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter/retirer des buffs
 -- ═══════════════════════════════════════════════════
-function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, is_debuff, value_text)
+function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, is_debuff, value_text, stack_text)
     if not self.settings or not self.settings.enable_buffs then return end
 
     -- Résoudre le vrai buff_id depuis l'upgrade
@@ -453,6 +453,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
         icon     = icon_data or icon_for_buff(resolved_id),
         color    = color_for_buff(resolved_id, is_debuff),
         value_text = value_text,
+        stack_text = stack_text,
         is_debuff = is_debuff == true,
         order_t  = existing and existing.order_t or t,
         start_t  = t,
@@ -516,6 +517,58 @@ local function source_remaining(data)
     return nil, false
 end
 
+local function player_upgrade_value(category, upgrade, fallback)
+    local ok, value = pcall(function()
+        return managers.player and managers.player:upgrade_value(category, upgrade, fallback)
+    end)
+    return ok and value ~= nil and value or fallback
+end
+
+local function largest_source_value(sources)
+    local result
+    for _, source in pairs(sources) do
+        if not source.is_calculated then
+            local value = tonumber(source.value)
+            if value and (not result or value > result) then
+                result = value
+            end
+        end
+    end
+    return result
+end
+
+local function source_stack_count(source)
+    local count = tonumber(source and source.stack_count)
+    if count then return math.floor(count) end
+    if source and type(source.stacks) == "table" then return #source.stacks end
+    return nil
+end
+
+local function largest_stack_count(sources)
+    local result
+    for _, source in pairs(sources) do
+        local count = source_stack_count(source)
+        if count and (not result or count > result) then
+            result = count
+        end
+    end
+    return result
+end
+
+local function compact_number(value)
+    local text = string.format("%.2f", value)
+    text = string.gsub(text, "(%..-)0+$", "%1")
+    return string.gsub(text, "%.$", "")
+end
+
+local function current_player_damage()
+    local ok, player_damage = pcall(function()
+        local player = managers.player and managers.player:player_unit()
+        return alive(player) and player:character_damage()
+    end)
+    return ok and player_damage or nil
+end
+
 local function passive_health_regen_source_value(source)
     local value = source and tonumber(source.value)
     if not value then return nil end
@@ -523,9 +576,8 @@ local function passive_health_regen_source_value(source)
     -- VanillaHUD+ exprime la régénération de l'équipier en points de santé
     -- internes, contrairement aux autres sources qui utilisent déjà un ratio.
     if source.source_id == "crew_health_regen" then
+        local player_damage = current_player_damage()
         local ok, max_health = pcall(function()
-            local player = managers.player and managers.player:player_unit()
-            local player_damage = alive(player) and player:character_damage()
             return player_damage and player_damage:_max_health()
         end)
         max_health = ok and tonumber(max_health) or nil
@@ -536,7 +588,203 @@ local function passive_health_regen_source_value(source)
     return value
 end
 
+local function equipped_weapon_context()
+    local ok, ignore_upgrades, categories = pcall(function()
+        local player = managers.player and managers.player:player_unit()
+        local inventory = alive(player) and player:inventory()
+        local weapon = inventory and inventory:equipped_unit()
+        local base = alive(weapon) and weapon:base()
+        local tweak = base and base:weapon_tweak_data()
+        return tweak and tweak.ignore_damage_upgrades == true, tweak and tweak.categories
+    end)
+    if not ok or type(categories) ~= "table" then return nil, nil end
+
+    local category_set = {}
+    for _, category in ipairs(categories) do
+        category_set[category] = true
+    end
+    return ignore_upgrades, category_set
+end
+
+local function source_applies_to_weapon(source_id, categories)
+    if source_id == "overkill" then
+        return categories.shotgun or categories.saw
+    elseif source_id == "overkill_aced" then
+        return not categories.shotgun and not categories.saw
+    elseif source_id == "berserker" then
+        return categories.saw == true
+    elseif source_id == "berserker_aced" then
+        return categories.saw ~= true
+    end
+    return true
+end
+
+local function health_ratio_damage_multiplier(source_id, value)
+    if source_id == "berserker" then
+        return 1 + value * (tonumber(player_upgrade_value(
+            "player", "melee_damage_health_ratio_multiplier", 0
+        )) or 0)
+    elseif source_id == "berserker_aced" then
+        return 1 + value * (tonumber(player_upgrade_value(
+            "player", "damage_health_ratio_multiplier", 0
+        )) or 0)
+    end
+    return value
+end
+
+local function damage_increase_text(sources)
+    local ignore_upgrades, categories = equipped_weapon_context()
+    if not categories then return nil end
+    if ignore_upgrades then return "(0%)" end
+
+    local multiplier = 1
+    local has_value = false
+    for _, source in pairs(sources) do
+        local value = tonumber(source.value)
+        if value and source_applies_to_weapon(source.source_id, categories) then
+            multiplier = multiplier * health_ratio_damage_multiplier(source.source_id, value)
+            has_value = true
+        end
+    end
+    return has_value and string.format("%+.0f%%", (multiplier - 1) * 100) or nil
+end
+
+local function melee_damage_increase_text(sources)
+    local multiplier = 1
+    local has_value = false
+    for _, source in pairs(sources) do
+        local value = tonumber(source.value)
+        if value then
+            multiplier = multiplier * health_ratio_damage_multiplier(source.source_id, value)
+            has_value = true
+        end
+    end
+    return has_value and ("x" .. compact_number(multiplier)) or nil
+end
+
+local function maniac_damage_multiplier(value)
+    local player_damage = current_player_damage()
+    if not player_damage then return nil end
+
+    local ok, current_armor, max_armor, max_health = pcall(function()
+        return player_damage:get_real_armor(), player_damage:_max_armor(), player_damage:_max_health()
+    end)
+    if not ok then return nil end
+    current_armor = tonumber(current_armor)
+    if not current_armor then return nil end
+    local maximum = current_armor > 0 and tonumber(max_armor) or tonumber(max_health)
+    if not maximum or maximum <= 0 then return nil end
+    return 1 - value / (maximum * 10)
+end
+
+local function damage_reduction_source_multiplier(source)
+    local value = tonumber(source.value)
+    if not value then return nil end
+
+    if source.source_id == "chico_injector" then
+        local player_damage = current_player_damage()
+        local ok, health_ratio = pcall(function()
+            return player_damage and player_damage:health_ratio()
+        end)
+        local low_health = player_upgrade_value("player", "chico_injector_low_health_multiplier", nil)
+        local threshold = type(low_health) == "table" and tonumber(low_health[1])
+        local bonus = type(low_health) == "table" and tonumber(low_health[2])
+        if ok and tonumber(health_ratio) and threshold and bonus and health_ratio < threshold then
+            value = value + bonus
+        end
+        return 1 - value
+    elseif source.source_id == "frenzy" then
+        return 1 - value
+    elseif source.source_id == "maniac" then
+        return maniac_damage_multiplier(value)
+    end
+
+    return value
+end
+
+local function damage_reduction_text(sources)
+    local multiplier = 1
+    local has_value = false
+    for _, source in pairs(sources) do
+        local value = damage_reduction_source_multiplier(source)
+        if value then
+            multiplier = multiplier * value
+            has_value = true
+        end
+    end
+    local reduction = clamp(1 - multiplier, 0, 1)
+    return has_value and string.format("-%.0f%%", reduction * 100) or nil
+end
+
+local function calculated_base_dodge(include_sicario)
+    local value = tonumber(tweak_data and tweak_data.player
+        and tweak_data.player.damage and tweak_data.player.damage.DODGE_INIT) or 0
+
+    local ok, calculated = pcall(function()
+        local pm = managers.player
+        local armor_id = managers.blackmarket and managers.blackmarket:equipped_armor(true, true)
+        local armor_upgrade = armor_id and tostring(armor_id) .. "_dodge_addend"
+        local risk_upgrade = pm:upgrade_value("player", "detection_risk_add_dodge_chance", 0)
+        return (pm:body_armor_value("dodge") or 0)
+            + (pm:upgrade_value("player", "passive_dodge_chance", 0) or 0)
+            + (armor_upgrade and pm:upgrade_value("player", armor_upgrade, 0) or 0)
+            + (pm:upgrade_value("player", "tier_dodge_chance", 0) or 0)
+            + (pm:get_value_from_risk_upgrade(risk_upgrade) or 0)
+            + (pm:upgrade_value("team", "crew_add_dodge", 0) or 0)
+            + (include_sicario and pm:upgrade_value("player", "sicario_multiplier", 0) or 0)
+    end)
+    return math.max(0, value + (ok and tonumber(calculated) or 0))
+end
+
+local function total_dodge_chance_text(sources)
+    local has_sicario_source = false
+    local has_smoke_source = false
+    for _, source in pairs(sources) do
+        has_sicario_source = has_sicario_source or source.source_id == "sicario_dodge"
+        has_smoke_source = has_smoke_source or source.source_id == "smoke_screen_grenade"
+    end
+
+    local value = calculated_base_dodge(not has_sicario_source)
+    for _, source in pairs(sources) do
+        if not source.is_calculated then
+            value = value + (tonumber(source.value) or 0)
+        end
+    end
+
+    if has_smoke_source then
+        local smoke_dodge = tonumber(tweak_data and tweak_data.projectiles
+            and tweak_data.projectiles.smoke_screen_grenade
+            and tweak_data.projectiles.smoke_screen_grenade.dodge_chance) or 0
+        value = 1 - (1 - value) * (1 - smoke_dodge)
+    end
+
+    return string.format("%.0f%%", math.max(value * 100, 0))
+end
+
 local BUFF_VALUE_FORMATTERS = {
+    percent = function(sources)
+        local value = largest_source_value(sources)
+        return value and string.format("%.0f%%", value * 100) or nil
+    end,
+    multiplier_percent = function(sources)
+        local value = largest_source_value(sources)
+        return value and string.format("%+.0f%%", (value - 1) * 100) or nil
+    end,
+    multiplier = function(sources)
+        local value = largest_source_value(sources)
+        return value and ("x" .. compact_number(value)) or nil
+    end,
+    negative_number = function(sources)
+        local value = largest_source_value(sources)
+        return value and string.format("-%.0f", math.abs(value)) or nil
+    end,
+    negative_number_1 = function(sources)
+        local value = largest_source_value(sources)
+        return value and string.format("-%.1f", math.abs(value)) or nil
+    end,
+    damage_increase = damage_increase_text,
+    damage_reduction = damage_reduction_text,
+    melee_damage_increase = melee_damage_increase_text,
     passive_health_regen = function(sources)
         local total = 0
         local has_value = false
@@ -551,12 +799,23 @@ local BUFF_VALUE_FORMATTERS = {
 
         return has_value and string.format("%.1f%%", total * 100) or nil
     end,
+    total_dodge_chance = total_dodge_chance_text,
 }
 
 local function format_buff_value(buff_id, sources)
     local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
     local formatter = definition and BUFF_VALUE_FORMATTERS[definition.value_format]
-    return formatter and formatter(sources) or nil
+    local value_text = formatter and formatter(sources) or nil
+    local stack_count = largest_stack_count(sources)
+    local stack_text
+    if definition and definition.stack_format == "biker_charges" and stack_count then
+        local maximum = tonumber(tweak_data and tweak_data.upgrades
+            and tweak_data.upgrades.wild_max_triggers_per_time) or 0
+        stack_text = "x" .. tostring(math.max(0, maximum - stack_count))
+    elseif definition and definition.show_stack_count and stack_count and stack_count > 0 then
+        stack_text = "x" .. tostring(stack_count)
+    end
+    return value_text, stack_text
 end
 
 function KH:_refresh_source_target(buff_id)
@@ -570,7 +829,7 @@ function KH:_refresh_source_target(buff_id)
     local persistent_sources_are_debuffs = true
     local max_remaining
     local max_remaining_is_debuff = false
-    local value_text = format_buff_value(buff_id, sources)
+    local value_text, stack_text = format_buff_value(buff_id, sources)
     for _, source in pairs(sources) do
         local remaining, timed = source_remaining(source)
         if timed then
@@ -590,11 +849,59 @@ function KH:_refresh_source_target(buff_id)
     end
 
     if has_persistent_source then
-        self:add_buff(buff_id, nil, nil, nil, true, persistent_sources_are_debuffs, value_text)
+        self:add_buff(buff_id, nil, nil, nil, true, persistent_sources_are_debuffs, value_text, stack_text)
     elseif max_remaining and max_remaining > 0 then
-        self:add_buff(buff_id, nil, max_remaining, nil, false, max_remaining_is_debuff, value_text)
+        self:add_buff(buff_id, nil, max_remaining, nil, false, max_remaining_is_debuff, value_text, stack_text)
     else
         self:remove_buff(buff_id)
+    end
+end
+
+local DYNAMIC_VALUE_BUFFS = {
+    "damage_increase",
+    "damage_reduction",
+    "melee_damage_increase",
+    "passive_health_regen",
+    "total_dodge_chance",
+}
+
+function KH:RefreshCalculatedBuffValues()
+    if self._debug_preview_active then return end
+
+    local buff_id = "total_dodge_chance"
+    local source_key = "calculated:base_dodge"
+    local sources = self._buff_sources[buff_id]
+    local base_dodge = calculated_base_dodge(true)
+    local has_calculated_source = sources and sources[source_key] ~= nil
+    local source_changed = false
+
+    if base_dodge > 0 and not has_calculated_source then
+        self._buff_sources[buff_id] = sources or {}
+        self._buff_sources[buff_id][source_key] = {
+            source_id = "base_dodge",
+            is_calculated = true,
+            is_debuff = false,
+        }
+        source_changed = true
+    elseif base_dodge <= 0 and has_calculated_source then
+        sources[source_key] = nil
+        if not next(sources) then self._buff_sources[buff_id] = nil end
+        source_changed = true
+    end
+
+    if source_changed then
+        self:_refresh_source_target(buff_id)
+    end
+
+    -- Ces valeurs dépendent aussi de l'arme équipée, de la santé ou de
+    -- l'armure. Les recalculer à faible fréquence sans recréer les entrées
+    -- conserve leur ordre et leur timer.
+    for _, dynamic_buff_id in ipairs(DYNAMIC_VALUE_BUFFS) do
+        local dynamic_sources = self._buff_sources[dynamic_buff_id]
+        local buff = self._buffs[dynamic_buff_id]
+        if dynamic_sources and buff then
+            buff.value_text, buff.stack_text = format_buff_value(dynamic_buff_id, dynamic_sources)
+        end
     end
 end
 
@@ -645,6 +952,12 @@ function KH:handle_buff_event(event, source_id, data, source_type)
                 source.t = application_time()
             end
         end
+        if event == "set_value" and (not data or data.value == nil) then
+            source.value = nil
+        elseif event == "set_stack_count" and (not data or data.stack_count == nil) then
+            source.stack_count = nil
+        end
+        source.updated_t = application_time()
         source.source_id = source_id
         source.is_debuff = string.match(tostring(source_id), "_debuff$") ~= nil
         self._buff_sources[buff_id][source_key] = source
@@ -672,6 +985,7 @@ function KH:SyncGameInfoBuffs()
             self:handle_buff_event("activate", id, data, "gameinfo_action")
         end
     end
+    self:RefreshCalculatedBuffValues()
 end
 
 function KH:TryRegisterGameInfoBridge()
@@ -730,6 +1044,7 @@ function KH:RefreshDetectedBuffs()
     for buff_id, _ in pairs(self._buff_sources or {}) do
         self:_refresh_source_target(buff_id)
     end
+    self:RefreshCalculatedBuffValues()
 end
 
 -- ═══════════════════════════════════════════════════
@@ -1027,6 +1342,36 @@ function KH:draw()
                     })
                 end
 
+                if buff.stack_text then
+                    local badge_w = clamp(size * 0.55, 15, 26)
+                    local badge_h = clamp(size * 0.36, 10, 16)
+                    local badge_x = pos.x + size * 0.5 - badge_w
+                    local badge_y = pos.y + size * 0.5 - badge_h
+                    self._panel:rect({
+                        x = badge_x,
+                        y = badge_y,
+                        w = badge_w,
+                        h = badge_h,
+                        color = Color.black,
+                        alpha = buff_alpha * 0.78,
+                        layer = 102,
+                    })
+                    self._panel:text({
+                        text = buff.stack_text,
+                        font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
+                        font_size = clamp(size * 0.3, 9, 12),
+                        color = Color.white,
+                        align = "center",
+                        vertical = "center",
+                        x = badge_x,
+                        y = badge_y,
+                        w = badge_w,
+                        h = badge_h,
+                        layer = 103,
+                        alpha = buff_alpha,
+                    })
+                end
+
                 -- Timer texte sous l'icône
                 local remaining = buff.t_end and math.max(0, buff.t_end - t)
                 if remaining and remaining > 0 then
@@ -1243,21 +1588,22 @@ end
 -- ═══════════════════════════════════════════════════
 function KH:DebugSimulate(n)
     self:DebugClear()
+    self._debug_preview_active = true
     n = n or 8
 
     local demo_buffs = {
-        { id = "damage_increase" },
-        { id = "damage_reduction" },
-        { id = "melee_damage_increase" },
+        { id = "damage_increase", value_text = "+35%" },
+        { id = "damage_reduction", value_text = "-20%" },
+        { id = "melee_damage_increase", value_text = "x1.75" },
         { id = "passive_health_regen", value_text = "4.5%" },
-        { id = "total_dodge_chance" },
-        { id = "armorer" },
-        { id = "inspire_debuff" },
-        { id = "grinder", is_debuff = true },
+        { id = "total_dodge_chance", value_text = "45%" },
+        { id = "lock_n_load", value_text = "+35%" },
+        { id = "delayed_damage", value_text = "-125" },
+        { id = "grinder", stack_text = "x3" },
         { id = "overkill" },
         { id = "unseen_strike" },
         { id = "bullet_storm" },
-        { id = "second_wind" },
+        { id = "second_wind", value_text = "+30%" },
     }
 
     for i = 1, n do
@@ -1270,6 +1616,7 @@ function KH:DebugSimulate(n)
             icon     = icon,
             color    = color_for_buff(base, demo.is_debuff),
             value_text = demo.value_text,
+            stack_text = demo.stack_text,
             is_debuff = demo.is_debuff == true,
             order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n dans la rangée
             start_t  = t_now,
@@ -1296,6 +1643,7 @@ function KH:DebugSimulate(n)
 end
 
 function KH:DebugClear()
+    self._debug_preview_active = false
     self._buffs = {}
     self._kills = {}
     self._kill_combo = { count = 0, last_t = nil, updated_t = nil }
@@ -1326,6 +1674,12 @@ Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
             KH._bridge_delayed_sync_done = true
             KH:SyncGameInfoBuffs()
         end
+    end
+
+    KH._value_refresh_acc = (KH._value_refresh_acc or 0) + dt
+    if KH._value_refresh_acc >= 0.5 then
+        KH._value_refresh_acc = 0
+        KH:RefreshCalculatedBuffValues()
     end
 
     KH._update_acc = (KH._update_acc or 0) + dt
