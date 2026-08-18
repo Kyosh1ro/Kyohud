@@ -26,7 +26,7 @@ Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée localement 
 | `mod.txt` | Métadonnées SuperBLT et association entre hooks du jeu et scripts du mod. |
 | `ky_buff_catalog.lua` | Source de vérité des catégories, définitions d'icônes, valeurs `default_show` et correspondances upgrade → buff. Son garde empêche une réinitialisation lors de chargements multiples. |
 | `ky_hooks.lua` | Détecte l'activation et la désactivation des upgrades temporaires via `PlayerManager`, résout leur durée puis appelle `KH:add_buff` ou `KH:remove_buff`. |
-| `ky_killfeed.lua` | Observe `CopDamage:die`, garde uniquement les kills du joueur local ou de ses projectiles et appelle `KH:add_kill`. Ce hook doit rester associé à `lib/units/enemies/cop/copdamage`. |
+| `ky_killfeed.lua` | Observe `CopDamage:die` côté hôte et `PlayerManager:on_killshot` côté client, puis transmet les kills locaux au calcul partagé du killfeed. Le script doit rester associé aux deux contextes dans `mod.txt`. |
 | `ky_buffhud.lua` | État actif, résolution des textures, création du panneau, calcul de la rangée horizontale des buffs et rendu du killfeed. Contient aussi les outils de simulation. |
 | `ky_options.lua` | Valeurs par défaut, lecture/écriture de `SavePath/kyosh1ro_hud_settings.json`, callbacks et menus SuperBLT. |
 | `ky_localization.lua` | Fallbacks intégrés et chargement des traductions anglaise/française. Capture immédiatement `ModPath` car SuperBLT peut ensuite écraser ce global. |
@@ -48,10 +48,11 @@ Une réactivation du même buff doit rafraîchir son timer sans dupliquer son en
 
 ### Kills
 
-1. `CopDamage:die` déclenche le PostHook de `ky_killfeed.lua`.
-2. Le hook rejette les kills qui ne proviennent pas du joueur local ou d'un objet lancé par lui.
-3. `KH:add_kill` ajoute une entrée chronologique dans `KH._kills`, avec une limite configurable de 1 à 3 entrées.
-4. `KH:draw` purge puis dessine les kills dans la rangée tactique horizontale dédiée.
+1. Sur l'hôte, `CopDamage:die` déclenche le PostHook historique de `ky_killfeed.lua`.
+2. Sur un client, `PlayerManager:on_killshot` fournit la notification du kill obtenu par le joueur local, indépendamment de l'autorité de l'hôte sur la mort de l'unité.
+3. Le chemin hôte rejette les kills qui ne proviennent pas du joueur local ou d'un objet lancé par lui ; le chemin client est déjà limité aux kills locaux par `on_killshot`.
+4. Le calcul partagé déduplique l'unité, détermine son nom et son score, puis `KH:add_kill` ajoute une entrée chronologique dans `KH._kills`, avec une limite configurable de 1 à 3 entrées.
+5. `KH:draw` purge puis dessine les kills dans la rangée tactique horizontale dédiée.
 
 ## Invariants du rendu
 
