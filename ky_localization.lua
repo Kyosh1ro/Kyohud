@@ -33,7 +33,7 @@ local function add_fallbacks(loc)
         ky_opt_killfeed_size        = "Killfeed Size",
         ky_opt_killfeed_size_desc   = "Number of kills shown in the killfeed (1-3)",
         ky_opt_enable_buffs         = "Enable Buffs",
-        ky_opt_enable_buffs_desc    = "Show static indicators and active buffs in a horizontal row",
+        ky_opt_enable_buffs_desc    = "Show the equipped perk deck and active buffs in a horizontal row",
         ky_opt_radius               = "Killfeed Vertical Offset",
         ky_opt_radius_desc          = "Vertical distance of the killfeed from the crosshair (100-500)",
         ky_opt_buff_position_x      = "Buff Position X (%)",
@@ -49,9 +49,9 @@ local function add_fallbacks(loc)
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
         ky_opt_debug_sim            = "Debug: Simulate",
-        ky_opt_debug_sim_desc       = "Keep the 7 static slots, 8 extra demo buffs and up to 3 demo kills visible until cleared",
+        ky_opt_debug_sim_desc       = "Simulate the equipped deck, 6 active priority buffs, 8 extra buffs and up to 3 kills",
         ky_opt_debug_clear          = "Debug: Clear",
-        ky_opt_debug_clear_desc     = "Remove active buffs and kills, and reset static slots to their neutral state",
+        ky_opt_debug_clear_desc     = "Remove active buffs and kills; the equipped perk deck remains visible",
 
         -- Bandeau des séries de kills
         ky_hud_double_kill = "DOUBLE KILL",

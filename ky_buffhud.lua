@@ -232,9 +232,8 @@ function KH:is_buff_visible(buff_id)
     return true
 end
 
--- Ces indicateurs conservent toujours le même ordre au début de la rangée.
--- Les buffs actifs réutilisent leur entrée normale ; sinon un emplacement
--- atténué reste visible avec une valeur neutre.
+-- Ces indicateurs actifs conservent toujours le même ordre au début de la
+-- rangée. Un indicateur absent ne réserve aucun emplacement vide.
 local STATIC_BUFF_SLOTS = {
     "equipped_perk_deck",
     "passive_health_regen",
@@ -250,37 +249,16 @@ for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
     STATIC_BUFF_SLOT_SET[buff_id] = true
 end
 
-local STATIC_BUFF_NEUTRAL_VALUES = {
-    passive_health_regen = "0.0%",
-    damage_increase = "+0%",
-    damage_reduction = "-0%",
-    melee_damage_increase = "x1",
-}
-
-local function static_buff_entry(hud, buff_id)
-    local active = hud._buffs[buff_id]
-    if active and active.icon then return active end
-
-    hud._static_buff_placeholders = hud._static_buff_placeholders or {}
-    local placeholder = hud._static_buff_placeholders[buff_id]
-    if not placeholder then
-        local is_debuff = buff_id == "armor_break_invulnerable_debuff"
-        placeholder = {
-            id = buff_id,
-            icon = icon_for_buff(buff_id),
-            color = color_for_buff(buff_id, is_debuff),
-            value_text = STATIC_BUFF_NEUTRAL_VALUES[buff_id],
-            is_debuff = is_debuff,
+local function equipped_perk_deck_entry(hud)
+    if not hud._equipped_perk_deck_buff then
+        hud._equipped_perk_deck_buff = {
+            id = "equipped_perk_deck",
+            color = color_for_buff("equipped_perk_deck", false),
             persistent = true,
-            static_inactive = buff_id ~= "equipped_perk_deck",
         }
-        hud._static_buff_placeholders[buff_id] = placeholder
     end
-
-    if buff_id == "equipped_perk_deck" then
-        placeholder.icon = icon_for_equipped_perk_deck()
-    end
-    return placeholder
+    hud._equipped_perk_deck_buff.icon = icon_for_equipped_perk_deck()
+    return hud._equipped_perk_deck_buff
 end
 
 local function localized_text(id, fallback)
@@ -1293,11 +1271,16 @@ function KH:draw()
     if s.enable_buffs then
         local buff_list = {}
 
-        -- Les sept emplacements fixes ouvrent la rangée dans l'ordre choisi.
-        -- Un filtre désactivé masque uniquement son emplacement correspondant.
+        -- Les indicateurs prioritaires ouvrent la rangée dans l'ordre choisi,
+        -- mais seuls le deck équipé et les buffs réellement actifs apparaissent.
         for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
             if self:is_buff_visible(buff_id) then
-                table.insert(buff_list, static_buff_entry(self, buff_id))
+                local buff = buff_id == "equipped_perk_deck"
+                    and equipped_perk_deck_entry(self)
+                    or self._buffs[buff_id]
+                if buff and buff.icon then
+                    table.insert(buff_list, buff)
+                end
             end
         end
 
@@ -1358,12 +1341,7 @@ function KH:draw()
                 if buff.duration and buff.duration > 0 and buff.start_t then
                     life = clamp(1 - ((t - buff.start_t) / buff.duration), 0, 1)
                 end
-                local buff_alpha
-                if buff.static_inactive then
-                    buff_alpha = alpha * 0.38
-                else
-                    buff_alpha = alpha * (0.4 + 0.6 * life)
-                end
+                local buff_alpha = alpha * (0.4 + 0.6 * life)
 
                 -- Version compacte du cadre tactique : les chevrons restent dans
                 -- les marges et convergent vers l'icône sans la recouvrir.
