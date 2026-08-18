@@ -5,61 +5,36 @@
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
 local KH = Kyosh1roHUD
+local MY_MOD_PATH = ModPath
+
+local score_ok, score_err = pcall(dofile, MY_MOD_PATH .. "ky_killscore.lua")
+if not score_ok then
+    log("[Kyosh1ro HUD] Erreur chargement du calcul des scores : " .. tostring(score_err))
+end
 
 local function HLOG(msg)
     pcall(function() log("[Kyosh1ro HUD][KillFeed] " .. tostring(msg)) end)
 end
 
-local NAMES = {
-    swat_heavy          = "Heavy SWAT",
-    shield              = "Shield",
-    sniper              = "Sniper",
-    taser               = "Taser",
-    cloaker             = "Cloaker",
-    medic               = "Medic",
-    tank                = "Bulldozer",
-    tank_hw             = "Headless Dozer",
-    spooc               = "Cloaker",
-    city_swat           = "GenSec Elite",
-    fbi                 = "FBI",
-    fbi_heavy_swat      = "FBI Heavy",
-    gangster            = "Gangster",
-    cop                 = "Cop",
-    security            = "Guard",
-    swat                = "SWAT",
-    marshal             = "Marshal",
-}
-
 Hooks:PostHook(CopDamage, "die", "KH_OnEnemyDie", function(self, attack_data)
     if not attack_data then return end
 
     local attacker = attack_data.attacker_unit
-    if not attacker or not alive(attacker) then return end
+    if not KH.IsLocalKillAttacker or not KH:IsLocalKillAttacker(attacker) then return end
 
-    -- Seuls les kills du joueur local comptent
-    local is_local = false
-    if attacker == managers.player:player_unit() then
-        is_local = true
-    elseif attacker:base() and attacker:base().thrower_unit
-        and attacker:base():thrower_unit() == managers.player:player_unit() then
-        is_local = true
-    end
+    local unit = self._unit
+    local unit_id = KH.GetKillUnitId and KH:GetKillUnitId(unit)
+    local civilian_ok, is_civilian = pcall(function()
+        return unit_id and CopDamage.is_civilian(unit_id) or false
+    end)
+    is_civilian = civilian_ok and is_civilian == true
+    local enemy_name = KH.GetKillDisplayName
+        and KH:GetKillDisplayName(unit_id, is_civilian)
+        or "Enemy"
 
-    if not is_local then return end
-
-    -- Récupérer le nom de l'ennemi
-    local enemy_name = "Enemy"
-
-    if self._unit and alive(self._unit) then
-        local ok, tweak = pcall(function()
-            return self._unit:base()._tweak_table
-        end)
-        if ok and tweak then
-            enemy_name = NAMES[tweak] or tweak:gsub("_", " "):gsub("^%l", string.upper)
-        end
-    end
-
-    if KH.add_kill then
+    if KH.RecordScoredKill then
+        KH:RecordScoredKill(unit, unit_id, enemy_name, is_civilian)
+    elseif KH.add_kill then
         KH:add_kill(enemy_name)
     end
 end)

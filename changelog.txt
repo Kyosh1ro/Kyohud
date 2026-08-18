@@ -1,3 +1,7 @@
+r42 (18.08.2026):
+- Chaque unité éliminée affiche désormais ses points à côté de son nom dans le killfeed, avec un multiplicateur adapté à la difficulté.
+- Les civils tués par le joueur ou ses projectiles apparaissent avec une pénalité, sans alimenter les séries de kills.
+
 r41 (18.08.2026):
 - Les buffs provenant des compétences d'équipier IA affichent désormais le marqueur `[AI]` au-dessus de leur icône.
 

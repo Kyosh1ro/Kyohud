@@ -34,7 +34,7 @@ KH._panel       = nil
 KH._buffs       = {}           -- { [id] = {id, icon, color, value_text?, stack_text?, start_t, duration, t_end?, is_debuff} }
 KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
-KH._kills       = {}           -- { {name, start_t, t_end?} }
+KH._kills       = {}           -- { {name, score?, score_text?, start_t, t_end?} }
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._update_acc  = 0
 
@@ -47,6 +47,16 @@ local AI_BUFF_LABEL     = "[AI]"
 local function killfeed_size(settings)
     local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
     return math.floor(clamp(value, 1, MAX_KILLFEED_SIZE))
+end
+
+local function format_kill_score(score)
+    if type(score) ~= "number" then return nil end
+
+    local rounded = math.floor(score)
+    local value = score == rounded
+        and tostring(rounded)
+        or string.format("%.1f", score)
+    return (score > 0 and "+" or "") .. value
 end
 local BANNER_FRAME_STYLE = {
     inset = 2,
@@ -1142,28 +1152,32 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
-function KH:add_kill(enemy_name)
+function KH:add_kill(enemy_name, score, contributes_to_combo)
     if not self.settings or not self.settings.enable_killfeed then return end
 
     local dur = self.settings.buff_duration or 5
     local t = now()
-    local combo = self._kill_combo or { count = 0 }
-    if combo.preview then
-        combo = { count = 0 }
+    if contributes_to_combo ~= false then
+        local combo = self._kill_combo or { count = 0 }
+        if combo.preview then
+            combo = { count = 0 }
+        end
+        if combo.last_t and (t - combo.last_t) <= KILL_COMBO_WINDOW then
+            combo.count = (combo.count or 0) + 1
+        else
+            combo.count = 1
+        end
+        combo.last_t = t
+        combo.updated_t = t
+        self._kill_combo = combo
     end
-    if combo.last_t and (t - combo.last_t) <= KILL_COMBO_WINDOW then
-        combo.count = (combo.count or 0) + 1
-    else
-        combo.count = 1
-    end
-    combo.last_t = t
-    combo.updated_t = t
-    self._kill_combo = combo
 
     local entry = {
-        name   = enemy_name or "Enemy",
-        start_t = t,
-        t_end  = t + dur,
+        name       = enemy_name or "Enemy",
+        score      = score,
+        score_text = format_kill_score(score),
+        start_t    = t,
+        t_end      = t + dur,
     }
     table.insert(self._kills, entry)
 
@@ -1699,20 +1713,47 @@ function KH:draw()
                 color = feed_color, alpha = item_alpha * 0.9, layer = 102,
             })
 
+            local text_x = item_x + 9
+            local text_w = item_w - 18
+            local score_text = kill.score_text
+            local score_w = score_text and clamp(item_w * 0.27, 38, 64) or 0
+            local text_gap = score_text and 5 or 0
+            local name_w = math.max(1, text_w - score_w - text_gap)
+
             self._panel:text({
                 text = kill.name,
                 font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
                 font_size = clamp(size * 0.42, 13, 18),
                 color = Color(0.86, 0.96, 1),
-                align = "center",
+                align = score_text and "right" or "center",
                 vertical = "center",
-                x = item_x + 9,
+                x = text_x,
                 y = feed_y,
-                w = item_w - 18,
+                w = name_w,
                 h = item_h,
                 layer = 102,
                 alpha = item_alpha,
             })
+
+            if score_text then
+                local score_color = kill.score and kill.score < 0
+                    and Color(1, 0.36, 0.3)
+                    or HUD_ACCENT_COLOR
+                self._panel:text({
+                    text = score_text,
+                    font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
+                    font_size = clamp(size * 0.42, 13, 18),
+                    color = score_color,
+                    align = "left",
+                    vertical = "center",
+                    x = text_x + name_w + text_gap,
+                    y = feed_y,
+                    w = score_w,
+                    h = item_h,
+                    layer = 103,
+                    alpha = item_alpha,
+                })
+            end
         end
     end
 end
@@ -1808,12 +1849,19 @@ function KH:DebugSimulate(n)
     end
 
     -- Simuler quelques kills
-    local demo_names = { "SWAT", "Shield", "Bulldozer" }
+    local demo_kills = {
+        { name = "SWAT", score = 1 },
+        { name = "Shield", score = 5 },
+        { name = "Bulldozer", score = 12 },
+    }
     local t_now = now()
     for i = 1, killfeed_size(self.settings) do
+        local demo = demo_kills[i]
         table.insert(self._kills, {
-            name    = demo_names[i],
-            start_t = t_now,
+            name       = demo.name,
+            score      = demo.score,
+            score_text = format_kill_score(demo.score),
+            start_t    = t_now,
             -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
         })
     end
