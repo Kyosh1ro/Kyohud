@@ -357,15 +357,24 @@ local function localized_text(id, fallback)
     return value
 end
 
+local COMBO_LABELS = {
+    [2]  = { id = "ky_hud_combo_2",  fallback = "CLEAN PAIR" },
+    [3]  = { id = "ky_hud_combo_3",  fallback = "EXCELLENT" },
+    [4]  = { id = "ky_hud_combo_4",  fallback = "OVERKILL" },
+    [5]  = { id = "ky_hud_combo_5",  fallback = "FRENZY" },
+    [6]  = { id = "ky_hud_combo_6",  fallback = "CARNAGE" },
+    [7]  = { id = "ky_hud_combo_7",  fallback = "MASSACRE" },
+    [8]  = { id = "ky_hud_combo_8",  fallback = "EXTERMINATION" },
+    [9]  = { id = "ky_hud_combo_9",  fallback = "APOCALYPSE" },
+    [10] = { id = "ky_hud_combo_10", fallback = "PERFECT HEIST" },
+}
+
 local function combo_label(count)
-    if count == 2 then
-        return localized_text("ky_hud_double_kill", "DOUBLE KILL")
-    elseif count == 3 then
-        return localized_text("ky_hud_triple_kill", "TRIPLE KILL")
-    elseif count == 4 then
-        return localized_text("ky_hud_quad_kill", "QUAD KILL")
+    local definition = COMBO_LABELS[count]
+    if definition then
+        return localized_text(definition.id, definition.fallback)
     end
-    return localized_text("ky_hud_multi_kill", "MULTI KILL") .. " x" .. tostring(count)
+    return localized_text("ky_hud_combo_chain", "KILL CHAIN") .. " x" .. tostring(count)
 end
 
 local function combo_color(count)
@@ -1949,7 +1958,7 @@ function KH:DebugSimulate(n)
         })
     end
     self._kill_combo = {
-        count = 2,
+        count = 11, -- Tester le format dynamique KILL CHAIN xN dans l'aperçu.
         last_t = t_now,
         updated_t = t_now,
         preview = true,
