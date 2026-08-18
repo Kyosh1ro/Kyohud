@@ -1,3 +1,6 @@
+r46 (19.08.2026):
+- Les séries de 2 à 10 kills possèdent désormais des annonces distinctes à l'identité Kyosh1ro HUD, puis affichent « KILL CHAIN xN » à partir du onzième kill.
+
 r45 (18.08.2026):
 - La palette Kyosh1ro reste désormais appliquée lorsque VanillaHUD+ est installé ; ses réglages de couleur ne remplacent plus ceux du mod.
 

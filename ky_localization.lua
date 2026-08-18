@@ -54,10 +54,16 @@ local function add_fallbacks(loc)
         ky_opt_debug_clear_desc     = "Remove active buffs and kills; the equipped perk deck remains visible",
 
         -- Bandeau des séries de kills
-        ky_hud_double_kill = "DOUBLE KILL",
-        ky_hud_triple_kill = "TRIPLE KILL",
-        ky_hud_quad_kill   = "QUAD KILL",
-        ky_hud_multi_kill  = "MULTI KILL",
+        ky_hud_combo_2     = "CLEAN PAIR",
+        ky_hud_combo_3     = "EXCELLENT",
+        ky_hud_combo_4     = "OVERKILL",
+        ky_hud_combo_5     = "FRENZY",
+        ky_hud_combo_6     = "CARNAGE",
+        ky_hud_combo_7     = "MASSACRE",
+        ky_hud_combo_8     = "EXTERMINATION",
+        ky_hud_combo_9     = "APOCALYPSE",
+        ky_hud_combo_10    = "PERFECT HEIST",
+        ky_hud_combo_chain = "KILL CHAIN",
 
         -- Sous-menu filtres
         ky_opt_buff_filter          = "Buff Filters",
