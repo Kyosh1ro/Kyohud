@@ -49,6 +49,25 @@ local function get_temp_duration(pm, upgrade)
     return (KH.settings and KH.settings.buff_duration) or 5
 end
 
+local function get_temp_value(pm, category, upgrade)
+    local ok1, value = pcall(function()
+        if pm.temporary_upgrade_value then
+            return pm:temporary_upgrade_value(category, upgrade, nil)
+        end
+    end)
+    if ok1 and tonumber(value) then return tonumber(value) end
+
+    -- Repli pour les versions où upgrade_value expose directement la
+    -- définition { valeur, durée } de l'upgrade temporaire.
+    local ok2, definition = pcall(function()
+        return pm:upgrade_value(category, upgrade, nil)
+    end)
+    if ok2 and type(definition) == "table" then
+        return tonumber(definition[1])
+    end
+    return ok2 and tonumber(definition) or nil
+end
+
 -- ═══════════════════════════════════════════════════
 -- Hook : Activation de buff temporaire
 -- ═══════════════════════════════════════════════════
@@ -66,8 +85,9 @@ local function on_temporary_upgrade_activated(pm, category, upgrade)
     end
 
     local dur = get_temp_duration(pm, upgrade)
+    local value = get_temp_value(pm, category, upgrade)
     if KH.handle_buff_event then
-        KH:handle_buff_event("activate", upgrade, { duration = dur }, "temporary")
+        KH:handle_buff_event("activate", upgrade, { duration = dur, value = value }, "temporary")
     elseif KH.add_buff then
         for _, buff_id in ipairs(targets) do
             KH:add_buff(buff_id, nil, dur)
