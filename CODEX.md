@@ -83,7 +83,16 @@ Les classes et textures PAYDAY 2 ne sont pas disponibles hors du moteur. Une val
 
 ## Discipline de merge
 
-Les branches de correction ou de fonctionnalité doivent partir de la cible à jour, de préférence `origin/main` après `git fetch`. Un `main` local en retard ne doit pas être fusionné dans une branche récente.
+La création d'une branche destinée à `main` suit obligatoirement cette séquence :
+
+```text
+git fetch origin --prune
+git switch -c <branche> origin/main
+git merge-base HEAD origin/main
+git rev-parse origin/main
+```
+
+Les deux dernières commandes doivent renvoyer le même commit avant toute modification. Si `git fetch` échoue ou si les commits diffèrent sur une branche nouvellement créée, le travail doit s'arrêter jusqu'à correction de la base. Un `main` local en retard ne doit jamais servir de base ni être fusionné dans une branche récente.
 
 En cas de conflit dans `ky_buffhud.lua`, comparer les trois versions — base commune, cible et branche — au lieu de choisir le fichier complet d'un seul côté. Après résolution, vérifier au minimum :
 

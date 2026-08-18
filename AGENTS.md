@@ -114,7 +114,9 @@ Une vérification statique ne remplace pas le test en jeu, car les classes et te
 - Travailler sur une branche dédiée par sujet : `fix/<sujet-court>` pour une correction et `feature/<sujet-court>` pour une nouvelle fonctionnalité.
 - Choisir le préfixe selon l'objectif principal de la branche. La documentation directement liée à une correction ou une fonctionnalité reste sur la même branche.
 - Faire `git status --short --branch` avant toute modification et préserver les changements locaux déjà présents.
-- Créer la branche depuis la branche cible réellement à jour. Après `git fetch`, préférer `origin/main` à un `main` local en retard ; ne jamais fusionner un ancien `main` local dans une branche de fonctionnalité.
+- Avant toute nouvelle branche destinée à `main`, exécuter `git fetch origin --prune`, puis créer directement la branche avec `git switch -c <branche> origin/main`. Ne pas utiliser le `main` local ni la branche courante comme base implicite.
+- Vérifier avant la première modification que `git merge-base HEAD origin/main` est égal à `git rev-parse origin/main`. Si la récupération distante échoue ou si cette égalité n'est pas vraie sur une branche nouvellement créée, arrêter et corriger la base avant d'éditer.
+- Ne jamais fusionner un ancien `main` local dans une branche de fonctionnalité.
 - Une fois les changements d'un sujet commités sur leur branche, ne pas réutiliser cette branche pour une reprise ou une correction ultérieure : créer une nouvelle branche dédiée depuis la branche cible à jour.
 - Lors d'un conflit, ne pas accepter tout `ky_buffhud.lua` depuis un seul côté. Comparer la base commune, la branche cible et la branche de travail, puis conserver ensemble les invariants des buffs horizontaux et du killfeed horizontal.
 - Après une résolution de conflit dans le rendu, confirmer que `compute_horizontal_positions`, `buff_position_x`, `buff_position_y`, `killfeed_size` et la rangée horizontale du killfeed sont toujours présents avant de committer.
