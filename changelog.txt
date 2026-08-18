@@ -1,3 +1,6 @@
+r45 (18.08.2026):
+- La palette Kyosh1ro reste désormais appliquée lorsque VanillaHUD+ est installé ; ses réglages de couleur ne remplacent plus ceux du mod.
+
 r44 (18.08.2026):
 - Le killfeed détecte désormais les éliminations du joueur local lorsqu'il rejoint une partie hébergée par un autre joueur.
 
