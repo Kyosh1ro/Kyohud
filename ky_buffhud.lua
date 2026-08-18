@@ -146,6 +146,35 @@ local function icon_for_buff(buff_id)
     return { texture = FALLBACK_TEXTURE }
 end
 
+local function icon_for_equipped_perk_deck()
+    local ok, specialization_id = pcall(function()
+        local skilltree = managers and managers.skilltree
+        local current = skilltree and skilltree:get_specialization_value("current_specialization")
+        return tonumber(current)
+    end)
+    if not ok or not specialization_id then
+        return icon_for_buff("equipped_perk_deck")
+    end
+
+    if KH._equipped_perk_deck_id == specialization_id and KH._equipped_perk_deck_icon then
+        return KH._equipped_perk_deck_icon
+    end
+
+    -- Cette API du jeu résout elle-même l'atlas correct, y compris pour les
+    -- decks DLC. Conserver l'icône générique du catalogue comme repli.
+    local icon_ok, texture, rect = pcall(function()
+        local skilltree_tweak = tweak_data and tweak_data.skilltree
+        return skilltree_tweak:get_specialization_icon_data(specialization_id)
+    end)
+    if not (icon_ok and texture and has_texture(texture)) then
+        return icon_for_buff("equipped_perk_deck")
+    end
+
+    KH._equipped_perk_deck_id = specialization_id
+    KH._equipped_perk_deck_icon = { texture = texture, rect = rect }
+    return KH._equipped_perk_deck_icon
+end
+
 local function color_from_catalog(value)
     if not value then return nil end
     if type(value) ~= "string" then return value end
@@ -201,6 +230,57 @@ function KH:is_buff_visible(buff_id)
     end
 
     return true
+end
+
+-- Ces indicateurs conservent toujours le même ordre au début de la rangée.
+-- Les buffs actifs réutilisent leur entrée normale ; sinon un emplacement
+-- atténué reste visible avec une valeur neutre.
+local STATIC_BUFF_SLOTS = {
+    "equipped_perk_deck",
+    "passive_health_regen",
+    "standard_armor_regeneration",
+    "armor_break_invulnerable_debuff",
+    "damage_increase",
+    "damage_reduction",
+    "melee_damage_increase",
+}
+
+local STATIC_BUFF_SLOT_SET = {}
+for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
+    STATIC_BUFF_SLOT_SET[buff_id] = true
+end
+
+local STATIC_BUFF_NEUTRAL_VALUES = {
+    passive_health_regen = "0.0%",
+    damage_increase = "+0%",
+    damage_reduction = "-0%",
+    melee_damage_increase = "x1",
+}
+
+local function static_buff_entry(hud, buff_id)
+    local active = hud._buffs[buff_id]
+    if active and active.icon then return active end
+
+    hud._static_buff_placeholders = hud._static_buff_placeholders or {}
+    local placeholder = hud._static_buff_placeholders[buff_id]
+    if not placeholder then
+        local is_debuff = buff_id == "armor_break_invulnerable_debuff"
+        placeholder = {
+            id = buff_id,
+            icon = icon_for_buff(buff_id),
+            color = color_for_buff(buff_id, is_debuff),
+            value_text = STATIC_BUFF_NEUTRAL_VALUES[buff_id],
+            is_debuff = is_debuff,
+            persistent = true,
+            static_inactive = buff_id ~= "equipped_perk_deck",
+        }
+        hud._static_buff_placeholders[buff_id] = placeholder
+    end
+
+    if buff_id == "equipped_perk_deck" then
+        placeholder.icon = icon_for_equipped_perk_deck()
+    end
+    return placeholder
 end
 
 local function localized_text(id, fallback)
@@ -1212,19 +1292,32 @@ function KH:draw()
     -- ── Dessiner les buffs ──
     if s.enable_buffs then
         local buff_list = {}
+
+        -- Les sept emplacements fixes ouvrent la rangée dans l'ordre choisi.
+        -- Un filtre désactivé masque uniquement son emplacement correspondant.
+        for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
+            if self:is_buff_visible(buff_id) then
+                table.insert(buff_list, static_buff_entry(self, buff_id))
+            end
+        end
+
+        local extra_buffs = {}
         for _, b in pairs(self._buffs) do
-            if b.icon and self:is_buff_visible(b.id) then
-                table.insert(buff_list, b)
+            if b.icon and not STATIC_BUFF_SLOT_SET[b.id] and self:is_buff_visible(b.id) then
+                table.insert(extra_buffs, b)
             end
         end
         -- Tri par ordre d'arrivée : les nouveaux buffs s'ajoutent à la suite
-        -- en bout de rangée au lieu de réordonner les icônes existantes
-        table.sort(buff_list, function(a, b)
+        -- des emplacements fixes, sans réordonner les icônes existantes.
+        table.sort(extra_buffs, function(a, b)
             local oa = a.order_t or a.start_t or 0
             local ob = b.order_t or b.start_t or 0
             if oa ~= ob then return oa < ob end
             return a.id < b.id
         end)
+        for _, buff in ipairs(extra_buffs) do
+            table.insert(buff_list, buff)
+        end
 
         local frame_pad_x = clamp(size * 0.26, 6, 14)
         local frame_pad_y = clamp(size * 0.1, 2, 5)
@@ -1265,7 +1358,12 @@ function KH:draw()
                 if buff.duration and buff.duration > 0 and buff.start_t then
                     life = clamp(1 - ((t - buff.start_t) / buff.duration), 0, 1)
                 end
-                local buff_alpha = alpha * (0.4 + 0.6 * life)
+                local buff_alpha
+                if buff.static_inactive then
+                    buff_alpha = alpha * 0.38
+                else
+                    buff_alpha = alpha * (0.4 + 0.6 * life)
+                end
 
                 -- Version compacte du cadre tactique : les chevrons restent dans
                 -- les marges et convergent vers l'icône sans la recouvrir.
@@ -1591,11 +1689,29 @@ function KH:DebugSimulate(n)
     self._debug_preview_active = true
     n = n or 8
 
-    local demo_buffs = {
+    local demo_static_buffs = {
+        { id = "passive_health_regen", value_text = "4.5%" },
+        { id = "standard_armor_regeneration" },
+        { id = "armor_break_invulnerable_debuff", is_debuff = true },
         { id = "damage_increase", value_text = "+35%" },
         { id = "damage_reduction", value_text = "-20%" },
         { id = "melee_damage_increase", value_text = "x1.75" },
-        { id = "passive_health_regen", value_text = "4.5%" },
+    }
+    local t_now = now()
+    for i, demo in ipairs(demo_static_buffs) do
+        self._buffs[demo.id] = {
+            id = demo.id,
+            icon = icon_for_buff(demo.id),
+            color = color_for_buff(demo.id, demo.is_debuff),
+            value_text = demo.value_text,
+            is_debuff = demo.is_debuff == true,
+            order_t = t_now + i * 0.001,
+            start_t = t_now,
+            persistent = true,
+        }
+    end
+
+    local demo_buffs = {
         { id = "total_dodge_chance", value_text = "45%" },
         { id = "lock_n_load", value_text = "+35%" },
         { id = "delayed_damage", value_text = "-125" },
@@ -1610,7 +1726,6 @@ function KH:DebugSimulate(n)
         local demo = demo_buffs[((i - 1) % #demo_buffs) + 1]
         local base = demo.id
         local icon = icon_for_buff(base)
-        local t_now = now()
         self._buffs["demo_" .. base .. "_" .. tostring(i)] = {
             id       = "demo_" .. base .. "_" .. tostring(i),
             icon     = icon,

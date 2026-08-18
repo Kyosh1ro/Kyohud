@@ -79,6 +79,7 @@ KH.BUFF_MAP = {
     messiah = { skill_id = "messiah", skills_new = { 5, 9 }, category = "fugitive", show_stack_count = true, default_show = true },
     frenzy = { skill_id = "frenzy", skills_new = { 5, 10 }, category = "fugitive", value_format = "percent", default_show = false },
 
+    equipped_perk_deck = { perks = { 0, 0 }, category = "perk", default_show = true },
     armor_break_invulnerable = { perks = { 6, 1 }, category = "perk", default_show = true },
     armorer = { perks = { 6, 0 }, category = "team", color = "team", default_show = true },
     crew_chief = { perks = { 2, 0 }, category = "team", color = "team", default_show = true },

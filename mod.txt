@@ -2,7 +2,7 @@
   "name": "Kyosh1ro HUD",
   "description": "Horizontal buff display and tactical kill feed. Works alongside VanillaHUD+.",
   "author": "Kyosh1ro",
-  "version": "37",
+  "version": "38",
   "blt_version": 2,
   "superblt_version": 1,
   "image": "mod.png",
