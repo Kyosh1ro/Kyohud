@@ -31,7 +31,7 @@ local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 -- État interne
 -- ═══════════════════════════════════════════════════
 KH._panel       = nil
-KH._buffs       = {}           -- { [id] = {id, icon, start_t, duration, t_end?, category} }
+KH._buffs       = {}           -- { [id] = {id, icon, color, start_t, duration, t_end?, is_debuff} }
 KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
 KH._kills       = {}           -- { {name, icon, start_t, t_end?} }
@@ -140,6 +140,36 @@ local function icon_for_buff(buff_id)
         return { texture = tex, rect = rect }
     end
     return { texture = FALLBACK_TEXTURE }
+end
+
+local function color_from_catalog(value)
+    if not value then return nil end
+    if type(value) ~= "string" then return value end
+
+    local definition = (KH.BUFF_COLORS and KH.BUFF_COLORS[value]) or value
+    local ok, color = pcall(function()
+        if type(definition) == "table" then
+            return Color(unpack(definition))
+        end
+        return Color(definition)
+    end)
+    return ok and color or nil
+end
+
+local function color_for_buff(buff_id, is_debuff)
+    if is_debuff then
+        local vhud_options = HUDListManager and HUDListManager.ListOptions
+        return (vhud_options and vhud_options.buff_icon_color_debuff_fix)
+            or color_from_catalog("debuff")
+            or Color.white
+    end
+
+    local vhud_map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
+    local vhud_entry = vhud_map and vhud_map[buff_id]
+    local catalog_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
+    return color_from_catalog(vhud_entry and vhud_entry.color)
+        or color_from_catalog(catalog_entry and catalog_entry.color)
+        or Color.white
 end
 
 -- ═══════════════════════════════════════════════════
@@ -433,7 +463,7 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter/retirer des buffs
 -- ═══════════════════════════════════════════════════
-function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent)
+function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, is_debuff)
     if not self.settings or not self.settings.enable_buffs then return end
 
     -- Résoudre le vrai buff_id depuis l'upgrade
@@ -458,6 +488,8 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent)
     self._buffs[resolved_id] = {
         id       = resolved_id,
         icon     = icon_data or icon_for_buff(resolved_id),
+        color    = color_for_buff(resolved_id, is_debuff),
+        is_debuff = is_debuff == true,
         order_t  = existing and existing.order_t or t,
         start_t  = t,
         duration = dur,
@@ -528,22 +560,31 @@ function KH:_refresh_source_target(buff_id)
     end
 
     local has_persistent_source = false
+    local persistent_sources_are_debuffs = true
     local max_remaining
+    local max_remaining_is_debuff = false
     for _, source in pairs(sources) do
         local remaining, timed = source_remaining(source)
         if timed then
-            if remaining > 0 and (not max_remaining or remaining > max_remaining) then
+            local source_is_debuff = source.is_debuff == true
+            if remaining > 0 and (not max_remaining
+                or remaining > max_remaining
+                or (remaining == max_remaining and max_remaining_is_debuff and not source_is_debuff)) then
                 max_remaining = remaining
+                max_remaining_is_debuff = source_is_debuff
             end
         else
             has_persistent_source = true
+            if not source.is_debuff then
+                persistent_sources_are_debuffs = false
+            end
         end
     end
 
     if has_persistent_source then
-        self:add_buff(buff_id, nil, nil, nil, true)
+        self:add_buff(buff_id, nil, nil, nil, true, persistent_sources_are_debuffs)
     elseif max_remaining and max_remaining > 0 then
-        self:add_buff(buff_id, nil, max_remaining)
+        self:add_buff(buff_id, nil, max_remaining, nil, false, max_remaining_is_debuff)
     else
         self:remove_buff(buff_id)
     end
@@ -596,6 +637,7 @@ function KH:handle_buff_event(event, source_id, data, source_type)
                 source.t = application_time()
             end
         end
+        source.is_debuff = string.match(tostring(source_id), "_debuff$") ~= nil
         self._buff_sources[buff_id][source_key] = source
         self:_refresh_source_target(buff_id)
     end
@@ -956,6 +998,7 @@ function KH:draw()
                 end
 
                 local bmp = self._panel:bitmap(params)
+                bmp:set_color(buff.color or Color.white)
                 bmp:set_alpha(buff_alpha)
 
                 -- Timer texte sous l'icône
@@ -1172,18 +1215,30 @@ function KH:DebugSimulate(n)
     n = n or 8
 
     local demo_buffs = {
-        "unseen_strike", "overkill", "berserker", "swan_song",
-        "inspire", "hostage_taker", "bullet_storm", "aggressive_reload_aced",
-        "armor_break_invulnerable", "grinder", "sicario_dodge", "second_wind",
+        { id = "damage_increase" },
+        { id = "damage_reduction" },
+        { id = "melee_damage_increase" },
+        { id = "passive_health_regen" },
+        { id = "total_dodge_chance" },
+        { id = "armorer" },
+        { id = "inspire_debuff" },
+        { id = "grinder", is_debuff = true },
+        { id = "overkill" },
+        { id = "unseen_strike" },
+        { id = "bullet_storm" },
+        { id = "second_wind" },
     }
 
     for i = 1, n do
-        local base = demo_buffs[((i - 1) % #demo_buffs) + 1]
+        local demo = demo_buffs[((i - 1) % #demo_buffs) + 1]
+        local base = demo.id
         local icon = icon_for_buff(base)
         local t_now = now()
         self._buffs["demo_" .. base .. "_" .. tostring(i)] = {
             id       = "demo_" .. base .. "_" .. tostring(i),
             icon     = icon,
+            color    = color_for_buff(base, demo.is_debuff),
+            is_debuff = demo.is_debuff == true,
             order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n le long de l'arc
             start_t  = t_now,
             -- Pas de t_end : les buffs de debug restent visibles jusqu'à DebugClear.

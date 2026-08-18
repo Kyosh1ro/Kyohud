@@ -4,7 +4,7 @@ end
 
 local KH = Kyosh1roHUD
 
-if KH.BUFF_CATEGORIES and KH.BUFF_MAP and KH.UPGRADE_TO_BUFF and KH.BUFF_SOURCE_TARGETS
+if KH.BUFF_CATEGORIES and KH.BUFF_COLORS and KH.BUFF_MAP and KH.UPGRADE_TO_BUFF and KH.BUFF_SOURCE_TARGETS
     and KH.BuildDefaultBuffToggles and KH.GetSortedBuffIdsForCategory and KH.GetBuffTargets then
     return
 end
@@ -23,11 +23,24 @@ KH.BUFF_CATEGORIES = {
     ai = "AI Skills",
 }
 
+-- Teintes par défaut reprises de VanillaHUD+. Les entrées de BUFF_MAP
+-- référencent ces rôles par leur nom afin que le catalogue ne dépende pas
+-- des objets Color du moteur au moment de son chargement.
+KH.BUFF_COLORS = {
+    debuff = "FF7575",
+    team = "75FF75",
+    damage_increase = { 1, 1, 0 },
+    damage_reduction = { 0, 1, 1 },
+    melee_damage_increase = { 1, 0, 1 },
+    passive_health_regen = { 0.1, 1, 0.1 },
+    total_dodge_chance = { 1, 0.5, 0 },
+}
+
 KH.BUFF_MAP = {
     aggressive_reload_aced = { skill_id = "speedy_reload", skills_new = { 1, 1 }, category = "mastermind", default_show = true },
     inspire = { skill_id = "inspire", skills_new = { 0, 9 }, category = "mastermind", default_show = true },
-    inspire_debuff = { skill_id = "inspire", skills_new = { 0, 9 }, category = "debuff", default_show = true },
-    inspire_revive_debuff = { skill_id = "inspire", skills_new = { 0, 9 }, category = "debuff", default_show = true },
+    inspire_debuff = { skill_id = "inspire", skills_new = { 0, 9 }, category = "debuff", color = "debuff", default_show = true },
+    inspire_revive_debuff = { skill_id = "inspire", skills_new = { 0, 9 }, category = "debuff", color = "debuff", default_show = true },
     combat_medic = { skill_id = "combat_medic", skills_new = { 0, 0 }, category = "mastermind", default_show = true },
     combat_medic_passive = { skill_id = "combat_medic", skills_new = { 0, 0 }, category = "mastermind", default_show = false },
     quick_fix = { skill_id = "tea_time", skills_new = { 1, 3 }, category = "mastermind", default_show = false },
@@ -35,15 +48,15 @@ KH.BUFF_MAP = {
     painkiller = { skill_id = "fast_learner", skills_new = { 0, 4 }, category = "mastermind", default_show = false },
     hostage_taker = { skill_id = "black_marketeer", skills_new = { 1, 5 }, category = "mastermind", default_show = false },
     partner_in_crime = { skill_id = "control_freak", skills_new = { 0, 6 }, category = "mastermind", default_show = false },
-    forced_friendship = { skill_id = "triathlete", skill_atlas = "skills", skills = { 0, 7 }, category = "team", default_show = true },
-    endurance = { skill_id = "triathlete", skills_new = { 0, 7 }, category = "team", default_show = false },
+    forced_friendship = { skill_id = "triathlete", skill_atlas = "skills", skills = { 0, 7 }, category = "team", color = "team", default_show = true },
+    endurance = { skill_id = "triathlete", skills_new = { 0, 7 }, category = "team", color = "team", default_show = false },
     ammo_efficiency = { skill_id = "single_shot_ammo_return", skills_new = { 0, 8 }, category = "mastermind", default_show = true },
 
     overkill = { skill_id = "overkill", skills_new = { 2, 0 }, category = "enforcer", default_show = false },
     bullet_storm = { skill_id = "ammo_reservoir", skills_new = { 2, 3 }, category = "enforcer", default_show = true },
     die_hard = { skill_id = "show_of_force", skills_new = { 2, 4 }, category = "enforcer", default_show = false },
     underdog = { skill_id = "underdog", skills_new = { 2, 1 }, category = "enforcer", default_show = false },
-    bullseye_debuff = { skill_id = "prison_wife", skills_new = { 2, 8 }, category = "debuff", default_show = true },
+    bullseye_debuff = { skill_id = "prison_wife", skills_new = { 2, 8 }, category = "debuff", color = "debuff", default_show = true },
     bulletproof = { perks = { 6, 2 }, category = "team", default_show = true },
 
     lock_n_load = { skill_id = "shock_and_awe", skills_new = { 3, 0 }, category = "technician", default_show = true },
@@ -65,8 +78,8 @@ KH.BUFF_MAP = {
     frenzy = { skill_id = "frenzy", skills_new = { 5, 10 }, category = "fugitive", default_show = false },
 
     armor_break_invulnerable = { perks = { 6, 1 }, category = "perk", default_show = true },
-    armorer = { perks = { 6, 0 }, category = "team", default_show = true },
-    crew_chief = { perks = { 2, 0 }, category = "team", default_show = true },
+    armorer = { perks = { 6, 0 }, category = "team", color = "team", default_show = true },
+    crew_chief = { perks = { 2, 0 }, category = "team", color = "team", default_show = true },
     muscle_regen = { perks = { 4, 1 }, category = "perk", default_show = false },
     grinder = { perks = { 4, 6 }, category = "perk", default_show = true },
     sicario_dodge = { perks = { 1, 0 }, texture_bundle_folder = "max", category = "perk", default_show = true },
@@ -88,13 +101,13 @@ KH.BUFF_MAP = {
     hostage_situation = { perks = { 0, 1 }, category = "perk", default_show = false },
     yakuza = { perks = { 2, 7 }, category = "perk", default_show = false },
 
-    anarchist_armor_recovery_debuff = { perks = { 0, 1 }, texture_bundle_folder = "opera", category = "debuff", default_show = true },
-    ammo_give_out_debuff = { perks = { 5, 5 }, category = "debuff", default_show = true },
-    armor_break_invulnerable_debuff = { perks = { 6, 1 }, category = "debuff", default_show = true },
-    sociopath_debuff = { perks = { 3, 5 }, category = "debuff", default_show = true },
-    life_drain_debuff = { perks = { 7, 4 }, category = "debuff", default_show = true },
-    medical_supplies_debuff = { perks = { 4, 5 }, category = "debuff", default_show = true },
-    damage_control_debuff = { perks = { 2, 0 }, texture_bundle_folder = "myh", category = "debuff", default_show = false },
+    anarchist_armor_recovery_debuff = { perks = { 0, 1 }, texture_bundle_folder = "opera", category = "debuff", color = "debuff", default_show = true },
+    ammo_give_out_debuff = { perks = { 5, 5 }, category = "debuff", color = "debuff", default_show = true },
+    armor_break_invulnerable_debuff = { perks = { 6, 1 }, category = "debuff", color = "debuff", default_show = true },
+    sociopath_debuff = { perks = { 3, 5 }, category = "debuff", color = "debuff", default_show = true },
+    life_drain_debuff = { perks = { 7, 4 }, category = "debuff", color = "debuff", default_show = true },
+    medical_supplies_debuff = { perks = { 4, 5 }, category = "debuff", color = "debuff", default_show = true },
+    damage_control_debuff = { perks = { 2, 0 }, texture_bundle_folder = "myh", category = "debuff", color = "debuff", default_show = false },
 
     anarchist_armor_regeneration = { perks = { 0, 0 }, texture_bundle_folder = "opera", category = "player_action", default_show = true },
     standard_armor_regeneration = { perks = { 6, 0 }, category = "player_action", default_show = true },
@@ -104,17 +117,17 @@ KH.BUFF_MAP = {
     interact = { texture = "guis/textures/pd2/skilltree/drillgui_icon_faster", category = "player_action", default_show = true },
 
     invulnerable_buff = { hud_tweak = "csb_melee", category = "gage", default_show = true },
-    life_steal_debuff = { hud_tweak = "csb_lifesteal", category = "gage", default_show = true },
+    life_steal_debuff = { hud_tweak = "csb_lifesteal", category = "gage", color = "debuff", default_show = true },
 
-    crew_inspire_debuff = { hud_tweak = "ability_1", category = "ai", default_show = true },
+    crew_inspire_debuff = { hud_tweak = "ability_1", category = "ai", color = "debuff", default_show = true },
     crew_throwable_regen = { hud_tweak = "skill_7", category = "ai", default_show = true },
     crew_health_regen = { hud_tweak = "skill_5", category = "ai", default_show = true },
 
-    damage_increase = { skill_id = "prison_wife", skills_new = { 2, 8 }, category = "fugitive", default_show = true },
-    damage_reduction = { skill_id = "disguise", skills_new = { 5, 2 }, category = "fugitive", default_show = true },
-    melee_damage_increase = { skill_id = "hidden_blade", skills_new = { 4, 3 }, category = "fugitive", default_show = true },
-    passive_health_regen = { skills_new = { 1, 11 }, category = "mastermind", default_show = true },
-    total_dodge_chance = { skills_new = { 1, 12 }, category = "ghost", default_show = true },
+    damage_increase = { skill_id = "prison_wife", skills_new = { 2, 8 }, category = "fugitive", color = "damage_increase", default_show = true },
+    damage_reduction = { skill_id = "disguise", skills_new = { 5, 2 }, category = "fugitive", color = "damage_reduction", default_show = true },
+    melee_damage_increase = { skill_id = "hidden_blade", skills_new = { 4, 3 }, category = "fugitive", color = "melee_damage_increase", default_show = true },
+    passive_health_regen = { skills_new = { 1, 11 }, category = "mastermind", color = "passive_health_regen", default_show = true },
+    total_dodge_chance = { skills_new = { 1, 12 }, category = "ghost", color = "total_dodge_chance", default_show = true },
 }
 
 KH.UPGRADE_TO_BUFF = {
