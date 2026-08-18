@@ -146,13 +146,26 @@ local function icon_for_buff(buff_id)
     return { texture = FALLBACK_TEXTURE }
 end
 
-local function icon_for_equipped_perk_deck()
-    local ok, specialization_id = pcall(function()
+local function current_perk_deck_ids()
+    local ok, specialization_id, base_specialization_id = pcall(function()
         local skilltree = managers and managers.skilltree
         local current = skilltree and skilltree:get_specialization_value("current_specialization")
-        return tonumber(current)
+        current = tonumber(current)
+        if not current then return nil, nil end
+
+        local skilltree_tweak = tweak_data and tweak_data.skilltree
+        local specialization = skilltree_tweak
+            and skilltree_tweak.specializations
+            and skilltree_tweak.specializations[current]
+        return current, tonumber(specialization and specialization.based_on) or current
     end)
-    if not ok or not specialization_id then
+    if not ok then return nil, nil end
+    return specialization_id, base_specialization_id
+end
+
+local function icon_for_equipped_perk_deck()
+    local specialization_id = current_perk_deck_ids()
+    if not specialization_id then
         return icon_for_buff("equipped_perk_deck")
     end
 
@@ -259,6 +272,24 @@ local function equipped_perk_deck_entry(hud)
     end
     hud._equipped_perk_deck_buff.icon = icon_for_equipped_perk_deck()
     return hud._equipped_perk_deck_buff
+end
+
+local function active_equipped_perk_buff(hud)
+    local _, base_specialization_id = current_perk_deck_ids()
+    local candidates = base_specialization_id
+        and KH.PERK_DECK_BUFFS
+        and KH.PERK_DECK_BUFFS[base_specialization_id]
+
+    for _, buff_id in ipairs(candidates or {}) do
+        local buff = hud._buffs[buff_id]
+        local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
+        if buff and buff.icon and definition and definition.category == "perk"
+                and hud:is_buff_visible(buff_id) then
+            return buff, buff_id
+        end
+    end
+
+    return nil, nil
 end
 
 local function localized_text(id, fallback)
@@ -1270,14 +1301,20 @@ function KH:draw()
     -- ── Dessiner les buffs ──
     if s.enable_buffs then
         local buff_list = {}
+        local promoted_perk_buff_id
 
         -- Les indicateurs prioritaires ouvrent la rangée dans l'ordre choisi,
         -- mais seuls le deck équipé et les buffs réellement actifs apparaissent.
+        -- Un buff actif associé au deck remplace son placeholder en position 1.
         for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
             if self:is_buff_visible(buff_id) then
-                local buff = buff_id == "equipped_perk_deck"
-                    and equipped_perk_deck_entry(self)
-                    or self._buffs[buff_id]
+                local buff
+                if buff_id == "equipped_perk_deck" then
+                    buff, promoted_perk_buff_id = active_equipped_perk_buff(self)
+                    buff = buff or equipped_perk_deck_entry(self)
+                else
+                    buff = self._buffs[buff_id]
+                end
                 if buff and buff.icon then
                     table.insert(buff_list, buff)
                 end
@@ -1286,7 +1323,8 @@ function KH:draw()
 
         local extra_buffs = {}
         for _, b in pairs(self._buffs) do
-            if b.icon and not STATIC_BUFF_SLOT_SET[b.id] and self:is_buff_visible(b.id) then
+            if b.icon and b.id ~= promoted_perk_buff_id
+                    and not STATIC_BUFF_SLOT_SET[b.id] and self:is_buff_visible(b.id) then
                 table.insert(extra_buffs, b)
             end
         end
@@ -1687,6 +1725,26 @@ function KH:DebugSimulate(n)
             start_t = t_now,
             persistent = true,
         }
+    end
+
+    -- Si le deck équipé possède un buff de deck activé dans les options, la
+    -- simulation l'active afin de vérifier le remplacement de la position 1.
+    local _, base_specialization_id = current_perk_deck_ids()
+    local perk_candidates = base_specialization_id
+        and KH.PERK_DECK_BUFFS
+        and KH.PERK_DECK_BUFFS[base_specialization_id]
+    for _, buff_id in ipairs(perk_candidates or {}) do
+        if self:is_buff_visible(buff_id) then
+            self._buffs[buff_id] = {
+                id = buff_id,
+                icon = icon_for_buff(buff_id),
+                color = color_for_buff(buff_id, false),
+                order_t = t_now + 0.0005,
+                start_t = t_now,
+                persistent = true,
+            }
+            break
+        end
     end
 
     local demo_buffs = {

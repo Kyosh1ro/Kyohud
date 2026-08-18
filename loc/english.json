@@ -166,7 +166,7 @@
   "ky_opt_buff_frenzy_desc": "Toggle Frenzy buff",
 
   "ky_opt_buff_equipped_perk_deck": "Equipped Perk Deck",
-  "ky_opt_buff_equipped_perk_deck_desc": "Show the equipped perk deck in the first prioritized buff slot",
+  "ky_opt_buff_equipped_perk_deck_desc": "Show the equipped deck first, replaced by its perk-deck buff while active",
   "ky_opt_buff_armor_break_invulnerable": "Armor Break Invulnerability",
   "ky_opt_buff_armor_break_invulnerable_desc": "Toggle Armorer invulnerability buff",
   "ky_opt_buff_armorer": "Armorer (Team)",
