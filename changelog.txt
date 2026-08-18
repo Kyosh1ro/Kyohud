@@ -1,3 +1,7 @@
+r40 (18.08.2026):
+- Le deck équipé conserve la première position comme placeholder et cède sa place à son buff de perk deck lorsqu'un effet associé devient actif.
+- La corrélation tient compte du deck sélectionné, des decks personnalisés basés sur un deck existant et des filtres de la catégorie « Buffs Perk Decks ».
+
 r39 (18.08.2026):
 - Les indicateurs prioritaires de régénération, cooldown et dégâts ne s'affichent plus lorsqu'ils sont inactifs ; leur ordre reste fixe lorsqu'ils apparaissent.
 - Le deck d'atouts équipé reste affiché en première position et les autres buffs actifs continuent de s'ajouter à droite.

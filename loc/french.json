@@ -166,7 +166,7 @@
   "ky_opt_buff_frenzy_desc": "Activer/désactiver le buff Frénésie",
 
   "ky_opt_buff_equipped_perk_deck": "Deck d'atouts équipé",
-  "ky_opt_buff_equipped_perk_deck_desc": "Afficher le deck d'atouts équipé dans le premier emplacement prioritaire",
+  "ky_opt_buff_equipped_perk_deck_desc": "Afficher le deck équipé en première position, remplacé par son buff de deck lorsqu'il est actif",
   "ky_opt_buff_armor_break_invulnerable": "Invulnérabilité bris d'armure",
   "ky_opt_buff_armor_break_invulnerable_desc": "Activer/désactiver le buff d'invulnérabilité Armorer",
   "ky_opt_buff_armorer": "Armorer (Équipe)",

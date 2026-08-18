@@ -4,7 +4,8 @@ end
 
 local KH = Kyosh1roHUD
 
-if KH.BUFF_CATEGORIES and KH.BUFF_COLORS and KH.BUFF_MAP and KH.UPGRADE_TO_BUFF and KH.BUFF_SOURCE_TARGETS
+if KH.BUFF_CATEGORIES and KH.BUFF_COLORS and KH.BUFF_MAP and KH.PERK_DECK_BUFFS
+    and KH.UPGRADE_TO_BUFF and KH.BUFF_SOURCE_TARGETS
     and KH.BuildDefaultBuffToggles and KH.GetSortedBuffIdsForCategory and KH.GetBuffTargets then
     return
 end
@@ -131,6 +132,51 @@ KH.BUFF_MAP = {
     melee_damage_increase = { skill_id = "hidden_blade", skills_new = { 4, 3 }, category = "fugitive", color = "melee_damage_increase", value_format = "melee_damage_increase", default_show = true },
     passive_health_regen = { skills_new = { 1, 11 }, category = "mastermind", color = "passive_health_regen", value_format = "passive_health_regen", default_show = true },
     total_dodge_chance = { skills_new = { 1, 12 }, category = "ghost", color = "total_dodge_chance", value_format = "total_dodge_chance", default_show = true },
+}
+
+-- Buffs du menu « Perk Decks » pouvant remplacer l'icône du deck équipé en
+-- première position. Les clés suivent l'ordre des spécialisations du jeu.
+-- Copycat peut reproduire plusieurs decks : ses effets natifs sont prioritaires,
+-- puis tous les effets de deck que le HUD sait détecter sont acceptés.
+KH.PERK_DECK_BUFFS = {
+    [1] = { "hostage_situation" }, -- Crew Chief
+    [2] = { "muscle_regen" }, -- Muscle
+    [3] = { "armor_break_invulnerable" }, -- Armorer
+    [8] = { "close_contact", "tooth_and_claw" }, -- Infiltrator
+    [9] = { "overdog", "melee_stack_damage" }, -- Sociopath
+    [11] = { "grinder" }, -- Grinder
+    [12] = { "yakuza" }, -- Yakuza
+    [14] = { "maniac" }, -- Maniac
+    [16] = { "biker" }, -- Biker
+    [17] = { "chico_injector" }, -- Kingpin
+    [18] = { "smoke_screen_grenade", "sicario_dodge" }, -- Sicario
+    [19] = { "delayed_damage" }, -- Stoic
+    [20] = { "tag_team" }, -- Tag Team
+    [21] = { "pocket_ecm_jammer", "pocket_ecm_kill_dodge" }, -- Hacker
+    [22] = { "copr_ability" }, -- Leech
+    [23] = { -- Copycat
+        "copycat_health_invul",
+        "copycat_health_shot",
+        "hostage_situation",
+        "muscle_regen",
+        "armor_break_invulnerable",
+        "close_contact",
+        "tooth_and_claw",
+        "overdog",
+        "melee_stack_damage",
+        "grinder",
+        "yakuza",
+        "maniac",
+        "biker",
+        "chico_injector",
+        "smoke_screen_grenade",
+        "sicario_dodge",
+        "delayed_damage",
+        "tag_team",
+        "pocket_ecm_jammer",
+        "pocket_ecm_kill_dodge",
+        "copr_ability",
+    },
 }
 
 KH.UPGRADE_TO_BUFF = {
