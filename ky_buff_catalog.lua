@@ -23,17 +23,17 @@ KH.BUFF_CATEGORIES = {
     ai = "AI Skills",
 }
 
--- Teintes par défaut reprises de VanillaHUD+. Les entrées de BUFF_MAP
+-- Palette néon tactique propre à Kyosh1ro HUD. Les entrées de BUFF_MAP
 -- référencent ces rôles par leur nom afin que le catalogue ne dépende pas
 -- des objets Color du moteur au moment de son chargement.
 KH.BUFF_COLORS = {
-    debuff = "FF7575",
-    team = "75FF75",
-    damage_increase = { 1, 1, 0 },
-    damage_reduction = { 0, 1, 1 },
-    melee_damage_increase = { 1, 0, 1 },
-    passive_health_regen = { 0.1, 1, 0.1 },
-    total_dodge_chance = { 1, 0.5, 0 },
+    debuff = "FF5F78",
+    team = "52D6FF",
+    damage_increase = "FF8A3D",
+    damage_reduction = "6C8CFF",
+    melee_damage_increase = "D66BFF",
+    passive_health_regen = "4ADE9B",
+    total_dodge_chance = "F5D547",
 }
 
 KH.BUFF_MAP = {
