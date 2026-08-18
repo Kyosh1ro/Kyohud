@@ -257,19 +257,16 @@ local function color_from_catalog(value)
     return ok and color or nil
 end
 
+-- VanillaHUD+ peut fournir les icônes et les évènements, jamais la teinte.
+-- La palette visible reste exclusivement celle du catalogue Kyosh1ro HUD.
 local function color_for_buff(buff_id, is_debuff)
     if is_debuff then
-        local vhud_options = HUDListManager and HUDListManager.ListOptions
-        return (vhud_options and vhud_options.buff_icon_color_debuff_fix)
-            or color_from_catalog("debuff")
+        return color_from_catalog("debuff")
             or Color.white
     end
 
-    local vhud_map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
-    local vhud_entry = vhud_map and vhud_map[buff_id]
     local catalog_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
-    return color_from_catalog(vhud_entry and vhud_entry.color)
-        or color_from_catalog(catalog_entry and catalog_entry.color)
+    return color_from_catalog(catalog_entry and catalog_entry.color)
         or Color.white
 end
 
