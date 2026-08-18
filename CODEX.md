@@ -1,255 +1,107 @@
 # Kyosh1ro HUD — dossier technique
 
-État observé le 16 août 2026 sur la branche `fix/hud-arc-workflow`.
+État fonctionnel attendu au 17 août 2026.
 
 ## Résumé
 
-Kyosh1ro HUD est un mod PAYDAY 2 autonome chargé par SuperBLT. Il poursuit deux objectifs :
+Kyosh1ro HUD est un mod PAYDAY 2 autonome chargé par SuperBLT. Il affiche :
 
-- afficher les buffs actifs et leur temps restant sur un arc autour du réticule ;
-- afficher les éliminations du joueur local sur un second arc.
+- les buffs actifs et leur temps restant dans une rangée horizontale configurable ;
+- les derniers kills du joueur dans une rangée tactique horizontale sous le viseur ;
+- un bandeau temporaire pour les séries de kills.
 
-Le projet reprend des identifiants et conventions d'icônes de VanillaHUD+, mais il ne dépend pas de VanillaHUD+ à l'exécution. Son implémentation est volontairement beaucoup plus petite : un catalogue partagé, quelques hooks du jeu et un rendu HUD dédié.
-
-Le catalogue et les menus sont aujourd'hui plus complets que la couche de détection. C'est la principale différence entre ce que le mod sait présenter et ce qu'il sait réellement observer en partie.
-
-## Évolution du projet
-
-L'historique Git montre les étapes suivantes :
-
-1. Création du prototype avec affichage des buffs et du killfeed autour du viseur.
-2. Adoption des atlas et définitions d'icônes inspirés de VanillaHUD+.
-3. Ajout des filtres par catégorie et par buff.
-4. Plusieurs itérations sur les menus SuperBLT, notamment après des crashs de `CoreMenuItemToggle` et des problèmes de sous-menus multiples.
-5. Extraction du catalogue dans `ky_buff_catalog.lua` afin qu'il soit chargé avant les options et partagé par tous les modules.
-6. Correction de la priorité des langues : anglais chargé comme base, puis français par-dessus quand il est demandé.
-7. Séparation du killfeed dans un hook `CopDamage`, car cette classe n'existe pas encore dans le contexte de chargement de `PlayerManager`.
-8. Travail actuel sur l'ordre d'arrivée et l'espacement séquentiel des icônes le long de l'arc.
-
-Le dépôt contient 15 commits entre le prototype initial d'avril 2026 et la dernière révision de juillet 2026.
+Le mod reprend des identifiants et conventions d'icônes de VanillaHUD+, sans dépendre de VanillaHUD+ à l'exécution.
 
 ## Architecture effective
 
-Le mod possède deux couches distinctes.
-
 ### Observation du jeu
 
-- `ky_hooks.lua` observe les upgrades temporaires du joueur.
-- `ky_killfeed.lua` observe la mort des ennemis.
-- Ces modules convertissent les données internes de PAYDAY 2 en appels simples vers `KH:add_buff`, `KH:remove_buff` et `KH:add_kill`.
+- `ky_hooks.lua` observe les upgrades temporaires et d'autres sources de buffs prises en charge.
+- `ky_playerdamage.lua` observe les évènements liés aux dégâts du joueur quand ils alimentent les buffs.
+- `ky_killfeed.lua` observe `CopDamage:die` et attribue les kills directs ou les projectiles au joueur local.
+- Ces modules appellent `KH:add_buff`, `KH:remove_buff` et `KH:add_kill`.
 
-### Présentation
+### Présentation et configuration
 
-- `ky_buff_catalog.lua` décrit les buffs connus et leurs icônes.
-- `ky_buffhud.lua` conserve l'état actif et dessine les deux arcs.
-- `ky_options.lua` gère les filtres et paramètres persistants.
-- `ky_localization.lua` et `loc/` fournissent les textes visibles.
+- `ky_buff_catalog.lua` est la source de vérité des buffs, catégories, icônes et correspondances.
+- `ky_buffhud.lua` conserve l'état actif et dessine les buffs, le killfeed et le bandeau de série.
+- `ky_options.lua` gère les valeurs par défaut, la persistance et les menus.
+- `ky_localization.lua` et `loc/` fournissent les fallbacks et les traductions.
 
-La table globale `Kyosh1roHUD`, généralement nommée `KH` localement, relie ces modules. Il n'existe pas encore de bus d'évènements ou de modèle intermédiaire séparé.
+Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée en `KH`.
 
-## Inventaire actuel
+## Cycle de vie des buffs
 
-Le catalogue contient 83 définitions réparties ainsi :
-
-| Catégorie | Nombre |
-| --- | ---: |
-| AI | 3 |
-| Debuffs | 10 |
-| Enforcer | 5 |
-| Fugitive | 13 |
-| Gage | 2 |
-| Ghost | 5 |
-| Mastermind | 13 |
-| Perk Decks | 21 |
-| Player Actions | 6 |
-| Team Buffs | 4 |
-| Technician | 1 |
-
-Parmi ces 83 entrées :
-
-- 61 sont visibles par défaut ;
-- 22 sont masquées par défaut ;
-- 36 correspondances explicites upgrade → buff sont déclarées ;
-- toutes les cibles de ces correspondances existent dans `KH.BUFF_MAP` ;
-- toutes les clés de buff attendues existent dans `loc/english.json` et `loc/french.json`.
-
-Le nombre de correspondances n'est pas le nombre exact de buffs détectables : un upgrade dont l'identifiant correspond déjà à celui du catalogue n'a pas besoin de correspondance explicite.
-
-## Couverture réelle des buffs
-
-La détection actuelle repose uniquement sur deux fonctions de `PlayerManager` :
+Le flux principal est :
 
 ```text
-activate_temporary_upgrade
-deactivate_temporary_upgrade
-```
-
-Le flux actuel est :
-
-```text
-upgrade temporaire PAYDAY 2
-    -> résolution par KH.UPGRADE_TO_BUFF
-    -> vérification dans KH.BUFF_MAP
+évènement PAYDAY 2
+    -> résolution de l'identifiant du buff
     -> KH:add_buff / KH:remove_buff
     -> KH._buffs
-    -> rendu circulaire
+    -> rangée horizontale
 ```
 
-Cette approche couvre correctement les effets passant par la catégorie `temporary`, mais pas nécessairement :
+`KH:add_buff` indexe les entrées par identifiant. Une nouvelle activation du même buff rafraîchit son timer sans créer de doublon. `order_t` conserve sa position relative lors du rafraîchissement.
 
-- les buffs permanents ou calculés à partir d'une valeur ;
-- les buffs à piles ;
-- les effets avec progression ;
-- les actions du joueur comme recharger, interagir ou charger une attaque ;
-- certains effets d'équipe ;
-- certains effets et cooldowns de perk decks ;
-- les buffs produits par d'autres classes ou systèmes du jeu.
+## Rendu des buffs
 
-Certaines entrées peuvent donc être proposées dans les filtres sans jamais être alimentées par les hooks actuels.
-
-VanillaHUD+ résout ce problème avec un `GameInfoManager` qui agrège plusieurs sources du jeu. Son HUD écoute des évènements `buff` et `player_action`, dont l'activation, la désactivation, la durée, la progression, les piles et les valeurs. Kyosh1ro HUD n'a importé que les informations de présentation nécessaires, pas toute cette infrastructure de détection.
-
-VanillaHUD+ doit rester une référence fonctionnelle, pas une dépendance obligatoire. Une future extension peut reprendre le principe d'une couche d'observation unifiée sans importer toute sa complexité.
-
-## Durée et cycle de vie d'un buff
-
-Après l'activation d'un upgrade temporaire, `ky_hooks.lua` recherche sa durée dans cet ordre :
-
-1. temps restant calculé depuis `_temporary_upgrades.temporary[upgrade].expire_time` ;
-2. deuxième valeur renvoyée par `upgrade_value("temporary", upgrade, nil)` ;
-3. réglage utilisateur `buff_duration` ;
-4. valeur de repli de 5 secondes.
-
-`KH:add_buff` indexe les entrées par identifiant. Une nouvelle activation du même buff remplace donc son timer au lieu de créer un doublon.
-
-Dans le travail actuel, `order_t` mémorise la première arrivée du buff. Un rafraîchissement renouvelle `start_t`, `duration` et `t_end`, tout en conservant sa position relative dans l'arc.
-
-## Rendu circulaire
-
-Le panneau `kyosh1ro_buff_panel` est attaché en priorité au panneau `PlayerBase.PLAYER_INFO_HUD_PD2`. Le centre géométrique de ce panneau sert de centre au cercle.
-
-Pour chaque angle `a` :
+La position de référence est exprimée en pourcentage du panneau :
 
 ```text
-x = centre_x + cos(a) * rayon
-y = centre_y - sin(a) * rayon
+x = largeur_panneau * buff_position_x / 100
+y = hauteur_panneau * buff_position_y / 100
 ```
 
-L'axe Y des interfaces étant orienté vers le bas, le sinus est soustrait.
+Les valeurs par défaut `50` et `85` placent le centre de la rangée en bas au centre. Les buffs sont triés par ordre d'arrivée, placés de gauche à droite et recentrés quand une entrée expire. Le calcul resserre l'espacement si nécessaire afin de conserver toute la rangée dans le panneau.
 
-### Arc des buffs
+Les anciens réglages `angle_start` et `angle_end` ne pilotent plus le rendu. Une résolution de conflit ne doit jamais réintroduire le calcul circulaire à leur place.
 
-- angle de départ par défaut : 315° ;
-- angle de fin par défaut : 90° ;
-- rayon par défaut : 250 px ;
-- taille d'icône par défaut : 32 px ;
-- direction : angles croissants en traversant 360°/0°.
+## Rendu du killfeed
 
-Le premier buff est placé à l'angle de départ. Les suivants avancent selon un pas angulaire dérivé de la taille de l'icône, d'une marge et du rayon.
+`KH:add_kill` conserve de 1 à 3 entrées selon `killfeed_size`. Le rendu les place sur une seule rangée :
 
-Le travail en cours apporte trois propriétés importantes :
+- le kill le plus ancien visible à gauche ;
+- le kill le plus récent à droite ;
+- largeur des cartes et espacement adaptés à la largeur du panneau ;
+- bandeau de série centré au-dessus de la rangée ;
+- `circle_radius` conservé comme décalage vertical historique du bloc.
 
-- tri par ordre d'arrivée au lieu de l'identifiant alphabétique ;
-- marge suffisante pour limiter le chevauchement des icônes et timers ;
-- compression du pas lorsque tous les éléments ne tiennent pas sur l'arc, sans masquer les derniers.
-
-Lorsqu'un buff disparaît, les suivants peuvent se rapprocher du début de l'arc. Lorsque les angles de début et de fin sont identiques, l'étendue vaut actuellement zéro et toutes les icônes risquent de se superposer.
-
-### Arc du killfeed
-
-Le killfeed utilise actuellement :
-
-- un arc fixe de 250° à 290° ;
-- un rayon extérieur égal à `circle_radius + icon_size + 20` ;
-- des icônes à 80 % de la taille des buffs ;
-- le même réglage de durée que les buffs.
-
-## Coût du rendu
-
-`HUDManager:update` appelle le rendu environ toutes les 0,05 seconde, soit 20 fois par seconde. À chaque rendu :
-
-1. les buffs et kills expirés sont purgés ;
-2. le panneau entier est vidé ;
-3. tous les bitmaps et textes encore visibles sont recréés.
-
-Cette stratégie est simple et probablement suffisante avec peu d'éléments. Elle génère cependant davantage d'allocations qu'un système conservant chaque élément graphique et mettant seulement à jour sa position, son texte et son alpha.
-
-Les logs détaillés ne doivent pas rester actifs à chaque rendu. Les traces temporaires actuelles ne se déclenchent que lorsque le nombre de buffs change, mais doivent être retirées après validation du problème d'arc.
-
-## Killfeed : couverture et limites
-
-`ky_killfeed.lua` accepte actuellement :
-
-- un attaquant égal à l'unité du joueur local ;
-- un attaquant possédant un `thrower_unit` égal au joueur local.
-
-Cela couvre les armes directes et certains objets lancés. Les kills indirects provenant de dégâts persistants, d'une sentry, d'un joker ou d'autres unités possédées peuvent ne pas être attribués au joueur avec cette logique.
-
-Le nom affiché provient de `_tweak_table`, avec une petite table de noms lisibles. Malgré ces types différents, toutes les entrées de `ENEMY_ICON_MAP` pointent actuellement vers la même icône `hud_icons:mugshot_normal`.
-
-## Compatibilité avec les autres HUD
-
-Le mod crée un panneau séparé au-dessus du HUD avec un layer élevé. Il n'écrase pas directement le rendu de VanillaHUD+, ce qui favorise leur coexistence.
-
-Un risque subsiste : le centre utilisé est celui du panneau `PLAYER_INFO_HUD_PD2`, pas une position de réticule explicitement lue depuis le jeu. Un autre HUD qui redimensionne, déplace ou met à l'échelle ce panneau pourrait décaler l'arc par rapport au véritable réticule.
-
-Les textures sont validées avec `DB:has`. Une texture absente, notamment pour un DLC non disponible, doit continuer à utiliser `guis/textures/pd2/hud_timer` comme repli.
+Les kills partagent actuellement le réglage `buff_duration` pour leur durée d'affichage.
 
 ## Menus et persistance
 
-La construction du menu suit le cycle SuperBLT attendu :
+Les paramètres sont enregistrés dans `SavePath/kyosh1ro_hud_settings.json`. Toute nouvelle option doit être ajoutée ensemble aux valeurs par défaut, au chargement, au callback, au menu, aux fallbacks et aux deux fichiers de langue.
 
-1. `MenuManagerSetupCustomMenus` initialise le menu principal ;
-2. `MenuManagerPopulateCustomMenus` ajoute ses contrôles ;
-3. `MenuManagerBuildCustomMenus` construit et rattache le menu.
+Les tests explicites `value ~= nil` sont nécessaires pour conserver les booléens sauvegardés à `false`. Le menu principal est construit avec `MenuHelper:BuildMenu` ; les sous-menus restent créés par `deep_clone`.
 
-Les sous-menus de catégories sont clonés depuis le menu principal avec `deep_clone`. Ce choix vient de problèmes constatés en jeu avec plusieurs appels à `MenuHelper:BuildMenu`.
+## Coût et limites
 
-Les paramètres sont enregistrés dans :
+Le panneau est vidé puis reconstruit environ toutes les 0,05 seconde. Les scans lourds, allocations inutiles et logs permanents sont donc à éviter dans `KH:draw`.
+
+Les classes et textures PAYDAY 2 ne sont pas disponibles hors du moteur. Une validation statique peut vérifier la syntaxe Lua et JSON, mais le rendu, les hooks, les textures et la compatibilité VanillaHUD+ doivent être validés en jeu.
+
+## Discipline de merge
+
+La création d'une branche destinée à `main` suit obligatoirement cette séquence :
 
 ```text
-SavePath/kyosh1ro_hud_settings.json
+git fetch origin --prune
+git switch -c <branche> origin/main
+git merge-base HEAD origin/main
+git rev-parse origin/main
 ```
 
-Le chargement fusionne les valeurs sauvegardées avec les valeurs par défaut. Les tests `~= nil` sont indispensables pour conserver correctement les options booléennes sauvegardées à `false`.
+Les deux dernières commandes doivent renvoyer le même commit avant toute modification. Si `git fetch` échoue ou si les commits diffèrent sur une branche nouvellement créée, le travail doit s'arrêter jusqu'à correction de la base. Un `main` local en retard ne doit jamais servir de base ni être fusionné dans une branche récente.
 
-## Localisation
+En cas de conflit dans `ky_buffhud.lua`, comparer les trois versions — base commune, cible et branche — au lieu de choisir le fichier complet d'un seul côté. Après résolution, vérifier au minimum :
 
-`ky_localization.lua` charge d'abord les fallbacks anglais, puis `english.json`, puis `french.json` lorsque la langue demandée est le français. Le français peut ainsi écraser l'anglais sans que l'anglais réécrase ensuite le français.
+- `compute_horizontal_positions` et les options `buff_position_x` / `buff_position_y` ;
+- `killfeed_size` et sa limite de 1 à 3 ;
+- la rangée horizontale du killfeed ;
+- les JSON et `mod.txt` ;
+- le diff final, pour détecter toute réintroduction du rendu circulaire.
 
-`ModPath` est capturé immédiatement dans une variable locale. C'est nécessaire car SuperBLT peut modifier ce global lors du chargement d'autres mods.
+## Vérification en jeu
 
-Les fallbacks dynamiques génèrent un nom lisible pour tout buff du catalogue, mais ils ne remplacent pas une traduction manuelle de qualité dans les deux JSON.
-
-## Risques techniques connus
-
-- La présentation est plus complète que la détection réelle.
-- Le centre géométrique du panneau peut différer du centre réel du réticule avec certains HUD ou réglages d'échelle.
-- Le panneau est entièrement reconstruit 20 fois par seconde.
-- Le killfeed ne couvre pas encore toutes les sources de dégâts appartenant au joueur.
-- Les icônes du killfeed ne différencient pas réellement les types d'ennemis.
-- Un arc d'étendue nulle superpose ses éléments.
-- Les versions de `mod.txt` et des en-têtes Lua ne sont pas harmonisées.
-- Aucun test automatisé ne peut valider les classes et textures disponibles uniquement dans PAYDAY 2.
-
-## Priorités proposées
-
-1. Terminer le placement séquentiel et le valider en jeu avec plusieurs tailles, rayons et angles.
-2. Retirer les logs temporaires après validation.
-3. Définir précisément les buffs que le mod promet de supporter.
-4. Ajouter une couche d'observation adaptée aux autres familles de buffs, une famille à la fois.
-5. Améliorer l'attribution des kills indirects.
-6. Vérifier le centre du réticule avec VanillaHUD+ et différentes valeurs d'échelle HUD.
-7. Envisager un rendu persistant si le coût de reconstruction devient mesurable.
-
-## Références externes
-
-- [Définition d'un mod SuperBLT](https://superblt.znix.xyz/doc/mod_definition/basics/)
-- [Hooks SuperBLT](https://superblt.znix.xyz/doc/common_functions/hooks/)
-- [Cycle des menus SuperBLT](https://superblt.znix.xyz/doc/menus/menu_helper_hooks/)
-- [Variables `ModPath` et `SavePath`](https://superblt.znix.xyz/doc/mod_definition/variables/)
-- [Dépôt VanillaHUD+](https://github.com/steam-test1/VPlusHUD)
-- [HUDList de VanillaHUD+](https://github.com/steam-test1/VPlusHUD/blob/master/devlua/HUDList.lua)
-- [GameInfoManager de VanillaHUD+](https://github.com/steam-test1/VPlusHUD/blob/master/devlua/GameInfoManager.lua)
-
-Ces références servent à comprendre les API et l'architecture existante. Elles ne dispensent pas de vérifier le comportement directement dans PAYDAY 2.
+Utiliser **Debug: Simulate** pour contrôler plusieurs buffs, les timers, l'ordre, les deux rangées horizontales, les largeurs d'écran et les positions configurables. Utiliser ensuite **Debug: Clear**, puis tester un vrai buff, son rafraîchissement, un kill direct et un kill par projectile.

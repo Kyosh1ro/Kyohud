@@ -1,6 +1,6 @@
--- ky_buffhud.lua — Affichage des buffs en arc + killfeed
+-- ky_buffhud.lua — Affichage horizontal des buffs + killfeed
 -- Kyosh1ro HUD v2.0.0
--- Buffs affichés côte à côte le long d'un arc de cercle
+-- Buffs affichés côte à côte sur une rangée horizontale configurable
 -- Icônes compatibles VanillaHUD (skills_new, perks, hud_icons, etc.)
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
@@ -34,15 +34,19 @@ KH._panel       = nil
 KH._buffs       = {}           -- { [id] = {id, icon, color, start_t, duration, t_end?, is_debuff} }
 KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
-KH._kills       = {}           -- { {name, icon, start_t, t_end?} }
+KH._kills       = {}           -- { {name, start_t, t_end?} }
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._update_acc  = 0
 
-local MAX_KILL_HISTORY = 20
-local MAX_VISIBLE_KILLS = 5
+local MAX_KILLFEED_SIZE = 3
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
+
+local function killfeed_size(settings)
+    local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
+    return math.floor(clamp(value, 1, MAX_KILLFEED_SIZE))
+end
 local BANNER_FRAME_STYLE = {
     inset = 2,
     glow_alpha = 0.16,
@@ -197,47 +201,6 @@ function KH:is_buff_visible(buff_id)
     end
 
     return true
-end
-
--- ═══════════════════════════════════════════════════
--- Icônes pour le killfeed
--- ═══════════════════════════════════════════════════
-local ENEMY_ICON_MAP = {
-    swat         = "hud_icons:mugshot_normal",
-    heavy_swat   = "hud_icons:mugshot_normal",
-    shield       = "hud_icons:mugshot_normal",
-    sniper       = "hud_icons:mugshot_normal",
-    taser        = "hud_icons:mugshot_normal",
-    cloaker      = "hud_icons:mugshot_normal",
-    medic        = "hud_icons:mugshot_normal",
-    bulldozer    = "hud_icons:mugshot_normal",
-    gangster     = "hud_icons:mugshot_normal",
-    cop          = "hud_icons:mugshot_normal",
-    default      = "hud_icons:mugshot_normal",
-}
-
-local function resolve_simple_icon(icon_ref)
-    if not icon_ref or icon_ref == "" then
-        return { texture = FALLBACK_TEXTURE }
-    end
-    local atlas, name = tostring(icon_ref):match("^([^:]+):(.+)$")
-    if atlas == "hud_icons" and name then
-        local ok, tx, rect = pcall(function()
-            return tweak_data.hud_icons:get_icon_data(name)
-        end)
-        if ok and tx and has_texture(tx) and rect then
-            return { texture = tx, rect = rect }
-        end
-    end
-    if has_texture(tostring(icon_ref)) then
-        return { texture = tostring(icon_ref) }
-    end
-    return { texture = FALLBACK_TEXTURE }
-end
-
-local function icon_for_enemy(enemy_type)
-    local ref = ENEMY_ICON_MAP[enemy_type] or ENEMY_ICON_MAP.default
-    return resolve_simple_icon(ref)
 end
 
 local function localized_text(id, fallback)
@@ -481,7 +444,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
     end
     local t = now()
 
-    -- Un buff rafraîchi garde sa position dans l'arc (order_t d'origine),
+    -- Un buff rafraîchi garde sa position dans la rangée (order_t d'origine),
     -- seuls son timer et son fondu (start_t) repartent de zéro
     local existing = self._buffs[resolved_id]
 
@@ -726,7 +689,7 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
-function KH:add_kill(enemy_name, enemy_type)
+function KH:add_kill(enemy_name)
     if not self.settings or not self.settings.enable_killfeed then return end
 
     local dur = self.settings.buff_duration or 5
@@ -746,13 +709,12 @@ function KH:add_kill(enemy_name, enemy_type)
 
     local entry = {
         name   = enemy_name or "Enemy",
-        icon   = icon_for_enemy(enemy_type or "default"),
         start_t = t,
         t_end  = t + dur,
     }
     table.insert(self._kills, entry)
 
-    while #self._kills > MAX_KILL_HISTORY do
+    while #self._kills > killfeed_size(self.settings) do
         table.remove(self._kills, 1)
     end
 end
@@ -799,43 +761,40 @@ function KH:ensure_panel(force)
 end
 
 -- ═══════════════════════════════════════════════════
--- Layout : positions séquentielles le long d'un arc
--- Les buffs se placent côte à côte depuis la position de départ
--- Arc de [1,1] (315°) vers [0,-1] (90°) = sens anti-horaire
+-- Layout : rangée horizontale centrée sur une position en pourcentage d'écran
+-- L'espacement se resserre si nécessaire pour ne masquer aucun buff.
 -- ═══════════════════════════════════════════════════
-local function compute_sequential_arc_positions(count, start_deg, end_deg, radius, cx, cy, icon_size)
+local function compute_horizontal_positions(
+        count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y)
     local positions = {}
     if count == 0 then return positions end
 
-    -- Espacement le long de l'arc : icône + marge proportionnelle, pour que
-    -- les icônes ET leur timer (16px sous l'icône) ne se chevauchent pas
-    -- sur les portions diagonales de l'arc
-    local margin = math.max(12, icon_size * 0.6)
-    local spacing_px = icon_size + margin
-    -- angle_step en degrés = (spacing_px / circumference) * 360
-    local angle_step = (spacing_px / (2 * math.pi * radius)) * 360
+    local edge_margin = 4
+    local frame_w = icon_size + frame_pad_x * 2
+    local desired_pitch = frame_w + clamp(icon_size * 0.25, 4, 12)
+    local available_w = math.max(frame_w, panel_w - edge_margin * 2)
+    local pitch = desired_pitch
 
-    -- Direction : de start_deg vers end_deg (sens anti-horaire = angles croissants)
-    -- start_deg = 315° (bas-droite), end_deg = 90° (haut)
-    -- En traversant 0°/360°, le chemin est 315 → 360 → 0 → 90 = 135° de span
-    local span = end_deg - start_deg
-    if span < 0 then span = span + 360 end
-
-    -- Trop d'icônes pour l'arc : compresser l'espacement plutôt que de
-    -- masquer silencieusement le surplus
-    if count > 1 and angle_step * (count - 1) > span then
-        angle_step = span / (count - 1)
+    if count > 1 and frame_w + pitch * (count - 1) > available_w then
+        pitch = math.max(0, (available_w - frame_w) / (count - 1))
     end
 
-    for i = 0, count - 1 do
-        local angle_deg = start_deg + angle_step * i
-        -- Normaliser à [0, 360)
-        if angle_deg >= 360 then angle_deg = angle_deg - 360 end
+    local row_w = frame_w + pitch * (count - 1)
+    local anchor_x = panel_w * clamp(x_percent, 0, 100) / 100
+    local row_left = clamp(
+        anchor_x - row_w * 0.5,
+        edge_margin,
+        math.max(edge_margin, panel_w - edge_margin - row_w)
+    )
 
-        -- Diesel expose les fonctions trigonométriques en degrés.
-        local x = cx + math.cos(angle_deg) * radius
-        local y = cy - math.sin(angle_deg) * radius
-        positions[#positions + 1] = { x = x, y = y }
+    -- Garder le cadre et le timer sous l'icône à l'intérieur du panneau.
+    local min_y = icon_size * 0.5 + frame_pad_y + edge_margin
+    local max_y = panel_h - icon_size * 0.5 - 22
+    local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
+    local first_x = row_left + frame_w * 0.5
+
+    for i = 0, count - 1 do
+        positions[#positions + 1] = { x = first_x + pitch * i, y = y }
     end
 
     return positions
@@ -886,8 +845,6 @@ function KH:draw()
     local cx = w * 0.5
     local cy = h * 0.5
     local radius    = clamp(s.circle_radius or 250, 100, 500)
-    local start_deg = s.angle_start or 315  -- [1,1] = bas-droite = 315°
-    local end_deg   = s.angle_end or 90     -- [0,-1] = haut = 90°
     local size      = clamp(s.icon_size or 32, 16, 64)
     local alpha     = clamp(s.opacity or 0.9, 0.1, 1.0)
 
@@ -900,7 +857,7 @@ function KH:draw()
             end
         end
         -- Tri par ordre d'arrivée : les nouveaux buffs s'ajoutent à la suite
-        -- en bout d'arc au lieu de réordonner les icônes existantes
+        -- en bout de rangée au lieu de réordonner les icônes existantes
         table.sort(buff_list, function(a, b)
             local oa = a.order_t or a.start_t or 0
             local ob = b.order_t or b.start_t or 0
@@ -908,12 +865,18 @@ function KH:draw()
             return a.id < b.id
         end)
 
-        -- Positions séquentielles le long de l'arc
-        local positions = compute_sequential_arc_positions(
-            #buff_list, start_deg, end_deg, radius, cx, cy, size
-        )
         local frame_pad_x = clamp(size * 0.26, 6, 14)
         local frame_pad_y = clamp(size * 0.1, 2, 5)
+        local positions = compute_horizontal_positions(
+            #buff_list,
+            tonumber(s.buff_position_x) or 50,
+            tonumber(s.buff_position_y) or 85,
+            w,
+            h,
+            size,
+            frame_pad_x,
+            frame_pad_y
+        )
         local arrow_w = clamp(size * 0.07, 1.5, 4)
         local arrow_h = clamp(size * 0.16, 4, 9)
         local arrow_gap = clamp(size * 0.035, 0.75, 2)
@@ -1022,17 +985,40 @@ function KH:draw()
         end
     end
 
-    -- ── Dessiner le bandeau de série et le killfeed vertical ──
+    -- ── Dessiner le bandeau de série et le killfeed horizontal ──
     local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
     if s.enable_killfeed and (#self._kills > 0 or combo_active) then
-        local kill_icon_size = clamp(size * 0.72, 18, 36)
-        local row_h = math.max(28, kill_icon_size + 6)
-        local feed_w = clamp(size * 7.5, 220, 320)
+        local killfeed_limit = killfeed_size(s)
+        local visible_count = math.min(#self._kills, killfeed_limit)
+        local item_h = clamp(size * 0.72 + 6, 28, 42)
+        local item_gap = clamp(size * 0.3, 8, 14)
+        local desired_item_w = clamp(size * 5.2, 150, 220)
+        local available_w = math.max(1, w - 16)
+
+        if visible_count > 1 then
+            item_gap = math.min(
+                item_gap,
+                math.max(0, (available_w - visible_count) / (visible_count - 1))
+            )
+        end
+
+        local item_w = desired_item_w
+        if visible_count > 0 then
+            item_w = math.min(
+                desired_item_w,
+                math.max(1, (available_w - item_gap * (visible_count - 1)) / visible_count)
+            )
+        end
+
+        local feed_row_w = visible_count > 0
+            and item_w * visible_count + item_gap * (visible_count - 1)
+            or 0
+        local banner_w = clamp(size * 7.5, 220, 320)
         local banner_h = math.max(38, size + 8)
-        local block_h = banner_h + 8 + MAX_VISIBLE_KILLS * row_h
+        local block_h = banner_h + 8 + (visible_count > 0 and item_h or 0)
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
         local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
-        local rows_top = block_top + banner_h + 8
+        local feed_y = block_top + banner_h + 8
         local feed_color = HUD_ACCENT_COLOR
 
         if combo_active then
@@ -1044,7 +1030,7 @@ function KH:draw()
                 local fade_out = clamp(remaining / 0.35, 0, 1)
                 local banner_alpha = alpha * fade_out
                 local scale = 1 + (1 - intro) * 0.06
-                local bw = feed_w * scale
+                local bw = banner_w * scale
                 local bh = banner_h * scale
                 local bx = cx - bw * 0.5
                 local by = block_top - (bh - banner_h) * 0.5
@@ -1109,15 +1095,13 @@ function KH:draw()
             scroll = clamp((t - newest.start_t) / KILL_SCROLL_TIME, 0, 1)
         end
 
-        local visible_count = math.min(#self._kills, MAX_VISIBLE_KILLS)
-        local feed_x = cx - feed_w / 2
-        for row = 1, visible_count do
-            -- Le kill le plus récent reste en haut ; les précédents descendent.
-            local kill = self._kills[#self._kills - row + 1]
-            local row_y = rows_top + (row - 1) * row_h
-            if row > 1 then
-                row_y = row_y - row_h * (1 - scroll)
-            end
+        local feed_x = clamp(cx - feed_row_w * 0.5, 8, math.max(8, w - 8 - feed_row_w))
+        local first_kill = #self._kills - visible_count + 1
+        for slot = 1, visible_count do
+            -- Ordre chronologique : le kill le plus ancien est à gauche,
+            -- le plus récent s'ajoute à droite.
+            local kill = self._kills[first_kill + slot - 1]
+            local item_x = feed_x + (slot - 1) * (item_w + item_gap)
 
             local life = 1
             if kill.start_t and kill.t_end then
@@ -1127,71 +1111,55 @@ function KH:draw()
                 end
             end
 
-            local row_alpha = alpha * (0.25 + 0.75 * life)
-            local row_x = feed_x
-            if row == 1 then
-                row_alpha = row_alpha * scroll
-                row_x = row_x + 18 * (1 - scroll)
+            local item_alpha = alpha * (0.25 + 0.75 * life)
+            if slot == visible_count then
+                item_alpha = item_alpha * scroll
+                item_x = item_x + 18 * (1 - scroll)
             end
 
             self._panel:gradient({
-                x = row_x,
-                y = row_y + 1,
-                w = feed_w,
-                h = row_h - 2,
+                x = item_x,
+                y = feed_y + 1,
+                w = item_w,
+                h = item_h - 2,
                 orientation = "horizontal",
                 gradient_points = {
-                    0, Color.black:with_alpha(row_alpha * 0.68),
-                    0.72, Color.black:with_alpha(row_alpha * 0.42),
-                    1, Color.black:with_alpha(row_alpha * 0.05),
+                    0, Color.black:with_alpha(item_alpha * 0.68),
+                    0.72, Color.black:with_alpha(item_alpha * 0.42),
+                    1, Color.black:with_alpha(item_alpha * 0.05),
                 },
                 layer = 101,
             })
             self._panel:rect({
-                x = row_x, y = row_y + 2, w = 2, h = row_h - 4,
-                color = feed_color, alpha = row_alpha * 0.9, layer = 102,
+                x = item_x, y = feed_y + 2, w = 2, h = item_h - 4,
+                color = feed_color, alpha = item_alpha * 0.9, layer = 102,
             })
             self._panel:rect({
-                x = row_x + 2, y = row_y + 1, w = feed_w * 0.72, h = 1,
-                color = feed_color, alpha = row_alpha * 0.5, layer = 102,
+                x = item_x + 2, y = feed_y + 1, w = item_w - 4, h = 1,
+                color = feed_color, alpha = item_alpha * 0.5, layer = 102,
             })
             self._panel:rect({
-                x = row_x + 2, y = row_y + row_h - 2, w = feed_w * 0.48, h = 1,
-                color = feed_color, alpha = row_alpha * 0.3, layer = 102,
+                x = item_x + 2, y = feed_y + item_h - 2, w = item_w - 4, h = 1,
+                color = feed_color, alpha = item_alpha * 0.5, layer = 102,
             })
-
-            local icon_y = row_y + (row_h - kill_icon_size) / 2
-            local icon_params = {
-                layer = 102,
-                w = kill_icon_size,
-                h = kill_icon_size,
-                x = row_x + 5,
-                y = icon_y,
-            }
-            if kill.icon.rect then
-                icon_params.texture = kill.icon.texture
-                icon_params.texture_rect = kill.icon.rect
-            else
-                icon_params.texture = kill.icon.texture
-            end
-
-            local kill_bmp = self._panel:bitmap(icon_params)
-            kill_bmp:set_color(Color(0.88, 0.96, 1))
-            kill_bmp:set_alpha(row_alpha)
+            self._panel:rect({
+                x = item_x + item_w - 2, y = feed_y + 2, w = 2, h = item_h - 4,
+                color = feed_color, alpha = item_alpha * 0.9, layer = 102,
+            })
 
             self._panel:text({
                 text = kill.name,
                 font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
                 font_size = clamp(size * 0.42, 13, 18),
                 color = Color(0.86, 0.96, 1),
-                align = "left",
+                align = "center",
                 vertical = "center",
-                x = row_x + kill_icon_size + 12,
-                y = row_y,
-                w = feed_w - kill_icon_size - 18,
-                h = row_h,
+                x = item_x + 9,
+                y = feed_y,
+                w = item_w - 18,
+                h = item_h,
                 layer = 102,
-                alpha = row_alpha,
+                alpha = item_alpha,
             })
         end
     end
@@ -1239,19 +1207,18 @@ function KH:DebugSimulate(n)
             icon     = icon,
             color    = color_for_buff(base, demo.is_debuff),
             is_debuff = demo.is_debuff == true,
-            order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n le long de l'arc
+            order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n dans la rangée
             start_t  = t_now,
             -- Pas de t_end : les buffs de debug restent visibles jusqu'à DebugClear.
         }
     end
 
     -- Simuler quelques kills
-    local demo_names = { "SWAT", "Shield", "Bulldozer", "Cloaker", "Sniper" }
+    local demo_names = { "SWAT", "Shield", "Bulldozer" }
     local t_now = now()
-    for i = 1, 5 do
+    for i = 1, killfeed_size(self.settings) do
         table.insert(self._kills, {
             name    = demo_names[i],
-            icon    = icon_for_enemy("default"),
             start_t = t_now,
             -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
         })

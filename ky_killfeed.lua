@@ -47,22 +47,20 @@ Hooks:PostHook(CopDamage, "die", "KH_OnEnemyDie", function(self, attack_data)
 
     if not is_local then return end
 
-    -- Récupérer le nom/type de l'ennemi
+    -- Récupérer le nom de l'ennemi
     local enemy_name = "Enemy"
-    local enemy_type = "default"
 
     if self._unit and alive(self._unit) then
         local ok, tweak = pcall(function()
             return self._unit:base()._tweak_table
         end)
         if ok and tweak then
-            enemy_type = tostring(tweak)
             enemy_name = NAMES[tweak] or tweak:gsub("_", " "):gsub("^%l", string.upper)
         end
     end
 
     if KH.add_kill then
-        KH:add_kill(enemy_name, enemy_type)
+        KH:add_kill(enemy_name)
     end
 end)
 
