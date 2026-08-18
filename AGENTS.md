@@ -31,6 +31,7 @@ Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée localement 
 | `ky_options.lua` | Valeurs par défaut, lecture/écriture de `SavePath/kyosh1ro_hud_settings.json`, callbacks et menus SuperBLT. |
 | `ky_localization.lua` | Fallbacks intégrés et chargement des traductions anglaise/française. Capture immédiatement `ModPath` car SuperBLT peut ensuite écraser ce global. |
 | `loc/english.json`, `loc/french.json` | Libellés visibles dans le menu. |
+| `changelog.txt` | Historique utilisateur numéroté des commits directs et des pull requests fusionnées dans `main`. |
 | `2026_04_04_log.txt` | Ancien journal de diagnostic ; il ne participe pas à l'exécution. |
 
 ## Flux des données
@@ -124,6 +125,15 @@ Une vérification statique ne remplace pas le test en jeu, car les classes et te
 - Garder les commits ciblés : documentation, correction de rendu, catalogue ou options doivent rester séparables quand cela aide la revue.
 - Ne pas pousser, fusionner, réécrire l'historique ou supprimer une branche sans demande explicite.
 - Avant une proposition de fusion, indiquer les tests réellement effectués et ceux qui nécessitent encore PAYDAY 2.
+
+## Versionnage et changelog
+
+- Utiliser un numéro de révision entier, dans le style de Better Assault Indicator : `r1`, `r2`, `r3`, etc. Ne pas employer de version sémantique `X.Y.Z` pour ce projet.
+- Une révision correspond à un changement intégré à `main` : soit un ancien commit effectué directement sur `main`, soit une pull request fusionnée. Les commits de travail internes à une pull request et les merges servant seulement à synchroniser sa branche sont regroupés sous la révision de la fusion et ne créent pas de doublons.
+- Mettre à jour `changelog.txt` dans la même branche que tout changement visible par l'utilisateur. Ajouter la révision la plus récente en haut au format `rN (JJ.MM.AAAA):` et décrire l'effet utile du changement au lieu de recopier le message Git brut.
+- Pour une pull request, préparer une seule nouvelle révision correspondant à sa future fusion dans `main` et conserver son numéro de pull request dans le changelog dès qu'il est connu.
+- Lors d'une publication, la clé `version` de `mod.txt` contient uniquement le numéro entier de la dernière révision, sans préfixe `r` ; par exemple, l'entrée `r36` correspond à `"version": "36"`.
+- Inclure `changelog.txt` dans la vérification du diff et dans le commit concerné ; une fonctionnalité ou correction livrable ne doit pas être fusionnée sans son entrée de changelog.
 
 ## Points d'attention connus
 

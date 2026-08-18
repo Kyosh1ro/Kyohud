@@ -102,6 +102,12 @@ En cas de conflit dans `ky_buffhud.lua`, comparer les trois versions — base co
 - les JSON et `mod.txt` ;
 - le diff final, pour détecter toute réintroduction du rendu circulaire.
 
+## Versionnage et changelog
+
+Le projet utilise des révisions entières (`r1`, `r2`, `r3`, etc.), sur le modèle de Better Assault Indicator. Chaque ancien commit direct sur `main` et chaque pull request fusionnée comptent pour une révision. Les commits internes d'une pull request et ses merges de synchronisation sont regroupés sous la révision de sa fusion afin de ne pas décrire deux fois le même changement. La clé `version` de `mod.txt` contient le même nombre sans préfixe `r`.
+
+Toute branche qui apporte une modification visible par l'utilisateur doit préparer une seule nouvelle entrée en haut de `changelog.txt`, au format `rN (JJ.MM.AAAA):`, correspondant à sa future fusion dans `main`. L'entrée résume le résultat dans un langage utilisateur et conserve le numéro de pull request lorsqu'il est connu. Lors de la publication, reporter `N` dans `mod.txt`.
+
 ## Vérification en jeu
 
 Utiliser **Debug: Simulate** pour contrôler plusieurs buffs, les timers, l'ordre, les deux rangées horizontales, les largeurs d'écran et les positions configurables. Utiliser ensuite **Debug: Clear**, puis tester un vrai buff, son rafraîchissement, un kill direct et un kill par projectile.
