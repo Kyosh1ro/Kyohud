@@ -1,3 +1,6 @@
+r43 (18.08.2026):
+- Chaque cadre du killfeed adapte désormais sa largeur au nom de l'unité et à son score, tandis que la rangée reste centrée et se resserre si nécessaire.
+
 r42 (18.08.2026):
 - Chaque unité éliminée affiche désormais ses points à côté de son nom dans le killfeed, avec un multiplicateur adapté à la difficulté.
 - Les civils tués par le joueur ou ses projectiles apparaissent avec une pénalité, sans alimenter les séries de kills.

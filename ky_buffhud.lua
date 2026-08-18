@@ -58,6 +58,50 @@ local function format_kill_score(score)
         or string.format("%.1f", score)
     return (score > 0 and "+" or "") .. value
 end
+
+local function approximate_text_width(text, font_size)
+    return string.len(tostring(text or "")) * font_size * 0.58
+end
+
+local function measure_killfeed_entries(panel, kills, first_kill, count, font, font_size)
+    local measurer = nil
+
+    local function measure(text)
+        if not measurer then
+            measurer = panel:text({
+                name = "ky_killfeed_text_measurer",
+                text = "",
+                font = font,
+                font_size = font_size,
+                visible = false,
+                wrap = false,
+                word_wrap = false,
+            })
+        end
+
+        measurer:set_text(tostring(text or ""))
+        local ok, _, _, text_w = pcall(function()
+            return measurer:text_rect()
+        end)
+        if ok and type(text_w) == "number" and text_w > 0 then
+            return text_w
+        end
+        return approximate_text_width(text, font_size)
+    end
+
+    for slot = 1, count do
+        local kill = kills[first_kill + slot - 1]
+        if kill and kill._measure_font_size ~= font_size then
+            kill._measured_name_w = measure(kill.name)
+            kill._measured_score_w = kill.score_text and measure(kill.score_text) or 0
+            kill._measure_font_size = font_size
+        end
+    end
+
+    if measurer and alive(measurer) then
+        panel:remove(measurer)
+    end
+end
 local BANNER_FRAME_STYLE = {
     inset = 2,
     glow_alpha = 0.16,
@@ -1558,27 +1602,64 @@ function KH:draw()
         local visible_count = math.min(#self._kills, killfeed_limit)
         local item_h = clamp(size * 0.72 + 6, 28, 42)
         local item_gap = clamp(size * 0.3, 8, 14)
-        local desired_item_w = clamp(size * 5.2, 150, 220)
         local available_w = math.max(1, w - 16)
+        local kill_font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
+        local kill_font_size = clamp(size * 0.42, 13, 18)
+        local text_padding = clamp(size * 0.34, 10, 16)
+        local text_gap = clamp(size * 0.14, 4, 7)
+        local first_kill = #self._kills - visible_count + 1
+
+        measure_killfeed_entries(
+            self._panel,
+            self._kills,
+            first_kill,
+            visible_count,
+            kill_font,
+            kill_font_size
+        )
+
+        local item_widths = {}
+        local desired_row_w = 0
+        for slot = 1, visible_count do
+            local kill = self._kills[first_kill + slot - 1]
+            local name_w = kill._measured_name_w
+                or approximate_text_width(kill.name, kill_font_size)
+            local score_w = kill.score_text
+                and (kill._measured_score_w or approximate_text_width(kill.score_text, kill_font_size))
+                or 0
+            local content_gap = kill.score_text and text_gap or 0
+            local item_w = math.ceil(name_w + score_w + content_gap + text_padding * 2)
+            item_w = math.max(item_h, item_w)
+            item_widths[slot] = item_w
+            desired_row_w = desired_row_w + item_w
+        end
 
         if visible_count > 1 then
             item_gap = math.min(
                 item_gap,
-                math.max(0, (available_w - visible_count) / (visible_count - 1))
+                math.max(0, (available_w - desired_row_w) / (visible_count - 1))
             )
         end
 
-        local item_w = desired_item_w
-        if visible_count > 0 then
-            item_w = math.min(
-                desired_item_w,
-                math.max(1, (available_w - item_gap * (visible_count - 1)) / visible_count)
-            )
+        local item_budget = math.max(1, available_w - item_gap * math.max(0, visible_count - 1))
+        if desired_row_w > item_budget and desired_row_w > 0 then
+            local scale = item_budget / desired_row_w
+            desired_row_w = 0
+            for slot = 1, visible_count do
+                item_widths[slot] = math.max(1, item_widths[slot] * scale)
+                desired_row_w = desired_row_w + item_widths[slot]
+            end
         end
 
         local feed_row_w = visible_count > 0
-            and item_w * visible_count + item_gap * (visible_count - 1)
+            and desired_row_w + item_gap * (visible_count - 1)
             or 0
+        local item_offsets = {}
+        local next_offset = 0
+        for slot = 1, visible_count do
+            item_offsets[slot] = next_offset
+            next_offset = next_offset + item_widths[slot] + item_gap
+        end
         local banner_w = clamp(size * 7.5, 220, 320)
         local banner_h = math.max(38, size + 8)
         local block_h = banner_h + 8 + (visible_count > 0 and item_h or 0)
@@ -1662,12 +1743,12 @@ function KH:draw()
         end
 
         local feed_x = clamp(cx - feed_row_w * 0.5, 8, math.max(8, w - 8 - feed_row_w))
-        local first_kill = #self._kills - visible_count + 1
         for slot = 1, visible_count do
             -- Ordre chronologique : le kill le plus ancien est à gauche,
             -- le plus récent s'ajoute à droite.
             local kill = self._kills[first_kill + slot - 1]
-            local item_x = feed_x + (slot - 1) * (item_w + item_gap)
+            local item_w = item_widths[slot]
+            local item_x = feed_x + item_offsets[slot]
 
             local life = 1
             if kill.start_t and kill.t_end then
@@ -1713,17 +1794,22 @@ function KH:draw()
                 color = feed_color, alpha = item_alpha * 0.9, layer = 102,
             })
 
-            local text_x = item_x + 9
-            local text_w = item_w - 18
             local score_text = kill.score_text
-            local score_w = score_text and clamp(item_w * 0.27, 38, 64) or 0
-            local text_gap = score_text and 5 or 0
-            local name_w = math.max(1, text_w - score_w - text_gap)
+            local inner_w = math.max(1, item_w - text_padding * 2)
+            local score_w = score_text
+                and math.min(kill._measured_score_w or 0, math.max(1, inner_w - text_gap - 1))
+                or 0
+            local name_w = math.min(
+                kill._measured_name_w or inner_w,
+                math.max(1, inner_w - score_w - (score_text and text_gap or 0))
+            )
+            local content_w = name_w + score_w + (score_text and text_gap or 0)
+            local text_x = item_x + (item_w - content_w) * 0.5
 
             self._panel:text({
                 text = kill.name,
-                font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                font_size = clamp(size * 0.42, 13, 18),
+                font = kill_font,
+                font_size = kill_font_size,
                 color = Color(0.86, 0.96, 1),
                 align = score_text and "right" or "center",
                 vertical = "center",
@@ -1741,8 +1827,8 @@ function KH:draw()
                     or HUD_ACCENT_COLOR
                 self._panel:text({
                     text = score_text,
-                    font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                    font_size = clamp(size * 0.42, 13, 18),
+                    font = kill_font,
+                    font_size = kill_font_size,
                     color = score_color,
                     align = "left",
                     vertical = "center",
