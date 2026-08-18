@@ -1,0 +1,122 @@
+r37 (18.08.2026):
+- Création du changelog et reconstruction des révisions r1 à r36.
+- Adoption du versionnage par révision dans mod.txt
+
+r36 (18.08.2026):
+- Affichage des valeurs pour tous les buffs pris en charge.
+
+r35 (18.08.2026):
+- Affichage de la valeur de régénération de vie passive.
+
+r34 (18.08.2026):
+- Ajout de la palette de couleurs Kyosh1ro pour les buffs.
+
+r33 (18.08.2026):
+- Ajout d'une couleur propre à chaque type de buff.
+
+r32 (17.08.2026):
+- Affichage du killfeed sur une rangée horizontale.
+- Ajout des protections documentaires destinées à préserver le rendu horizontal lors des merges.
+
+r31 (17.08.2026):
+- Suppression du carré gris du killfeed et reprise de son cadre.
+
+r30 (17.08.2026):
+- Restauration des buffs horizontaux et de leurs options après merge.
+- Ajout de règles pour créer les nouvelles branches depuis une base à jour.
+
+r29 (17.08.2026):
+- Limitation configurable du killfeed à 1, 2 ou 3 entrées.
+
+r28 (17.08.2026):
+- Remplacement de l'arc de buffs par une rangée horizontale configurable.
+
+r27 (17.08.2026):
+- Restauration du cadre compact des buffs après un conflit de merge.
+
+r26 (17.08.2026):
+- Harmonisation des cadres des buffs et du bandeau de séries de kills.
+
+r25 (17.08.2026):
+- Détection autonome des buffs temporaires, cooldowns et régénérations exposés par PAYDAY 2 et VanillaHUD+.
+- Résolution dynamique des icônes avec texture de repli.
+- Correction du cycle de soin de Preneur d'otages et des correspondances de plusieurs buffs.
+- Retrait des options impossibles Iron Man et du doublon Inspire ; ajout d'Endurance.
+- Suppression des logs de position répétitifs.
+
+r24 (17.08.2026):
+- Ajout du style tactique au bandeau de séries de kills.
+
+r23 (16.08.2026):
+- Ajout des bandeaux double kill, triple kill et des séries suivantes.
+
+r22 (16.08.2026):
+- Correction du positionnement des kills dans l'arc situé à gauche.
+
+r21 (16.08.2026):
+- Suppression de l'ancien fichier de diagnostic 2026_04_04_log.txt.
+
+r20 (16.08.2026):
+- Ajout de la simulation permanente des kills dans les outils de debug.
+
+r19 (16.08.2026):
+- Ajout de la simulation permanente des buffs dans les outils de debug.
+
+r18 (16.08.2026):
+- Adoption des préfixes fix/ et feature/ pour le nommage des branches.
+
+r17 (16.08.2026):
+- Correction de l'espacement circulaire des buffs et du killfeed.
+
+r16 (16.08.2026):
+- Ajout du guide de travail destiné aux agents Codex.
+
+r15 (12.07.2026):
+- Ajout de la persistance des options et correction du chargement de la langue française.
+- Ajout du killfeed et du réglage de durée des buffs.
+- Retrait de l'activation automatique du mode debug.
+
+r14 (04.04.2026):
+- Correction du fallback de langue qui forçait l'anglais à la place du français.
+
+r13 (04.04.2026):
+- Chargement du catalogue avant les options et partage avec le HUD, les hooks et la localisation.
+
+r12 (04.04.2026):
+- Correction de l'ordre de chargement qui empêchait la création des sous-menus de buffs.
+
+r11 (04.04.2026):
+- Correction du crash CoreMenuItemToggle.
+- Ajout des descriptions aux options de sélection.
+
+r10 (04.04.2026):
+- Seconde révision des sous-menus de sélection individuelle des buffs.
+
+r9 (04.04.2026):
+- Création des sous-menus de sélection individuelle des buffs.
+
+r8 (04.04.2026):
+- Reprise du menu d'options.
+- Activation temporaire de tous les buffs pour le debug et espacement des éléments sur le HUD.
+
+r7 (04.04.2026):
+- Correction du menu qui ne s'affichait pas en jeu avec plusieurs sous-menus.
+
+r6 (03.04.2026):
+- Ajout de fallbacks pour les descriptions du menu et les options individuelles des buffs.
+
+r5 (03.04.2026):
+- Mise à jour des localisations et ajout des fallbacks pour les nouvelles clés.
+
+r4 (03.04.2026):
+- Remplacement de pick_icon par le catalogue KH.BUFF_MAP et les correspondances KH.UPGRADE_TO_BUFF.
+
+r3 (03.04.2026):
+- Ajout des options de filtrage par catégorie et par buff individuel.
+
+r2 (03.04.2026):
+- Import du catalogue d'icônes inspiré de VanillaHUD+.
+- Ajout d'une première carte complète des buffs et de leur sélection individuelle.
+
+r1 (03.04.2026):
+- Création du mod SuperBLT et de ses hooks principaux.
