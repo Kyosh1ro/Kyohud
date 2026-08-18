@@ -1,3 +1,6 @@
+r44 (18.08.2026):
+- Le killfeed détecte désormais les éliminations du joueur local lorsqu'il rejoint une partie hébergée par un autre joueur.
+
 r43 (18.08.2026):
 - Chaque cadre du killfeed adapte désormais sa largeur au nom de l'unité et à son score, tandis que la rangée reste centrée et se resserre si nécessaire.
 
