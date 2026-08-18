@@ -42,6 +42,7 @@ local MAX_KILLFEED_SIZE = 3
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
+local AI_BUFF_LABEL     = "[AI]"
 
 local function killfeed_size(settings)
     local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
@@ -532,6 +533,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
         dur = dur or (self.settings.buff_duration or 5)
     end
     local t = now()
+    local definition = KH.BUFF_MAP and KH.BUFF_MAP[resolved_id]
 
     -- Un buff rafraîchi garde sa position dans la rangée (order_t d'origine),
     -- seuls son timer et son fondu (start_t) repartent de zéro
@@ -541,6 +543,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
         id       = resolved_id,
         icon     = icon_data or icon_for_buff(resolved_id),
         color    = color_for_buff(resolved_id, is_debuff),
+        category = definition and definition.category,
         value_text = value_text,
         stack_text = stack_text,
         is_debuff = is_debuff == true,
@@ -1215,7 +1218,8 @@ end
 -- L'espacement se resserre si nécessaire pour ne masquer aucun buff.
 -- ═══════════════════════════════════════════════════
 local function compute_horizontal_positions(
-        count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y)
+        count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y,
+        top_label_height)
     local positions = {}
     if count == 0 then return positions end
 
@@ -1238,7 +1242,7 @@ local function compute_horizontal_positions(
     )
 
     -- Garder la valeur au-dessus, le cadre et le timer sous l'icône dans le panneau.
-    local min_y = icon_size * 0.5 + frame_pad_y + 18 + edge_margin
+    local min_y = icon_size * 0.5 + frame_pad_y + (top_label_height or 18) + edge_margin
     local max_y = panel_h - icon_size * 0.5 - 22
     local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
     local first_x = row_left + frame_w * 0.5
@@ -1342,6 +1346,13 @@ function KH:draw()
 
         local frame_pad_x = clamp(size * 0.26, 6, 14)
         local frame_pad_y = clamp(size * 0.1, 2, 5)
+        local top_label_height = 18
+        for _, buff in ipairs(buff_list) do
+            if buff.category == "ai" and buff.value_text then
+                top_label_height = 35
+                break
+            end
+        end
         local positions = compute_horizontal_positions(
             #buff_list,
             tonumber(s.buff_position_x) or 50,
@@ -1350,7 +1361,8 @@ function KH:draw()
             h,
             size,
             frame_pad_x,
-            frame_pad_y
+            frame_pad_y,
+            top_label_height
         )
         local arrow_w = clamp(size * 0.07, 1.5, 4)
         local arrow_h = clamp(size * 0.16, 4, 9)
@@ -1439,12 +1451,30 @@ function KH:draw()
                 bmp:set_color(buff.color or Color.white)
                 bmp:set_alpha(buff_alpha)
 
+                local is_ai_buff = buff.category == "ai"
                 if buff.value_text then
                     self._panel:text({
                         text      = buff.value_text,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
                         font_size = clamp(size * 0.38, 11, 15),
                         color     = buff.color or Color.white,
+                        align     = "center",
+                        vertical  = "center",
+                        x         = frame_x,
+                        y         = frame_y - (is_ai_buff and 34 or 17),
+                        w         = frame_w,
+                        h         = 16,
+                        layer     = 102,
+                        alpha     = buff_alpha,
+                    })
+                end
+
+                if is_ai_buff then
+                    self._panel:text({
+                        text      = AI_BUFF_LABEL,
+                        font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
+                        font_size = clamp(size * 0.3, 9, 12),
+                        color     = HUD_ACCENT_COLOR,
                         align     = "center",
                         vertical  = "center",
                         x         = frame_x,
@@ -1748,6 +1778,7 @@ function KH:DebugSimulate(n)
     end
 
     local demo_buffs = {
+        { id = "crew_throwable_regen", stack_text = "x2" },
         { id = "total_dodge_chance", value_text = "45%" },
         { id = "lock_n_load", value_text = "+35%" },
         { id = "delayed_damage", value_text = "-125" },
@@ -1766,6 +1797,7 @@ function KH:DebugSimulate(n)
             id       = "demo_" .. base .. "_" .. tostring(i),
             icon     = icon,
             color    = color_for_buff(base, demo.is_debuff),
+            category = KH.BUFF_MAP[base] and KH.BUFF_MAP[base].category,
             value_text = demo.value_text,
             stack_text = demo.stack_text,
             is_debuff = demo.is_debuff == true,

@@ -1,3 +1,6 @@
+r41 (18.08.2026):
+- Les buffs provenant des compétences d'équipier IA affichent désormais le marqueur `[AI]` au-dessus de leur icône.
+
 r40 (18.08.2026):
 - Le deck équipé conserve la première position comme placeholder et cède sa place à son buff de perk deck lorsqu'un effet associé devient actif.
 - La corrélation tient compte du deck sélectionné, des decks personnalisés basés sur un deck existant et des filtres de la catégorie « Buffs Perk Decks ».
