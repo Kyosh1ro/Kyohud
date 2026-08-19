@@ -19,6 +19,13 @@ Le code s'appuie sur les API globales de PAYDAY 2/SuperBLT (`Hooks`, `managers`,
 
 Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée localement en `KH`. Ne pas créer un second état global concurrent.
 
+## Références locales de développement
+
+- Les annotations des types du moteur Diesel et des fonctions Lua de PAYDAY 2 sont disponibles dans `G:\PD2-Modding-Docs\pd2-code-doc`. Les consulter pour vérifier les signatures et les objets du moteur, notamment `PlayerManager`, `CopDamage`, `CivilianDamage`, `Panel`, `Bitmap` et `Text`.
+- L'implémentation SuperBLT effectivement installée est disponible dans `G:\SteamLibrary\steamapps\common\PAYDAY 2\mods\base`. La privilégier pour confirmer le comportement de `Hooks`, `MenuHelper`, du chargement des mods et de la localisation.
+- Ces dossiers sont des références de développement uniquement : ne pas les charger à l'exécution, les copier dans le mod ou les inclure dans une publication.
+- Les annotations documentent surtout les signatures. Pour les champs privés, la sémantique réseau et les comportements dépendant du moteur, confronter la documentation au code du jeu disponible et valider en jeu.
+
 ## Architecture
 
 | Fichier | Responsabilité |
