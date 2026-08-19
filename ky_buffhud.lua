@@ -1771,19 +1771,13 @@ function KH:draw()
         for slot = 1, visible_count do
             local kill = self._kills[first_kill + slot - 1]
             local name_w = kill._measured_name_w
-                or approximate_text_width(kill.name, kill_font_size)
+                or approximate_text_width(kill.display_text or kill.name, kill_font_size)
             local score_w = kill.score_text
                 and (kill._measured_score_w or approximate_text_width(kill.score_text, kill_font_size))
                 or 0
             local content_gap = kill.score_text and text_gap or 0
             local item_w = math.ceil(name_w + score_w + content_gap + text_padding * 2)
             item_w = math.max(item_h, item_w)
-            if kill.special_kind then
-                -- Les kills speciaux reprennent exactement la largeur cible du
-                -- bandeau multikill. La rangée ne les réduit que si l'écran ne
-                -- peut matériellement pas contenir toutes les entrées visibles.
-                item_w = banner_w
-            end
             item_widths[slot] = item_w
             desired_row_w = desired_row_w + item_w
         end

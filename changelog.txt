@@ -1,3 +1,6 @@
+r49 (19.08.2026):
+- Les cadres des kills spéciaux adaptent désormais leur largeur au slogan et au score, comme les kills normaux, afin de conserver une rangée compacte.
+
 r48 (19.08.2026):
 - Les Medic, Cloaker, Taser, Shield et Sniper utilisent désormais un cadre tactique distinct, aussi large que le bandeau multikill, avec leurs propres annonces et un compteur `xN` pour les éliminations rapprochées du même type.
 
