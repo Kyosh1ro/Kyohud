@@ -52,7 +52,8 @@ local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
 local DOZER_BANNER_COLOR = Color(1, 0.38, 0.08)
-local KILLFEED_SCORE_COLOR = Color(1, 0.12, 0.08)
+local KILLFEED_SCORE_COLOR = Color(1, 0.63, 0.12)
+local KILLFEED_SCORE_PENALTY_COLOR = Color(1, 0.22, 0.12)
 local AI_BUFF_LABEL     = "[AI]"
 
 local function killfeed_size(settings)
@@ -625,6 +626,79 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
         panel, x, y, w, h, color, alpha, layer + 2,
         style and style.brackets
     )
+end
+
+local function hexagon_points(x, y, w, h, cut)
+    return {
+        Vector3(x + cut, y, 0),
+        Vector3(x + w - cut, y, 0),
+        Vector3(x + w, y + h * 0.5, 0),
+        Vector3(x + w - cut, y + h, 0),
+        Vector3(x + cut, y + h, 0),
+        Vector3(x, y + h * 0.5, 0),
+        Vector3(x + cut, y, 0),
+    }
+end
+
+local function draw_hexagonal_score_frame(panel, x, y, w, h, color, alpha, layer)
+    local cut = clamp(math.min(w * 0.18, h * 0.28), 8, 18)
+    local center = Vector3(w * 0.5, h * 0.5, 0)
+    local a = Vector3(cut, 0, 0)
+    local b = Vector3(w - cut, 0, 0)
+    local c = Vector3(w, h * 0.5, 0)
+    local d = Vector3(w - cut, h, 0)
+    local e = Vector3(cut, h, 0)
+    local f = Vector3(0, h * 0.5, 0)
+    local vertices = { a, b, c, d, e, f, a }
+
+    -- Un polygone PAYDAY 2 reçoit un triangle ; les six secteurs assurent
+    -- un fond hexagonal compatible avec les mêmes API que les chevrons.
+    for i = 1, 6 do
+        panel:polygon({
+            x = x,
+            y = y,
+            w = w,
+            h = h,
+            triangles = { center, vertices[i], vertices[i + 1] },
+            color = Color.black,
+            alpha = alpha * 0.72,
+            layer = layer,
+        })
+    end
+
+    local outline = hexagon_points(x, y, w, h, cut)
+    panel:polyline({
+        points = outline,
+        line_width = 4,
+        color = color,
+        alpha = alpha * 0.16,
+        layer = layer + 1,
+    })
+    panel:polyline({
+        points = outline,
+        line_width = 1,
+        color = color,
+        alpha = alpha,
+        layer = layer + 2,
+    })
+
+    local inset = 3
+    local inner_w = math.max(1, w - inset * 2)
+    local inner_h = math.max(1, h - inset * 2)
+    local inner_cut = math.max(1, cut - inset * 0.5)
+    panel:polyline({
+        points = hexagon_points(
+            x + inset,
+            y + inset,
+            inner_w,
+            inner_h,
+            inner_cut
+        ),
+        line_width = 1,
+        color = color,
+        alpha = alpha * 0.28,
+        layer = layer + 2,
+    })
 end
 
 local TEXT_GLOW_OFFSETS = {
@@ -1788,9 +1862,9 @@ function KH:draw()
         local score_font_size = clamp(size * 0.8, 22, 34)
         local score_w = score_total_text
             and clamp(
-                approximate_text_width(score_total_text, score_font_size) + 12,
-                72,
-                180
+                approximate_text_width(score_total_text, score_font_size) + 36,
+                88,
+                196
             )
             or 0
         local score_gap = score_total_text and clamp(size * 0.5, 12, 20) or 0
@@ -1873,17 +1947,31 @@ function KH:draw()
                 and clamp((t - newest.start_t) / KILL_SCROLL_TIME, 0, 1)
                 or 1
             local pulse_font_size = score_font_size * (1 + (1 - score_intro) * 0.12)
+            local score_color = (self._killfeed_score_total or 0) < 0
+                and KILLFEED_SCORE_PENALTY_COLOR
+                or KILLFEED_SCORE_COLOR
+            local score_alpha = alpha * score_intro
+            draw_hexagonal_score_frame(
+                self._panel,
+                group_x,
+                block_top,
+                score_w,
+                block_h,
+                score_color,
+                score_alpha,
+                102
+            )
             draw_glowing_text(
                 self._panel,
                 score_total_text,
                 tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
                 pulse_font_size,
-                KILLFEED_SCORE_COLOR,
+                score_color,
                 group_x,
                 block_top,
                 score_w,
                 block_h,
-                alpha * score_intro,
+                score_alpha,
                 106
             )
         end

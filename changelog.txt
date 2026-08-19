@@ -1,3 +1,6 @@
+r54 (19.08.2026):
+- Le score cumulé du killfeed adopte désormais un cadre hexagonal tactique et une teinte ambre, tandis qu'un total négatif reste signalé en rouge.
+
 r53 (19.08.2026):
 - Le score cumulé des éliminations s'affiche désormais en rouge à gauche du killfeed, s'actualise à chaque nouvelle carte et revient à zéro lorsque la dernière carte expire.
 
