@@ -1,3 +1,6 @@
+r52 (19.08.2026):
+- Les Bulldozers utilisent désormais eux aussi les annonces colorées du killfeed avec « TANK BUSTER », « ARMOR BREAKER », « HEAVY DOWN » ou « I'VE GOT THE BIG GUY », ainsi qu'un compteur `xN` dédié.
+
 r51 (19.08.2026):
 - Les kills spéciaux reprennent désormais le cadre compact du killfeed normal afin d'éviter tout chevauchement, tout en conservant leurs couleurs, leurs slogans et leur texte coloré.
 

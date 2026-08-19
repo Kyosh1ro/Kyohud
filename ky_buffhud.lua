@@ -383,6 +383,15 @@ local DOZER_BANNER_LABELS = {
 }
 
 local SPECIAL_ENEMY_DEFINITIONS = {
+    dozer = {
+        color = DOZER_BANNER_COLOR,
+        labels = {
+            { id = "ky_hud_dozer_tank_buster",          fallback = "TANK BUSTER" },
+            { id = "ky_hud_dozer_armor_breaker",        fallback = "ARMOR BREAKER" },
+            { id = "ky_hud_dozer_heavy_down",           fallback = "HEAVY DOWN" },
+            { id = "ky_hud_dozer_ive_got_the_big_guy", fallback = "I'VE GOT THE BIG GUY" },
+        },
+    },
     medic = {
         color = Color(0.2, 0.95, 0.55),
         labels = {
@@ -2096,7 +2105,7 @@ function KH:DebugSimulate(n)
     -- Simuler quelques kills
     local demo_kills = {
         { name = "Medic", score = 6, special_kind = "medic", special_count = 2, label_index = 1 },
-        { name = "SWAT", score = 1 },
+        { name = "Bulldozer", score = 12, special_kind = "dozer", special_count = 2, label_index = 1 },
         { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
     }
     local t_now = now()

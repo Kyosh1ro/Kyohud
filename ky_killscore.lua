@@ -124,7 +124,8 @@ function KH:IsDozerUnitId(unit_id)
 end
 
 function KH:GetSpecialEnemyKind(unit_id)
-    if not unit_id or self:IsDozerUnitId(unit_id) then return nil end
+    if not unit_id then return nil end
+    if self:IsDozerUnitId(unit_id) then return "dozer" end
 
     -- Prioriser les Cloakers : certaines variantes moddees contiennent aussi
     -- "shield" dans leur identifiant interne (par exemple meme_man_shield).
