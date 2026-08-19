@@ -47,7 +47,6 @@ local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
 local KILLFEED_FRAME_CLEARANCE = 1.5
 local BANNER_FRAME_EXTENSION = 4
-local SPECIAL_KILL_FRAME_EXTENSION = 5
 local SPECIAL_KILL_BANNER_DURATION = 1.25
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
 local DOZER_BANNER_COLOR = Color(1, 0.38, 0.08)
@@ -116,17 +115,6 @@ local BANNER_FRAME_STYLE = {
     glow_alpha = 0.16,
     brackets = { extension = BANNER_FRAME_EXTENSION },
 }
-local SPECIAL_KILL_FRAME_STYLE = {
-    inset = 2,
-    glow_alpha = 0.32,
-    brackets = {
-        extension = SPECIAL_KILL_FRAME_EXTENSION,
-        arm_x = 15,
-        arm_y = 9,
-        line_width = 2,
-    },
-}
-
 -- ═══════════════════════════════════════════════════
 -- Résolution d'icônes — système VanillaHUD
 -- ═══════════════════════════════════════════════════
@@ -1818,7 +1806,6 @@ function KH:draw()
         end
         local banner_h = math.max(38, size + 8)
         local banner_feed_gap = BANNER_FRAME_EXTENSION
-            + SPECIAL_KILL_FRAME_EXTENSION
             + KILLFEED_FRAME_CLEARANCE
         local block_h = banner_h + banner_feed_gap + (visible_count > 0 and item_h or 0)
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
@@ -1936,49 +1923,35 @@ function KH:draw()
             local item_color = kill.special_kind
                 and special_enemy_color(kill.special_kind)
                 or feed_color
-            if kill.special_kind then
-                draw_tactical_frame(
-                    self._panel,
-                    item_x,
-                    feed_y,
-                    item_w,
-                    item_h,
-                    item_color,
-                    item_alpha,
-                    101,
-                    SPECIAL_KILL_FRAME_STYLE
-                )
-            else
-                self._panel:gradient({
-                    x = item_x,
-                    y = feed_y + 1,
-                    w = item_w,
-                    h = item_h - 2,
-                    orientation = "horizontal",
-                    gradient_points = {
-                        0, Color.black:with_alpha(item_alpha * 0.68),
-                        0.72, Color.black:with_alpha(item_alpha * 0.42),
-                        1, Color.black:with_alpha(item_alpha * 0.05),
-                    },
-                    layer = 101,
-                })
-                self._panel:rect({
-                    x = item_x, y = feed_y + 2, w = 2, h = item_h - 4,
-                    color = feed_color, alpha = item_alpha * 0.9, layer = 102,
-                })
-                self._panel:rect({
-                    x = item_x + 2, y = feed_y + 1, w = item_w - 4, h = 1,
-                    color = feed_color, alpha = item_alpha * 0.5, layer = 102,
-                })
-                self._panel:rect({
-                    x = item_x + 2, y = feed_y + item_h - 2, w = item_w - 4, h = 1,
-                    color = feed_color, alpha = item_alpha * 0.5, layer = 102,
-                })
-                self._panel:rect({
-                    x = item_x + item_w - 2, y = feed_y + 2, w = 2, h = item_h - 4,
-                    color = feed_color, alpha = item_alpha * 0.9, layer = 102,
-                })
-            end
+            self._panel:gradient({
+                x = item_x,
+                y = feed_y + 1,
+                w = item_w,
+                h = item_h - 2,
+                orientation = "horizontal",
+                gradient_points = {
+                    0, Color.black:with_alpha(item_alpha * 0.68),
+                    0.72, Color.black:with_alpha(item_alpha * 0.42),
+                    1, Color.black:with_alpha(item_alpha * 0.05),
+                },
+                layer = 101,
+            })
+            self._panel:rect({
+                x = item_x, y = feed_y + 2, w = 2, h = item_h - 4,
+                color = item_color, alpha = item_alpha * 0.9, layer = 102,
+            })
+            self._panel:rect({
+                x = item_x + 2, y = feed_y + 1, w = item_w - 4, h = 1,
+                color = item_color, alpha = item_alpha * 0.5, layer = 102,
+            })
+            self._panel:rect({
+                x = item_x + 2, y = feed_y + item_h - 2, w = item_w - 4, h = 1,
+                color = item_color, alpha = item_alpha * 0.5, layer = 102,
+            })
+            self._panel:rect({
+                x = item_x + item_w - 2, y = feed_y + 2, w = 2, h = item_h - 4,
+                color = item_color, alpha = item_alpha * 0.9, layer = 102,
+            })
 
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
