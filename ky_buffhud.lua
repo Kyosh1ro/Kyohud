@@ -45,6 +45,9 @@ KH._update_acc  = 0
 local MAX_KILLFEED_SIZE = 3
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
+local KILLFEED_FRAME_CLEARANCE = 1.5
+local BANNER_FRAME_EXTENSION = 4
+local SPECIAL_KILL_FRAME_EXTENSION = 5
 local SPECIAL_KILL_BANNER_DURATION = 1.25
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
 local DOZER_BANNER_COLOR = Color(1, 0.38, 0.08)
@@ -111,12 +114,17 @@ end
 local BANNER_FRAME_STYLE = {
     inset = 2,
     glow_alpha = 0.16,
-    brackets = { extension = 4 },
+    brackets = { extension = BANNER_FRAME_EXTENSION },
 }
 local SPECIAL_KILL_FRAME_STYLE = {
     inset = 2,
     glow_alpha = 0.32,
-    brackets = { extension = 5, arm_x = 15, arm_y = 9, line_width = 2 },
+    brackets = {
+        extension = SPECIAL_KILL_FRAME_EXTENSION,
+        arm_x = 15,
+        arm_y = 9,
+        line_width = 2,
+    },
 }
 
 -- ═══════════════════════════════════════════════════
@@ -1809,10 +1817,13 @@ function KH:draw()
             next_offset = next_offset + item_widths[slot] + item_gap
         end
         local banner_h = math.max(38, size + 8)
-        local block_h = banner_h + 8 + (visible_count > 0 and item_h or 0)
+        local banner_feed_gap = BANNER_FRAME_EXTENSION
+            + SPECIAL_KILL_FRAME_EXTENSION
+            + KILLFEED_FRAME_CLEARANCE
+        local block_h = banner_h + banner_feed_gap + (visible_count > 0 and item_h or 0)
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
         local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
-        local feed_y = block_top + banner_h + 8
+        local feed_y = block_top + banner_h + banner_feed_gap
         local feed_color = HUD_ACCENT_COLOR
 
         if banner_active then

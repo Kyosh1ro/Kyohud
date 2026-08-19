@@ -1,3 +1,6 @@
+r50 (19.08.2026):
+- Le bandeau multikill et les cadres du killfeed réservent désormais le dépassement de leurs crochets tactiques afin de conserver 1,5 px d'espace visible entre eux.
+
 r49 (19.08.2026):
 - Les cadres des kills spéciaux adaptent désormais leur largeur au slogan et au score, comme les kills normaux, afin de conserver une rangée compacte.
 
