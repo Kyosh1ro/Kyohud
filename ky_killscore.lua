@@ -123,6 +123,25 @@ function KH:IsDozerUnitId(unit_id)
     return contains(unit_id, "tank") or contains(unit_id, "dozer")
 end
 
+function KH:GetSpecialEnemyKind(unit_id)
+    if not unit_id or self:IsDozerUnitId(unit_id) then return nil end
+
+    -- Prioriser les Cloakers : certaines variantes moddees contiennent aussi
+    -- "shield" dans leur identifiant interne (par exemple meme_man_shield).
+    if contains(unit_id, "spooc") or contains(unit_id, "cloaker")
+            or unit_id == "meme_man_shield" then
+        return "cloaker"
+    end
+    if contains(unit_id, "taser") or contains(unit_id, "grenadier")
+            or unit_id == "boom" or contains(unit_id, "boom_") then
+        return "taser"
+    end
+    if contains(unit_id, "medic") then return "medic" end
+    if contains(unit_id, "shield") or unit_id == "phalanx_minion" then return "shield" end
+    if contains(unit_id, "sniper") or contains(unit_id, "marksman") then return "sniper" end
+    return nil
+end
+
 function KH:IsLocalKillAttacker(attacker)
     if not attacker or not alive(attacker) then return false end
 
@@ -187,7 +206,8 @@ function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian)
 
     local score = self:GetKillScore(unit_id, is_civilian)
     local special_banner = self:IsDozerUnitId(unit_id) and "dozer" or nil
-    self:add_kill(display_name, score, not is_civilian, special_banner)
+    local special_enemy_kind = not is_civilian and self:GetSpecialEnemyKind(unit_id) or nil
+    self:add_kill(display_name, score, not is_civilian, special_banner, special_enemy_kind)
 end
 
 KH._killscore_catalog_loaded = true
