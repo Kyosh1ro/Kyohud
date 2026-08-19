@@ -1,3 +1,6 @@
+r55 (19.08.2026):
+- Le score cumulé utilise désormais une carte compacte de la même hauteur que le killfeed, avec une largeur adaptée à sa valeur et le même cadre tactique surligné.
+
 r54 (19.08.2026):
 - Le score cumulé du killfeed adopte désormais un cadre hexagonal tactique et une teinte ambre, tandis qu'un total négatif reste signalé en rouge.
 

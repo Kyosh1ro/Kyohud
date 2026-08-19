@@ -628,76 +628,35 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
     )
 end
 
-local function hexagon_points(x, y, w, h, cut)
-    return {
-        Vector3(x + cut, y, 0),
-        Vector3(x + w - cut, y, 0),
-        Vector3(x + w, y + h * 0.5, 0),
-        Vector3(x + w - cut, y + h, 0),
-        Vector3(x + cut, y + h, 0),
-        Vector3(x, y + h * 0.5, 0),
-        Vector3(x + cut, y, 0),
-    }
-end
-
-local function draw_hexagonal_score_frame(panel, x, y, w, h, color, alpha, layer)
-    local cut = clamp(math.min(w * 0.18, h * 0.28), 8, 18)
-    local center = Vector3(w * 0.5, h * 0.5, 0)
-    local a = Vector3(cut, 0, 0)
-    local b = Vector3(w - cut, 0, 0)
-    local c = Vector3(w, h * 0.5, 0)
-    local d = Vector3(w - cut, h, 0)
-    local e = Vector3(cut, h, 0)
-    local f = Vector3(0, h * 0.5, 0)
-    local vertices = { a, b, c, d, e, f, a }
-
-    -- Un polygone PAYDAY 2 reçoit un triangle ; les six secteurs assurent
-    -- un fond hexagonal compatible avec les mêmes API que les chevrons.
-    for i = 1, 6 do
-        panel:polygon({
-            x = x,
-            y = y,
-            w = w,
-            h = h,
-            triangles = { center, vertices[i], vertices[i + 1] },
-            color = Color.black,
-            alpha = alpha * 0.72,
-            layer = layer,
-        })
-    end
-
-    local outline = hexagon_points(x, y, w, h, cut)
-    panel:polyline({
-        points = outline,
-        line_width = 4,
-        color = color,
-        alpha = alpha * 0.16,
-        layer = layer + 1,
+local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
+    panel:gradient({
+        x = x,
+        y = y + 1,
+        w = w,
+        h = h - 2,
+        orientation = "horizontal",
+        gradient_points = {
+            0, Color.black:with_alpha(alpha * 0.68),
+            0.72, Color.black:with_alpha(alpha * 0.42),
+            1, Color.black:with_alpha(alpha * 0.05),
+        },
+        layer = layer,
     })
-    panel:polyline({
-        points = outline,
-        line_width = 1,
-        color = color,
-        alpha = alpha,
-        layer = layer + 2,
+    panel:rect({
+        x = x, y = y + 2, w = 2, h = h - 4,
+        color = color, alpha = alpha * 0.9, layer = layer + 1,
     })
-
-    local inset = 3
-    local inner_w = math.max(1, w - inset * 2)
-    local inner_h = math.max(1, h - inset * 2)
-    local inner_cut = math.max(1, cut - inset * 0.5)
-    panel:polyline({
-        points = hexagon_points(
-            x + inset,
-            y + inset,
-            inner_w,
-            inner_h,
-            inner_cut
-        ),
-        line_width = 1,
-        color = color,
-        alpha = alpha * 0.28,
-        layer = layer + 2,
+    panel:rect({
+        x = x + 2, y = y + 1, w = w - 4, h = 1,
+        color = color, alpha = alpha * 0.5, layer = layer + 1,
+    })
+    panel:rect({
+        x = x + 2, y = y + h - 2, w = w - 4, h = 1,
+        color = color, alpha = alpha * 0.5, layer = layer + 1,
+    })
+    panel:rect({
+        x = x + w - 2, y = y + 2, w = 2, h = h - 4,
+        color = color, alpha = alpha * 0.9, layer = layer + 1,
     })
 end
 
@@ -1856,25 +1815,27 @@ function KH:draw()
         local visible_count = math.min(#self._kills, killfeed_limit)
         local item_h = clamp(size * 0.72 + 6, 28, 42)
         local item_gap = clamp(size * 0.3, 8, 14)
-        local score_total_text = visible_count > 0
-            and self._killfeed_score_has_value
-            and format_kill_score(self._killfeed_score_total)
-        local score_font_size = clamp(size * 0.8, 22, 34)
-        local score_w = score_total_text
-            and clamp(
-                approximate_text_width(score_total_text, score_font_size) + 36,
-                88,
-                196
-            )
-            or 0
-        local score_gap = score_total_text and clamp(size * 0.5, 12, 20) or 0
-        local available_w = math.max(1, w - 16 - score_w - score_gap)
         local kill_font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
         local kill_font_size = clamp(size * 0.42, 13, 18)
         local text_padding = clamp(size * 0.34, 10, 16)
         local text_gap = clamp(size * 0.14, 4, 7)
+        local score_total_text = visible_count > 0
+            and self._killfeed_score_has_value
+            and format_kill_score(self._killfeed_score_total)
+        local score_font_size = kill_font_size
+        local score_w = score_total_text
+            and math.max(
+                item_h,
+                math.ceil(
+                    approximate_text_width(score_total_text, score_font_size)
+                        + text_padding * 2
+                )
+            )
+            or 0
+        local score_gap = score_total_text and item_gap or 0
+        local available_w = math.max(1, w - 16 - score_w - score_gap)
         local first_kill = #self._kills - visible_count + 1
-        local banner_w = math.min(clamp(size * 7.5, 220, 320), available_w)
+        local banner_w = math.min(clamp(size * 7.5, 220, 320), math.max(1, w - 16))
 
         measure_killfeed_entries(
             self._panel,
@@ -1935,45 +1896,45 @@ function KH:draw()
         local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
         local feed_y = block_top + banner_h + banner_feed_gap
         local feed_color = HUD_ACCENT_COLOR
-        local right_block_w = math.max(banner_w, feed_row_w)
-        local group_w = score_w + score_gap + right_block_w
-        local group_x = clamp(cx - group_w * 0.5, 8, math.max(8, w - 8 - group_w))
-        local right_block_x = group_x + score_w + score_gap
-        local right_center = right_block_x + right_block_w * 0.5
+        local card_row_w = score_w + score_gap + feed_row_w
+        local block_w = math.max(banner_w, card_row_w)
+        local block_x = clamp(cx - block_w * 0.5, 8, math.max(8, w - 8 - block_w))
+        local block_center = block_x + block_w * 0.5
+        local card_row_x = block_center - card_row_w * 0.5
 
         if score_total_text then
             local newest = self._kills[#self._kills]
             local score_intro = newest and newest.start_t
                 and clamp((t - newest.start_t) / KILL_SCROLL_TIME, 0, 1)
                 or 1
-            local pulse_font_size = score_font_size * (1 + (1 - score_intro) * 0.12)
             local score_color = (self._killfeed_score_total or 0) < 0
                 and KILLFEED_SCORE_PENALTY_COLOR
                 or KILLFEED_SCORE_COLOR
             local score_alpha = alpha * score_intro
-            draw_hexagonal_score_frame(
+            draw_killfeed_card_frame(
                 self._panel,
-                group_x,
-                block_top,
+                card_row_x,
+                feed_y,
                 score_w,
-                block_h,
+                item_h,
                 score_color,
                 score_alpha,
-                102
+                101
             )
-            draw_glowing_text(
-                self._panel,
-                score_total_text,
-                tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
-                pulse_font_size,
-                score_color,
-                group_x,
-                block_top,
-                score_w,
-                block_h,
-                score_alpha,
-                106
-            )
+            self._panel:text({
+                text = score_total_text,
+                font = kill_font,
+                font_size = score_font_size,
+                color = score_color,
+                align = "center",
+                vertical = "center",
+                x = card_row_x,
+                y = feed_y,
+                w = score_w,
+                h = item_h,
+                layer = 103,
+                alpha = score_alpha,
+            })
         end
 
         if banner_active then
@@ -1994,7 +1955,7 @@ function KH:draw()
                 local scale = 1 + (1 - intro) * 0.06
                 local bw = banner_w * scale
                 local bh = banner_h * scale
-                local bx = right_center - bw * 0.5
+                local bx = block_center - bw * 0.5
                 local by = block_top - (bh - banner_h) * 0.5
                 local color = special_banner_active
                     and DOZER_BANNER_COLOR
@@ -2061,7 +2022,7 @@ function KH:draw()
             scroll = clamp((t - newest.start_t) / KILL_SCROLL_TIME, 0, 1)
         end
 
-        local feed_x = right_center - feed_row_w * 0.5
+        local feed_x = card_row_x + score_w + score_gap
         for slot = 1, visible_count do
             -- Ordre chronologique : le kill le plus ancien est à gauche,
             -- le plus récent s'ajoute à droite.
@@ -2086,35 +2047,16 @@ function KH:draw()
             local item_color = kill.special_kind
                 and special_enemy_color(kill.special_kind)
                 or feed_color
-            self._panel:gradient({
-                x = item_x,
-                y = feed_y + 1,
-                w = item_w,
-                h = item_h - 2,
-                orientation = "horizontal",
-                gradient_points = {
-                    0, Color.black:with_alpha(item_alpha * 0.68),
-                    0.72, Color.black:with_alpha(item_alpha * 0.42),
-                    1, Color.black:with_alpha(item_alpha * 0.05),
-                },
-                layer = 101,
-            })
-            self._panel:rect({
-                x = item_x, y = feed_y + 2, w = 2, h = item_h - 4,
-                color = item_color, alpha = item_alpha * 0.9, layer = 102,
-            })
-            self._panel:rect({
-                x = item_x + 2, y = feed_y + 1, w = item_w - 4, h = 1,
-                color = item_color, alpha = item_alpha * 0.5, layer = 102,
-            })
-            self._panel:rect({
-                x = item_x + 2, y = feed_y + item_h - 2, w = item_w - 4, h = 1,
-                color = item_color, alpha = item_alpha * 0.5, layer = 102,
-            })
-            self._panel:rect({
-                x = item_x + item_w - 2, y = feed_y + 2, w = 2, h = item_h - 4,
-                color = item_color, alpha = item_alpha * 0.9, layer = 102,
-            })
+            draw_killfeed_card_frame(
+                self._panel,
+                item_x,
+                feed_y,
+                item_w,
+                item_h,
+                item_color,
+                item_alpha,
+                101
+            )
 
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
