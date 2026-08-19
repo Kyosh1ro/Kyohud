@@ -38,6 +38,8 @@ KH._kills       = {}           -- { {name, score?, score_text?, start_t, t_end?}
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._special_kill_banner = nil
 KH._dozer_banner_index = KH._dozer_banner_index or 0
+KH._special_enemy_combos = {}
+KH._special_enemy_label_indices = KH._special_enemy_label_indices or {}
 KH._update_acc  = 0
 
 local MAX_KILLFEED_SIZE = 3
@@ -96,7 +98,7 @@ local function measure_killfeed_entries(panel, kills, first_kill, count, font, f
     for slot = 1, count do
         local kill = kills[first_kill + slot - 1]
         if kill and kill._measure_font_size ~= font_size then
-            kill._measured_name_w = measure(kill.name)
+            kill._measured_name_w = measure(kill.display_text or kill.name)
             kill._measured_score_w = kill.score_text and measure(kill.score_text) or 0
             kill._measure_font_size = font_size
         end
@@ -110,6 +112,11 @@ local BANNER_FRAME_STYLE = {
     inset = 2,
     glow_alpha = 0.16,
     brackets = { extension = 4 },
+}
+local SPECIAL_KILL_FRAME_STYLE = {
+    inset = 2,
+    glow_alpha = 0.32,
+    brackets = { extension = 5, arm_x = 15, arm_y = 9, line_width = 2 },
 }
 
 -- ═══════════════════════════════════════════════════
@@ -379,6 +386,50 @@ local DOZER_BANNER_LABELS = {
     { id = "ky_hud_bulldozed",  fallback = "BULLDOZED" },
 }
 
+local SPECIAL_ENEMY_DEFINITIONS = {
+    medic = {
+        color = Color(0.2, 0.95, 0.55),
+        labels = {
+            { id = "ky_hud_medic_code_blue",    fallback = "CODE BLUE" },
+            { id = "ky_hud_medic_bad_medicine", fallback = "BAD MEDICINE" },
+            { id = "ky_hud_medic_doctor_down",  fallback = "DOCTOR DOWN" },
+        },
+    },
+    cloaker = {
+        color = Color(0.35, 1, 0.18),
+        labels = {
+            { id = "ky_hud_cloaker_shadow_hunter", fallback = "SHADOW HUNTER" },
+            { id = "ky_hud_cloaker_counter_kick",  fallback = "COUNTER-KICK" },
+            { id = "ky_hud_cloaker_ambush_broken", fallback = "AMBUSH BROKEN" },
+        },
+    },
+    taser = {
+        color = Color(0.35, 0.75, 1),
+        labels = {
+            { id = "ky_hud_taser_power_outage",    fallback = "POWER OUTAGE" },
+            { id = "ky_hud_taser_circuit_breaker", fallback = "CIRCUIT BREAKER" },
+            { id = "ky_hud_taser_blackout",        fallback = "BLACKOUT" },
+        },
+    },
+    shield = {
+        color = Color(1, 0.72, 0.16),
+        labels = {
+            { id = "ky_hud_shield_breaker",        fallback = "SHIELD BREAKER" },
+            { id = "ky_hud_shield_phalanx_fall",   fallback = "PHALANX FALL" },
+            { id = "ky_hud_shield_barrier_down",   fallback = "BARRIER DOWN" },
+            { id = "ky_hud_shield_defense_denied", fallback = "DEFENSE DENIED" },
+        },
+    },
+    sniper = {
+        color = Color(1, 0.34, 0.3),
+        labels = {
+            { id = "ky_hud_sniper_counter_sniper",  fallback = "COUNTER-SNIPER" },
+            { id = "ky_hud_sniper_scope_breaker",   fallback = "SCOPE BREAKER" },
+            { id = "ky_hud_sniper_longshot_denied", fallback = "LONGSHOT DENIED" },
+        },
+    },
+}
+
 local function combo_label(count)
     local definition = COMBO_LABELS[count]
     if definition then
@@ -397,6 +448,28 @@ end
 local function dozer_banner_label(index)
     local definition = DOZER_BANNER_LABELS[index] or DOZER_BANNER_LABELS[1]
     return localized_text(definition.id, definition.fallback)
+end
+
+local function special_enemy_definition(kind)
+    return kind and SPECIAL_ENEMY_DEFINITIONS[kind] or nil
+end
+
+local function special_enemy_label(kind, index, count)
+    local definition = special_enemy_definition(kind)
+    local labels = definition and definition.labels
+    local label_definition = labels and (labels[index] or labels[1])
+    if not label_definition then return nil end
+
+    local label = localized_text(label_definition.id, label_definition.fallback)
+    if count and count >= 2 then
+        label = label .. " x" .. tostring(count)
+    end
+    return label
+end
+
+local function special_enemy_color(kind)
+    local definition = special_enemy_definition(kind)
+    return definition and definition.color or HUD_ACCENT_COLOR
 end
 
 -- Cadre tactique inspiré des notifications Battlefield : traits asymétriques,
@@ -1228,7 +1301,7 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
-function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner)
+function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind)
     if not self.settings or not self.settings.enable_killfeed then return end
 
     local dur = self.settings.buff_duration or 5
@@ -1251,10 +1324,39 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner)
         self:_show_dozer_banner(t, false)
     end
 
+    local special_count
+    local special_label_index
+    local special_definition = special_enemy_definition(special_enemy_kind)
+    if special_definition then
+        local special_combo = self._special_enemy_combos[special_enemy_kind]
+            or { count = 0 }
+        if special_combo.last_t and (t - special_combo.last_t) <= KILL_COMBO_WINDOW then
+            special_combo.count = (special_combo.count or 0) + 1
+        else
+            special_combo.count = 1
+        end
+        special_combo.last_t = t
+        self._special_enemy_combos[special_enemy_kind] = special_combo
+        special_count = special_combo.count
+
+        local label_count = #special_definition.labels
+        special_label_index = ((self._special_enemy_label_indices[special_enemy_kind] or 0)
+            % label_count) + 1
+        self._special_enemy_label_indices[special_enemy_kind] = special_label_index
+    end
+
     local entry = {
         name       = enemy_name or "Enemy",
         score      = score,
         score_text = format_kill_score(score),
+        special_kind = special_definition and special_enemy_kind or nil,
+        special_count = special_count,
+        special_label_index = special_label_index,
+        display_text = special_enemy_label(
+            special_enemy_kind,
+            special_label_index,
+            special_count
+        ),
         start_t    = t,
         t_end      = t + dur,
     }
@@ -1653,6 +1755,7 @@ function KH:draw()
         local text_padding = clamp(size * 0.34, 10, 16)
         local text_gap = clamp(size * 0.14, 4, 7)
         local first_kill = #self._kills - visible_count + 1
+        local banner_w = clamp(size * 7.5, 220, 320)
 
         measure_killfeed_entries(
             self._panel,
@@ -1675,6 +1778,12 @@ function KH:draw()
             local content_gap = kill.score_text and text_gap or 0
             local item_w = math.ceil(name_w + score_w + content_gap + text_padding * 2)
             item_w = math.max(item_h, item_w)
+            if kill.special_kind then
+                -- Les kills speciaux reprennent exactement la largeur cible du
+                -- bandeau multikill. La rangée ne les réduit que si l'écran ne
+                -- peut matériellement pas contenir toutes les entrées visibles.
+                item_w = banner_w
+            end
             item_widths[slot] = item_w
             desired_row_w = desired_row_w + item_w
         end
@@ -1705,7 +1814,6 @@ function KH:draw()
             item_offsets[slot] = next_offset
             next_offset = next_offset + item_widths[slot] + item_gap
         end
-        local banner_w = clamp(size * 7.5, 220, 320)
         local banner_h = math.max(38, size + 8)
         local block_h = banner_h + 8 + (visible_count > 0 and item_h or 0)
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
@@ -1820,35 +1928,52 @@ function KH:draw()
                 item_x = item_x + 18 * (1 - scroll)
             end
 
-            self._panel:gradient({
-                x = item_x,
-                y = feed_y + 1,
-                w = item_w,
-                h = item_h - 2,
-                orientation = "horizontal",
-                gradient_points = {
-                    0, Color.black:with_alpha(item_alpha * 0.68),
-                    0.72, Color.black:with_alpha(item_alpha * 0.42),
-                    1, Color.black:with_alpha(item_alpha * 0.05),
-                },
-                layer = 101,
-            })
-            self._panel:rect({
-                x = item_x, y = feed_y + 2, w = 2, h = item_h - 4,
-                color = feed_color, alpha = item_alpha * 0.9, layer = 102,
-            })
-            self._panel:rect({
-                x = item_x + 2, y = feed_y + 1, w = item_w - 4, h = 1,
-                color = feed_color, alpha = item_alpha * 0.5, layer = 102,
-            })
-            self._panel:rect({
-                x = item_x + 2, y = feed_y + item_h - 2, w = item_w - 4, h = 1,
-                color = feed_color, alpha = item_alpha * 0.5, layer = 102,
-            })
-            self._panel:rect({
-                x = item_x + item_w - 2, y = feed_y + 2, w = 2, h = item_h - 4,
-                color = feed_color, alpha = item_alpha * 0.9, layer = 102,
-            })
+            local item_color = kill.special_kind
+                and special_enemy_color(kill.special_kind)
+                or feed_color
+            if kill.special_kind then
+                draw_tactical_frame(
+                    self._panel,
+                    item_x,
+                    feed_y,
+                    item_w,
+                    item_h,
+                    item_color,
+                    item_alpha,
+                    101,
+                    SPECIAL_KILL_FRAME_STYLE
+                )
+            else
+                self._panel:gradient({
+                    x = item_x,
+                    y = feed_y + 1,
+                    w = item_w,
+                    h = item_h - 2,
+                    orientation = "horizontal",
+                    gradient_points = {
+                        0, Color.black:with_alpha(item_alpha * 0.68),
+                        0.72, Color.black:with_alpha(item_alpha * 0.42),
+                        1, Color.black:with_alpha(item_alpha * 0.05),
+                    },
+                    layer = 101,
+                })
+                self._panel:rect({
+                    x = item_x, y = feed_y + 2, w = 2, h = item_h - 4,
+                    color = feed_color, alpha = item_alpha * 0.9, layer = 102,
+                })
+                self._panel:rect({
+                    x = item_x + 2, y = feed_y + 1, w = item_w - 4, h = 1,
+                    color = feed_color, alpha = item_alpha * 0.5, layer = 102,
+                })
+                self._panel:rect({
+                    x = item_x + 2, y = feed_y + item_h - 2, w = item_w - 4, h = 1,
+                    color = feed_color, alpha = item_alpha * 0.5, layer = 102,
+                })
+                self._panel:rect({
+                    x = item_x + item_w - 2, y = feed_y + 2, w = 2, h = item_h - 4,
+                    color = feed_color, alpha = item_alpha * 0.9, layer = 102,
+                })
+            end
 
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
@@ -1863,10 +1988,10 @@ function KH:draw()
             local text_x = item_x + (item_w - content_w) * 0.5
 
             self._panel:text({
-                text = kill.name,
+                text = kill.display_text or kill.name,
                 font = kill_font,
                 font_size = kill_font_size,
-                color = Color(0.86, 0.96, 1),
+                color = kill.special_kind and item_color or Color(0.86, 0.96, 1),
                 align = score_text and "right" or "center",
                 vertical = "center",
                 x = text_x,
@@ -1880,7 +2005,7 @@ function KH:draw()
             if score_text then
                 local score_color = kill.score and kill.score < 0
                     and Color(1, 0.36, 0.3)
-                    or HUD_ACCENT_COLOR
+                    or item_color
                 self._panel:text({
                     text = score_text,
                     font = kill_font,
@@ -1992,9 +2117,9 @@ function KH:DebugSimulate(n)
 
     -- Simuler quelques kills
     local demo_kills = {
+        { name = "Medic", score = 6, special_kind = "medic", special_count = 2, label_index = 1 },
         { name = "SWAT", score = 1 },
-        { name = "Shield", score = 5 },
-        { name = "Bulldozer", score = 12 },
+        { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
     }
     local t_now = now()
     for i = 1, killfeed_size(self.settings) do
@@ -2003,6 +2128,14 @@ function KH:DebugSimulate(n)
             name       = demo.name,
             score      = demo.score,
             score_text = format_kill_score(demo.score),
+            special_kind = demo.special_kind,
+            special_count = demo.special_count,
+            special_label_index = demo.label_index,
+            display_text = special_enemy_label(
+                demo.special_kind,
+                demo.label_index,
+                demo.special_count
+            ),
             start_t    = t_now,
             -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
         })
@@ -2022,6 +2155,7 @@ function KH:DebugClear()
     self._kills = {}
     self._kill_combo = { count = 0, last_t = nil, updated_t = nil }
     self._special_kill_banner = nil
+    self._special_enemy_combos = {}
     if self._panel and alive(self._panel) then
         self._panel:clear()
     end

@@ -1,3 +1,6 @@
+r48 (19.08.2026):
+- Les Medic, Cloaker, Taser, Shield et Sniper utilisent désormais un cadre tactique distinct, aussi large que le bandeau multikill, avec leurs propres annonces et un compteur `xN` pour les éliminations rapprochées du même type.
+
 r47 (19.08.2026):
 - L'élimination d'un Bulldozer affiche désormais à tour de rôle « KILLDOZER », « DOZER DOWN » ou « BULLDOZED » dans le grand bandeau tactique, avant de rendre la place au multikill actif.
 
