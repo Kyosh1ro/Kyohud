@@ -1,3 +1,6 @@
+r47 (19.08.2026):
+- L'élimination d'un Bulldozer affiche désormais à tour de rôle « KILLDOZER », « DOZER DOWN » ou « BULLDOZED » dans le grand bandeau tactique, avant de rendre la place au multikill actif.
+
 r46 (19.08.2026):
 - Les séries de 2 à 10 kills possèdent désormais des annonces distinctes à l'identité Kyosh1ro HUD, puis affichent « KILL CHAIN xN » à partir du onzième kill.
 

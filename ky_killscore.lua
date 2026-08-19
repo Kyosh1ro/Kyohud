@@ -119,6 +119,10 @@ function KH:GetKillDisplayName(unit_id, is_civilian)
         or unit_id:gsub("_", " "):gsub("^%l", string.upper)
 end
 
+function KH:IsDozerUnitId(unit_id)
+    return contains(unit_id, "tank") or contains(unit_id, "dozer")
+end
+
 function KH:IsLocalKillAttacker(attacker)
     if not attacker or not alive(attacker) then return false end
 
@@ -182,7 +186,8 @@ function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian)
     end
 
     local score = self:GetKillScore(unit_id, is_civilian)
-    self:add_kill(display_name, score, not is_civilian)
+    local special_banner = self:IsDozerUnitId(unit_id) and "dozer" or nil
+    self:add_kill(display_name, score, not is_civilian, special_banner)
 end
 
 KH._killscore_catalog_loaded = true

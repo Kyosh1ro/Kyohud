@@ -23,7 +23,7 @@
   "ky_opt_reset": "Reset to Defaults",
   "ky_opt_reset_desc": "Reset all settings to their default values",
   "ky_opt_debug_sim": "Debug: Simulate Buffs & Kills",
-  "ky_opt_debug_sim_desc": "Simulate the equipped deck, 6 active priority buffs, 8 extra buffs and up to 3 kills, and briefly show the combo banner",
+  "ky_opt_debug_sim_desc": "Simulate the equipped deck, active buffs and kills; repeated uses cycle through Killdozer banners",
   "ky_opt_debug_clear": "Debug: Clear All",
   "ky_opt_debug_clear_desc": "Remove active buffs and kills; the equipped perk deck remains visible",
 
@@ -37,6 +37,9 @@
   "ky_hud_combo_9": "APOCALYPSE",
   "ky_hud_combo_10": "PERFECT HEIST",
   "ky_hud_combo_chain": "KILL CHAIN",
+  "ky_hud_killdozer": "KILLDOZER",
+  "ky_hud_dozer_down": "DOZER DOWN",
+  "ky_hud_bulldozed": "BULLDOZED",
 
   "ky_opt_buff_filter": "Buff Filters",
   "ky_opt_buff_filter_desc": "Toggle buff categories and individual buffs on/off",

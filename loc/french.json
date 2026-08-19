@@ -23,7 +23,7 @@
   "ky_opt_reset": "Réinitialiser par défaut",
   "ky_opt_reset_desc": "Remettre tous les paramètres à leurs valeurs par défaut",
   "ky_opt_debug_sim": "Debug : Simuler buffs et kills",
-  "ky_opt_debug_sim_desc": "Simule le deck équipé, 6 buffs prioritaires actifs, 8 buffs supplémentaires et jusqu'à 3 kills, puis montre brièvement le bandeau de série",
+  "ky_opt_debug_sim_desc": "Simule le deck équipé, les buffs et les kills ; plusieurs utilisations font défiler les bandeaux Killdozer",
   "ky_opt_debug_clear": "Debug : Tout effacer",
   "ky_opt_debug_clear_desc": "Supprime les buffs et kills actifs ; le deck d'atouts équipé reste visible",
 
@@ -37,6 +37,9 @@
   "ky_hud_combo_9": "APOCALYPSE",
   "ky_hud_combo_10": "CRIME PARFAIT",
   "ky_hud_combo_chain": "KILL CHAIN",
+  "ky_hud_killdozer": "KILLDOZER",
+  "ky_hud_dozer_down": "DOZER DOWN",
+  "ky_hud_bulldozed": "BULLDOZED",
 
   "ky_opt_buff_filter": "Filtres de buffs",
   "ky_opt_buff_filter_desc": "Activer/désactiver les catégories et buffs individuels",
