@@ -49,7 +49,7 @@ local function add_fallbacks(loc)
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
         ky_opt_debug_sim            = "Debug: Simulate",
-        ky_opt_debug_sim_desc       = "Simulate the equipped deck, 6 active priority buffs, 8 extra buffs and up to 3 kills",
+        ky_opt_debug_sim_desc       = "Simulate the equipped deck, active buffs and kills; repeated uses cycle through Killdozer banners",
         ky_opt_debug_clear          = "Debug: Clear",
         ky_opt_debug_clear_desc     = "Remove active buffs and kills; the equipped perk deck remains visible",
 
@@ -64,6 +64,9 @@ local function add_fallbacks(loc)
         ky_hud_combo_9     = "APOCALYPSE",
         ky_hud_combo_10    = "PERFECT HEIST",
         ky_hud_combo_chain = "KILL CHAIN",
+        ky_hud_killdozer   = "KILLDOZER",
+        ky_hud_dozer_down  = "DOZER DOWN",
+        ky_hud_bulldozed   = "BULLDOZED",
 
         -- Sous-menu filtres
         ky_opt_buff_filter          = "Buff Filters",

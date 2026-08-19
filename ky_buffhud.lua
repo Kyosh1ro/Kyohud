@@ -36,12 +36,16 @@ KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
 KH._kills       = {}           -- { {name, score?, score_text?, start_t, t_end?} }
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
+KH._special_kill_banner = nil
+KH._dozer_banner_index = KH._dozer_banner_index or 0
 KH._update_acc  = 0
 
 local MAX_KILLFEED_SIZE = 3
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
+local SPECIAL_KILL_BANNER_DURATION = 1.25
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
+local DOZER_BANNER_COLOR = Color(1, 0.38, 0.08)
 local AI_BUFF_LABEL     = "[AI]"
 
 local function killfeed_size(settings)
@@ -369,6 +373,12 @@ local COMBO_LABELS = {
     [10] = { id = "ky_hud_combo_10", fallback = "PERFECT HEIST" },
 }
 
+local DOZER_BANNER_LABELS = {
+    { id = "ky_hud_killdozer",  fallback = "KILLDOZER" },
+    { id = "ky_hud_dozer_down", fallback = "DOZER DOWN" },
+    { id = "ky_hud_bulldozed",  fallback = "BULLDOZED" },
+}
+
 local function combo_label(count)
     local definition = COMBO_LABELS[count]
     if definition then
@@ -382,6 +392,11 @@ local function combo_color(count)
     if count == 3 then return Color(1, 0.55, 0.1) end
     if count == 4 then return Color(1, 0.2, 0.1) end
     return Color(0.9, 0.15, 1)
+end
+
+local function dozer_banner_label(index)
+    local definition = DOZER_BANNER_LABELS[index] or DOZER_BANNER_LABELS[1]
+    return localized_text(definition.id, definition.fallback)
 end
 
 -- Cadre tactique inspiré des notifications Battlefield : traits asymétriques,
@@ -1199,10 +1214,21 @@ function KH:RefreshDetectedBuffs()
     self:RefreshCalculatedBuffValues()
 end
 
+function KH:_show_dozer_banner(t, preview)
+    self._dozer_banner_index = ((self._dozer_banner_index or 0) % #DOZER_BANNER_LABELS) + 1
+    self._special_kill_banner = {
+        kind = "dozer",
+        label_index = self._dozer_banner_index,
+        started_t = t,
+        t_end = t + SPECIAL_KILL_BANNER_DURATION,
+        preview = preview == true,
+    }
+end
+
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
-function KH:add_kill(enemy_name, score, contributes_to_combo)
+function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner)
     if not self.settings or not self.settings.enable_killfeed then return end
 
     local dur = self.settings.buff_duration or 5
@@ -1220,6 +1246,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo)
         combo.last_t = t
         combo.updated_t = t
         self._kill_combo = combo
+    end
+    if special_banner == "dozer" then
+        self:_show_dozer_banner(t, false)
     end
 
     local entry = {
@@ -1353,6 +1382,14 @@ function KH:draw()
         combo.count = 0
         combo.last_t = nil
         combo.updated_t = nil
+    end
+
+    -- L'annonce spéciale masque brièvement le multikill, qui reprend ensuite
+    -- tant que sa propre fenêtre de trois secondes reste active.
+    local special_banner = self._special_kill_banner
+    if special_banner and not special_banner.preview and special_banner.t_end <= t then
+        self._special_kill_banner = nil
+        special_banner = nil
     end
 
     -- Nettoyer le panneau pour redessiner
@@ -1603,7 +1640,9 @@ function KH:draw()
 
     -- ── Dessiner le bandeau de série et le killfeed horizontal ──
     local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
-    if s.enable_killfeed and (#self._kills > 0 or combo_active) then
+    local special_banner_active = special_banner ~= nil
+    local banner_active = special_banner_active or combo_active
+    if s.enable_killfeed and (#self._kills > 0 or banner_active) then
         local killfeed_limit = killfeed_size(s)
         local visible_count = math.min(#self._kills, killfeed_limit)
         local item_h = clamp(size * 0.72 + 6, 28, 42)
@@ -1674,12 +1713,19 @@ function KH:draw()
         local feed_y = block_top + banner_h + 8
         local feed_color = HUD_ACCENT_COLOR
 
-        if combo_active then
-            local remaining = combo.preview
-                and KILL_COMBO_WINDOW
-                or combo.last_t + KILL_COMBO_WINDOW - t
+        if banner_active then
+            local remaining = special_banner_active
+                and (special_banner.preview
+                    and SPECIAL_KILL_BANNER_DURATION
+                    or special_banner.t_end - t)
+                or (combo.preview
+                    and KILL_COMBO_WINDOW
+                    or combo.last_t + KILL_COMBO_WINDOW - t)
             if remaining > 0 then
-                local intro = clamp((t - (combo.updated_t or t)) / 0.15, 0, 1)
+                local updated_t = special_banner_active
+                    and special_banner.started_t
+                    or combo.updated_t
+                local intro = clamp((t - (updated_t or t)) / 0.15, 0, 1)
                 local fade_out = clamp(remaining / 0.35, 0, 1)
                 local banner_alpha = alpha * fade_out
                 local scale = 1 + (1 - intro) * 0.06
@@ -1687,7 +1733,9 @@ function KH:draw()
                 local bh = banner_h * scale
                 local bx = cx - bw * 0.5
                 local by = block_top - (bh - banner_h) * 0.5
-                local color = combo_color(combo.count)
+                local color = special_banner_active
+                    and DOZER_BANNER_COLOR
+                    or combo_color(combo.count)
 
                 draw_tactical_frame(
                     self._panel,
@@ -1725,7 +1773,9 @@ function KH:draw()
                 local text_x = bx + 48
                 local text_w = bw - 96
                 local font_size = clamp(size * 0.65, 17, 27)
-                local label = combo_label(combo.count)
+                local label = special_banner_active
+                    and dozer_banner_label(special_banner.label_index)
+                    or combo_label(combo.count)
                 draw_glowing_text(
                     self._panel,
                     label,
@@ -1963,6 +2013,7 @@ function KH:DebugSimulate(n)
         updated_t = t_now,
         preview = true,
     }
+    self:_show_dozer_banner(t_now, true)
 end
 
 function KH:DebugClear()
@@ -1970,6 +2021,7 @@ function KH:DebugClear()
     self._buffs = {}
     self._kills = {}
     self._kill_combo = { count = 0, last_t = nil, updated_t = nil }
+    self._special_kill_banner = nil
     if self._panel and alive(self._panel) then
         self._panel:clear()
     end
