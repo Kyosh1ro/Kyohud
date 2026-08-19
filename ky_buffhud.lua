@@ -36,6 +36,8 @@ KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
 KH._kills       = {}           -- { {name, score?, score_text?, start_t, t_end?} }
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
+KH._killfeed_score_total = 0
+KH._killfeed_score_has_value = false
 KH._special_kill_banner = nil
 KH._dozer_banner_index = KH._dozer_banner_index or 0
 KH._special_enemy_combos = {}
@@ -50,6 +52,7 @@ local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
 local DOZER_BANNER_COLOR = Color(1, 0.38, 0.08)
+local KILLFEED_SCORE_COLOR = Color(1, 0.12, 0.08)
 local AI_BUFF_LABEL     = "[AI]"
 
 local function killfeed_size(settings)
@@ -65,6 +68,15 @@ local function format_kill_score(score)
         and tostring(rounded)
         or string.format("%.1f", score)
     return (score > 0 and "+" or "") .. value
+end
+
+local function has_active_killfeed_entry(kills, t)
+    for _, kill in ipairs(kills or {}) do
+        if not kill.t_end or kill.t_end > t then
+            return true
+        end
+    end
+    return false
 end
 
 local function approximate_text_width(text, font_size)
@@ -1329,6 +1341,18 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         self:_show_dozer_banner(t, false)
     end
 
+    -- Le score représente tous les points produits pendant une apparition
+    -- continue du killfeed. Une carte retirée par la limite de 1 à 3 entrées
+    -- conserve donc ses points jusqu'à l'expiration de la dernière carte.
+    if not has_active_killfeed_entry(self._kills, t) then
+        self._killfeed_score_total = 0
+        self._killfeed_score_has_value = false
+    end
+    if type(score) == "number" then
+        self._killfeed_score_total = (self._killfeed_score_total or 0) + score
+        self._killfeed_score_has_value = true
+    end
+
     local special_count
     local special_label_index
     local special_definition = special_enemy_definition(special_enemy_kind)
@@ -1480,6 +1504,10 @@ function KH:draw()
         else
             i = i + 1
         end
+    end
+    if #self._kills == 0 then
+        self._killfeed_score_total = 0
+        self._killfeed_score_has_value = false
     end
 
     -- Une série se termine après quelques secondes sans nouveau kill.
@@ -1754,13 +1782,25 @@ function KH:draw()
         local visible_count = math.min(#self._kills, killfeed_limit)
         local item_h = clamp(size * 0.72 + 6, 28, 42)
         local item_gap = clamp(size * 0.3, 8, 14)
-        local available_w = math.max(1, w - 16)
+        local score_total_text = visible_count > 0
+            and self._killfeed_score_has_value
+            and format_kill_score(self._killfeed_score_total)
+        local score_font_size = clamp(size * 0.8, 22, 34)
+        local score_w = score_total_text
+            and clamp(
+                approximate_text_width(score_total_text, score_font_size) + 12,
+                72,
+                180
+            )
+            or 0
+        local score_gap = score_total_text and clamp(size * 0.5, 12, 20) or 0
+        local available_w = math.max(1, w - 16 - score_w - score_gap)
         local kill_font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
         local kill_font_size = clamp(size * 0.42, 13, 18)
         local text_padding = clamp(size * 0.34, 10, 16)
         local text_gap = clamp(size * 0.14, 4, 7)
         local first_kill = #self._kills - visible_count + 1
-        local banner_w = clamp(size * 7.5, 220, 320)
+        local banner_w = math.min(clamp(size * 7.5, 220, 320), available_w)
 
         measure_killfeed_entries(
             self._panel,
@@ -1821,6 +1861,32 @@ function KH:draw()
         local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
         local feed_y = block_top + banner_h + banner_feed_gap
         local feed_color = HUD_ACCENT_COLOR
+        local right_block_w = math.max(banner_w, feed_row_w)
+        local group_w = score_w + score_gap + right_block_w
+        local group_x = clamp(cx - group_w * 0.5, 8, math.max(8, w - 8 - group_w))
+        local right_block_x = group_x + score_w + score_gap
+        local right_center = right_block_x + right_block_w * 0.5
+
+        if score_total_text then
+            local newest = self._kills[#self._kills]
+            local score_intro = newest and newest.start_t
+                and clamp((t - newest.start_t) / KILL_SCROLL_TIME, 0, 1)
+                or 1
+            local pulse_font_size = score_font_size * (1 + (1 - score_intro) * 0.12)
+            draw_glowing_text(
+                self._panel,
+                score_total_text,
+                tweak_data.menu.pd2_large_font or "fonts/font_large_mf",
+                pulse_font_size,
+                KILLFEED_SCORE_COLOR,
+                group_x,
+                block_top,
+                score_w,
+                block_h,
+                alpha * score_intro,
+                106
+            )
+        end
 
         if banner_active then
             local remaining = special_banner_active
@@ -1840,7 +1906,7 @@ function KH:draw()
                 local scale = 1 + (1 - intro) * 0.06
                 local bw = banner_w * scale
                 local bh = banner_h * scale
-                local bx = cx - bw * 0.5
+                local bx = right_center - bw * 0.5
                 local by = block_top - (bh - banner_h) * 0.5
                 local color = special_banner_active
                     and DOZER_BANNER_COLOR
@@ -1907,7 +1973,7 @@ function KH:draw()
             scroll = clamp((t - newest.start_t) / KILL_SCROLL_TIME, 0, 1)
         end
 
-        local feed_x = clamp(cx - feed_row_w * 0.5, 8, math.max(8, w - 8 - feed_row_w))
+        local feed_x = right_center - feed_row_w * 0.5
         for slot = 1, visible_count do
             -- Ordre chronologique : le kill le plus ancien est à gauche,
             -- le plus récent s'ajoute à droite.
@@ -2109,6 +2175,8 @@ function KH:DebugSimulate(n)
         { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
     }
     local t_now = now()
+    self._killfeed_score_total = 0
+    self._killfeed_score_has_value = false
     for i = 1, killfeed_size(self.settings) do
         local demo = demo_kills[i]
         table.insert(self._kills, {
@@ -2126,6 +2194,10 @@ function KH:DebugSimulate(n)
             start_t    = t_now,
             -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
         })
+        if type(demo.score) == "number" then
+            self._killfeed_score_total = self._killfeed_score_total + demo.score
+            self._killfeed_score_has_value = true
+        end
     end
     self._kill_combo = {
         count = 11, -- Tester le format dynamique KILL CHAIN xN dans l'aperçu.
@@ -2140,6 +2212,8 @@ function KH:DebugClear()
     self._debug_preview_active = false
     self._buffs = {}
     self._kills = {}
+    self._killfeed_score_total = 0
+    self._killfeed_score_has_value = false
     self._kill_combo = { count = 0, last_t = nil, updated_t = nil }
     self._special_kill_banner = nil
     self._special_enemy_combos = {}

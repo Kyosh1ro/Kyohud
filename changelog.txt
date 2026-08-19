@@ -1,3 +1,6 @@
+r53 (19.08.2026):
+- Le score cumulé des éliminations s'affiche désormais en rouge à gauche du killfeed, s'actualise à chaque nouvelle carte et revient à zéro lorsque la dernière carte expire.
+
 r52 (19.08.2026):
 - Les Bulldozers utilisent désormais eux aussi les annonces colorées du killfeed avec « TANK BUSTER », « ARMOR BREAKER », « HEAVY DOWN » ou « I'VE GOT THE BIG GUY », ainsi qu'un compteur `xN` dédié.
 
