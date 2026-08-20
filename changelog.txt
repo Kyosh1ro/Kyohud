@@ -1,3 +1,6 @@
+r61 (20.08.2026):
+- Une installation neuve détecte désormais VanillaHUD+ lorsqu'il est actif et aligne par défaut la rangée de buffs sur la position d'origine de sa liste de buffs.
+
 r60 (20.08.2026):
 - Une installation neuve détecte désormais Void UI lorsqu'il est actif et adapte automatiquement le placement par défaut des buffs et du bloc multikill/killfeed.
 
