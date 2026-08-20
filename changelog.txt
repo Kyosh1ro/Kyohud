@@ -1,3 +1,6 @@
+r68 (20.08.2026):
+- Avec le deck Anarchiste équipé, l'invulnérabilité de bris d'armure remplace désormais l'icône du deck en première position pendant son activation.
+
 r67 (20.08.2026):
 - Complice reste désormais affiché lorsqu'il est équipé et activé dans les options, avec un compteur de Jokers `0/1` ou `0/2` selon la capacité de conversion du build.
 
