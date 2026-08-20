@@ -671,7 +671,7 @@ local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, styl
 
     -- Une seule barre continue et plus épaisse ancre visuellement le bas.
     local footer_margin = clamp(w * 0.08, 2, 5)
-    local footer_height = 2
+    local footer_height = 1
     local footer_x = x + footer_margin
     local footer_width = w - footer_margin * 2
     local footer_y = y + h - footer_height
