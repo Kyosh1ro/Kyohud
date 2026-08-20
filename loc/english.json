@@ -15,7 +15,7 @@
   "ky_opt_buff_position_x": "Buff Position X (%)",
   "ky_opt_buff_position_x_desc": "Horizontal center of the buff row (0-100%). Default: 50%",
   "ky_opt_buff_position_y": "Buff Position Y (%)",
-  "ky_opt_buff_position_y_desc": "Vertical center of the buff row (0-100%). Default: 85%",
+  "ky_opt_buff_position_y_desc": "Vertical center of the buff row (0-100%). The default adapts to the active HUD.",
   "ky_opt_duration": "Display Duration (seconds)",
   "ky_opt_duration_desc": "How long buffs and kills stay visible (1-10s). Default: 5s",
   "ky_opt_opacity": "Opacity",
