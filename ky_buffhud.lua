@@ -1275,6 +1275,85 @@ local DYNAMIC_VALUE_BUFFS = {
     "total_dodge_chance",
 }
 
+local EQUIPPED_SKILL_COUNTER_BUFFS = {}
+for buff_id, definition in pairs(KH.BUFF_MAP or {}) do
+    if definition.persistent_counter then
+        table.insert(EQUIPPED_SKILL_COUNTER_BUFFS, buff_id)
+    end
+end
+table.sort(EQUIPPED_SKILL_COUNTER_BUFFS)
+
+local function equipped_skill_counter_text(definition)
+    if not definition or not definition.skill_id or not definition.persistent_counter then
+        return false, nil
+    end
+
+    local ok_step, skill_step = pcall(function()
+        return managers.skilltree and managers.skilltree:skill_step(definition.skill_id)
+    end)
+    skill_step = ok_step and tonumber(skill_step) or nil
+    if skill_step == nil then
+        -- L'état n'est pas encore disponible : conserver l'entrée précédente
+        -- plutôt que de faire clignoter l'icône pendant le chargement.
+        return nil, nil
+    end
+    if skill_step < 1 then
+        return false, nil
+    end
+
+    if definition.persistent_counter == "local_minions" then
+        local ok_count, count = pcall(function()
+            return managers.player and managers.player:num_local_minions()
+        end)
+        count = ok_count and tonumber(count) or nil
+        if count == nil then return nil, nil end
+
+        local maximum_definition = definition.counter_max_upgrade or {}
+        local minimum = tonumber(maximum_definition.minimum) or 0
+        local ok_maximum, maximum = pcall(function()
+            return managers.player and managers.player:upgrade_value(
+                maximum_definition.category,
+                maximum_definition.upgrade,
+                minimum
+            )
+        end)
+        maximum = ok_maximum and tonumber(maximum) or minimum
+        maximum = math.max(minimum, math.floor(maximum or minimum))
+        return true, tostring(math.max(0, math.floor(count))) .. "/" .. tostring(maximum)
+    end
+
+    return false, nil
+end
+
+function KH:RefreshEquippedSkillCounters()
+    if self._debug_preview_active then return end
+
+    for _, buff_id in ipairs(EQUIPPED_SKILL_COUNTER_BUFFS) do
+        local definition = KH.BUFF_MAP[buff_id]
+        local visible = self:is_buff_visible(buff_id)
+        local equipped, value_text = equipped_skill_counter_text(definition)
+        local existing = self._buffs[buff_id]
+
+        if visible and equipped == true then
+            if not existing then
+                self:add_buff(buff_id, nil, nil, nil, true, false, value_text)
+                existing = self._buffs[buff_id]
+            end
+            if existing then
+                -- L'indicateur représente l'état équipé, pas une durée : un
+                -- évènement actif ne doit donc pas lui ajouter de timer.
+                existing.value_text = value_text
+                existing.duration = nil
+                existing.t_end = nil
+                existing.persistent = true
+                existing._equipped_skill_counter = true
+            end
+        elseif not visible or equipped == false then
+            self:remove_buff(buff_id)
+        end
+    end
+end
+
 function KH:RefreshCalculatedBuffValues()
     if self._debug_preview_active then return end
 
@@ -1455,6 +1534,7 @@ function KH:RefreshDetectedBuffs()
         self:_refresh_source_target(buff_id)
     end
     self:RefreshCalculatedBuffValues()
+    self:RefreshEquippedSkillCounters()
 end
 
 function KH:_show_dozer_banner(t, preview)
@@ -2226,6 +2306,7 @@ function KH:DebugSimulate(n)
     n = n or 8
 
     local demo_static_buffs = {
+        { id = "partner_in_crime", value_text = "0/2" },
         { id = "passive_health_regen", value_text = "4.5%" },
         { id = "standard_armor_regeneration" },
         { id = "armor_break_invulnerable_debuff", is_debuff = true },
@@ -2380,6 +2461,7 @@ Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
     if KH._value_refresh_acc >= 0.5 then
         KH._value_refresh_acc = 0
         KH:RefreshCalculatedBuffValues()
+        KH:RefreshEquippedSkillCounters()
     end
 
     KH._update_acc = (KH._update_acc or 0) + dt

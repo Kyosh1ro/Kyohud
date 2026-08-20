@@ -142,7 +142,7 @@
   "ky_opt_buff_hostage_taker": "Hostage Taker",
   "ky_opt_buff_hostage_taker_desc": "Toggle Hostage Taker buff",
   "ky_opt_buff_partner_in_crime": "Partner in Crime",
-  "ky_opt_buff_partner_in_crime_desc": "Toggle Partner in Crime buff",
+  "ky_opt_buff_partner_in_crime_desc": "Show Partner in Crime while equipped, with the current Joker count and conversion capacity (0/1 or 0/2)",
   "ky_opt_buff_forced_friendship": "Forced Friendship",
   "ky_opt_buff_forced_friendship_desc": "Toggle Forced Friendship team buff",
   "ky_opt_buff_endurance": "Endurance (Team)",

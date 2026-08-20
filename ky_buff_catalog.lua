@@ -39,6 +39,8 @@ KH.BUFF_COLORS = {
 
 -- value_format sélectionne la conversion de la valeur moteur dans
 -- ky_buffhud.lua. show_stack_count ajoute un badge sans remplacer la valeur.
+-- persistent_counter conserve l'icône d'une compétence équipée et décrit la
+-- valeur dynamique que le HUD doit afficher même lorsque son buff est inactif.
 KH.BUFF_MAP = {
     aggressive_reload_aced = { skill_id = "speedy_reload", skills_new = { 1, 1 }, category = "mastermind", value_format = "multiplier_percent", default_show = true },
     inspire = { skill_id = "inspire", skills_new = { 0, 9 }, category = "mastermind", default_show = true },
@@ -50,7 +52,18 @@ KH.BUFF_MAP = {
     uppers = { skill_id = "tea_cookies", skills_new = { 1, 2 }, category = "mastermind", default_show = true },
     painkiller = { skill_id = "fast_learner", skills_new = { 0, 4 }, category = "mastermind", default_show = false },
     hostage_taker = { skill_id = "black_marketeer", skills_new = { 1, 5 }, category = "mastermind", default_show = false },
-    partner_in_crime = { skill_id = "control_freak", skills_new = { 0, 6 }, category = "mastermind", default_show = false },
+    partner_in_crime = {
+        skill_id = "control_freak",
+        skills_new = { 0, 6 },
+        category = "mastermind",
+        persistent_counter = "local_minions",
+        counter_max_upgrade = {
+            category = "player",
+            upgrade = "convert_enemies_max_minions",
+            minimum = 1,
+        },
+        default_show = false,
+    },
     forced_friendship = { skill_id = "triathlete", skill_atlas = "skills", skills = { 0, 7 }, category = "team", color = "team", default_show = true },
     endurance = { skill_id = "triathlete", skills_new = { 0, 7 }, category = "team", color = "team", default_show = false },
     ammo_efficiency = { skill_id = "single_shot_ammo_return", skills_new = { 0, 8 }, category = "mastermind", show_stack_count = true, default_show = true },

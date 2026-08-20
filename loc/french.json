@@ -142,7 +142,7 @@
   "ky_opt_buff_hostage_taker": "Preneur d'otages",
   "ky_opt_buff_hostage_taker_desc": "Activer/désactiver le buff Preneur d'otages",
   "ky_opt_buff_partner_in_crime": "Complice",
-  "ky_opt_buff_partner_in_crime_desc": "Activer/désactiver le buff Complice",
+  "ky_opt_buff_partner_in_crime_desc": "Afficher Complice lorsqu'il est équipé, avec le nombre de Jokers actuel et la capacité de conversion (0/1 ou 0/2)",
   "ky_opt_buff_forced_friendship": "Amitié forcée",
   "ky_opt_buff_forced_friendship_desc": "Activer/désactiver le buff d'équipe Amitié forcée",
   "ky_opt_buff_endurance": "Endurance (équipe)",
