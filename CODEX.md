@@ -25,7 +25,8 @@ Le mod reprend des identifiants et conventions d'icônes de VanillaHUD+, sans d�
 
 - `ky_buff_catalog.lua` est la source de vérité des buffs, catégories, icônes et correspondances.
 - `ky_buffhud.lua` conserve l'état actif et dessine les buffs, le killfeed et le bandeau de série.
-- `ky_options.lua` gère les valeurs par défaut, la persistance et les menus.
+- `menu/menu.json` et `menu/buffs.json` décrivent la structure fixe et l'ordre des menus.
+- `ky_options.lua` gère les valeurs par défaut, la persistance, le chargement des JSON et leur conversion en éléments SuperBLT.
 - `ky_localization.lua` et `loc/` fournissent les fallbacks et les traductions.
 
 Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée en `KH`.
@@ -75,6 +76,17 @@ Les paramètres sont enregistrés dans `SavePath/kyosh1ro_hud_settings.json`. To
 
 Les tests explicites `value ~= nil` sont nécessaires pour conserver les booléens sauvegardés à `false`. Le menu principal est construit avec `MenuHelper:BuildMenu` ; les sous-menus restent créés par `deep_clone`.
 
+Le système de menu est volontairement hybride :
+
+- `menu/menu.json` décrit les options fixes du menu principal ;
+- `menu/buffs.json` décrit les onze liens de catégories et leurs nœuds cibles ;
+- `ky_options.lua` reconnaît les types `toggle`, `slider`, `button` et `divider`, récupère les valeurs dans `KH.settings`, puis appelle les fonctions `MenuHelper` correspondantes ;
+- les toggles de catégories et de buffs individuels sont créés dynamiquement depuis `KH.BUFF_MAP`, afin de ne pas dupliquer le catalogue dans les JSON.
+
+Les identifiants forment un contrat : le `next_menu` du bouton principal doit correspondre au `menu_id` de `menu/buffs.json`, chaque `next_menu` de catégorie doit être unique, et toute valeur sauvegardée doit conserver son callback et ses clés de localisation. Ajouter un nouveau type déclaratif exige une implémentation dans `populate_json_menu`.
+
+Le projet conserve un seul appel à `MenuHelper:BuildMenu`. Les nœuds Buffs et catégories sont des clones nettoyés du menu principal. Après `clean_items()`, les premiers éléments sont ajoutés directement avec `node:create_item` via les utilitaires locaux ; `MenuHelper:AddMenuItem` n'est utilisé que sur un nœud parent déjà construit.
+
 ## Coût et limites
 
 Le panneau est vidé puis reconstruit environ toutes les 0,05 seconde. Les scans lourds, allocations inutiles et logs permanents sont donc à éviter dans `KH:draw`.
@@ -91,18 +103,26 @@ Pour la coexistence, Kyosh1ro HUD doit continuer à dessiner uniquement dans son
 
 Le code du scoreboard de Void UI sait remonter d'un projectile à `thrower_unit` et d'une sentry à son propriétaire. Ces résolutions sont utiles comme références d'attribution, mais son hook de kill ne remplace pas notre séparation hôte/client : `CopDamage:die` et `PlayerManager:on_killshot` restent nécessaires pour ne pas perdre les kills locaux d'un client.
 
+## Enseignements tirés d'Extra Heist Info
+
+Le code source local d'Extra Heist Info, dans `C:\Users\Kyosh1ro\Desktop\Extra Heist Info`, sépare efficacement les définitions de menu en JSON du comportement Lua. Son `MenuManager.lua` lit les fichiers, transforme les entrées en appels `MenuHelper`, relie les boutons avec `next_menu` et centralise la sauvegarde dans un callback générique.
+
+Cette séparation est retenue pour Kyosh1ro HUD, mais pas son parseur complet. Extra Heist Info prend également en charge les dépendances `parent`, les comparaisons entre options, les couleurs personnalisées, la VR et les aperçus en direct. Ces fonctions sont propres à son architecture et ne doivent être ajoutées ici qu'en réponse à un besoin concret, avec un schéma minimal et un test en jeu.
+
+Le JSON est une définition d'interface, pas la sauvegarde elle-même. Les valeurs actives restent dans `KH.settings`, et les callbacks Lua restent responsables de leur validation, de leur persistance et de l'actualisation du HUD.
+
 ## Discipline de merge
 
 La création d'une branche destinée à `main` suit obligatoirement cette séquence :
 
 ```text
 git fetch origin --prune
-git switch -c <branche> origin/main
-git merge-base HEAD origin/main
-git rev-parse origin/main
+git switch -c <branche> refs/remotes/origin/main
+git merge-base HEAD refs/remotes/origin/main
+git rev-parse refs/remotes/origin/main
 ```
 
-Les deux dernières commandes doivent renvoyer le même commit avant toute modification. Si `git fetch` échoue ou si les commits diffèrent sur une branche nouvellement créée, le travail doit s'arrêter jusqu'à correction de la base. Un `main` local en retard ne doit jamais servir de base ni être fusionné dans une branche récente.
+Les deux dernières commandes doivent renvoyer le même commit avant toute modification. La référence complète est obligatoire dans ce dépôt, car une branche locale `refs/heads/origin/main` rend le nom court `origin/main` ambigu. Si `git fetch` échoue ou si les commits diffèrent sur une branche nouvellement créée, le travail doit s'arrêter jusqu'à correction de la base. Un `main` local en retard ne doit jamais servir de base ni être fusionné dans une branche récente.
 
 En cas de conflit dans `ky_buffhud.lua`, comparer les trois versions — base commune, cible et branche — au lieu de choisir le fichier complet d'un seul côté. Après résolution, vérifier au minimum :
 

@@ -24,6 +24,7 @@ Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée localement 
 - Les annotations des types du moteur Diesel et des fonctions Lua de PAYDAY 2 sont disponibles dans `G:\PD2-Modding-Docs\pd2-code-doc`. Les consulter pour vérifier les signatures et les objets du moteur, notamment `PlayerManager`, `CopDamage`, `CivilianDamage`, `Panel`, `Bitmap` et `Text`.
 - L'implémentation SuperBLT effectivement installée est disponible dans `G:\SteamLibrary\steamapps\common\PAYDAY 2\mods\base`. La privilégier pour confirmer le comportement de `Hooks`, `MenuHelper`, du chargement des mods et de la localisation.
 - Le code source de Void UI disponible dans `C:\Users\Kyosh1ro\Desktop\Void UI` peut servir de référence pour le cycle de vie des panneaux, le chargement conditionnel par `RequiredScript`, l'enregistrement de textures et la coexistence entre composants HUD. Il ne constitue ni une dépendance ni un modèle à recopier sans vérifier ses choix de hooks.
+- Le code source d'Extra Heist Info disponible dans `C:\Users\Kyosh1ro\Desktop\Extra Heist Info` peut servir de référence pour les menus déclaratifs JSON, la conversion des entrées en appels `MenuHelper` et les dépendances entre options. Son parseur étend largement SuperBLT et ne doit pas être copié intégralement dans ce mod.
 - Ces dossiers sont des références de développement uniquement : ne pas les charger à l'exécution, les copier dans le mod ou les inclure dans une publication.
 - Les annotations documentent surtout les signatures. Pour les champs privés, la sémantique réseau et les comportements dépendant du moteur, confronter la documentation au code du jeu disponible et valider en jeu.
 
@@ -117,11 +118,22 @@ Ne pas remplacer les tests explicites `value ~= nil` par l'idiome Lua `x and y o
 
 Le menu principal est le seul construit avec `MenuHelper:BuildMenu`. Les sous-menus sont créés par `deep_clone` à cause de la limitation SuperBLT documentée dans `ky_options.lua`. Préserver ce fonctionnement sauf si un test en jeu démontre qu'une autre approche est sûre.
 
+La structure fixe des menus est déclarative :
+
+- `menu/menu.json` définit l'ordre du menu principal, ses toggles, curseurs, séparateurs et boutons ;
+- `menu/buffs.json` définit l'ordre des catégories et les relations `next_menu` ;
+- `ky_options.lua` charge ces fichiers, convertit uniquement les types qu'il reconnaît en appels `MenuHelper`, puis génère les buffs individuels depuis `KH.BUFF_MAP` ;
+- ne pas recopier les buffs individuels dans le JSON : `ky_buff_catalog.lua` reste leur source de vérité.
+
+Pour chaque entrée JSON, garder cohérents `menu_id`, `parent_menu_id`, `id`, `next_menu`, `value`, le callback et les clés de localisation. Ajouter un nouveau `type` au JSON nécessite d'abord sa prise en charge explicite dans `populate_json_menu`. Ne pas remplacer le chargeur local par `MenuHelper:LoadFromJsonFile` ni multiplier les appels à `BuildMenu` sans validation en jeu.
+
+Après `clean_items()` sur un nœud cloné, ajouter ses premiers éléments avec les utilitaires directs `add_toggle_to_node` ou `add_menu_link_to_node`. `MenuHelper:AddMenuItem` suppose un nœud déjà structuré avec son bouton Retour et reste réservé ici au rattachement du menu principal à `blt_options`.
+
 ## Vérification
 
 Avant de considérer une modification terminée :
 
-1. Valider que `mod.txt` et les JSON de `loc/` sont syntaxiquement corrects.
+1. Valider que `mod.txt`, les JSON de `loc/` et les définitions de `menu/` sont syntaxiquement corrects.
 2. Relire le diff pour repérer un changement involontaire de fins de ligne ou de fichier utilisateur.
 3. Lancer PAYDAY 2 avec SuperBLT et ouvrir les options de Kyosh1ro HUD.
 4. Utiliser **Debug: Simulate** pour vérifier plusieurs icônes, les timers, l'ordre, les deux rangées horizontales, l'ajout d'un kill à droite et différentes valeurs de position X/Y, de taille et de largeur d'écran.
@@ -135,8 +147,8 @@ Une vérification statique ne remplace pas le test en jeu, car les classes et te
 - Travailler sur une branche dédiée par sujet : `fix/<sujet-court>` pour une correction et `feature/<sujet-court>` pour une nouvelle fonctionnalité.
 - Choisir le préfixe selon l'objectif principal de la branche. La documentation directement liée à une correction ou une fonctionnalité reste sur la même branche.
 - Faire `git status --short --branch` avant toute modification et préserver les changements locaux déjà présents.
-- Avant toute nouvelle branche destinée à `main`, exécuter `git fetch origin --prune`, puis créer directement la branche avec `git switch -c <branche> origin/main`. Ne pas utiliser le `main` local ni la branche courante comme base implicite.
-- Vérifier avant la première modification que `git merge-base HEAD origin/main` est égal à `git rev-parse origin/main`. Si la récupération distante échoue ou si cette égalité n'est pas vraie sur une branche nouvellement créée, arrêter et corriger la base avant d'éditer.
+- Avant toute nouvelle branche destinée à `main`, exécuter `git fetch origin --prune`, puis créer directement la branche avec `git switch -c <branche> refs/remotes/origin/main`. Utiliser la référence complète, car ce dépôt possède aussi une branche locale `refs/heads/origin/main` qui rend le nom court ambigu. Ne pas utiliser le `main` local ni la branche courante comme base implicite.
+- Vérifier avant la première modification que `git merge-base HEAD refs/remotes/origin/main` est égal à `git rev-parse refs/remotes/origin/main`. Si la récupération distante échoue ou si cette égalité n'est pas vraie sur une branche nouvellement créée, arrêter et corriger la base avant d'éditer.
 - Ne jamais fusionner un ancien `main` local dans une branche de fonctionnalité.
 - Une fois les changements d'un sujet commités sur leur branche, ne pas réutiliser cette branche pour une reprise ou une correction ultérieure : créer une nouvelle branche dédiée depuis la branche cible à jour.
 - Lors d'un conflit, ne pas accepter tout `ky_buffhud.lua` depuis un seul côté. Comparer la base commune, la branche cible et la branche de travail, puis conserver ensemble les invariants des buffs horizontaux et du killfeed horizontal.
