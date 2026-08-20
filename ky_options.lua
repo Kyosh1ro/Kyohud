@@ -38,6 +38,15 @@ local HUD_DEFAULT_LAYOUTS = {
             buff_position_y = 98,
         },
     },
+    {
+        id = "vanillahud_plus",
+        mod_name = "VanillaHUDPlus",
+        values = {
+            -- VanillaHUD+ centre sa liste à H - 125 px sur son panneau 1280 x 720.
+            buff_position_x = 50,
+            buff_position_y = 83,
+        },
+    },
 }
 
 local function is_blt_mod_enabled(name)
