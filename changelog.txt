@@ -1,3 +1,6 @@
+r59 (20.08.2026):
+- Ajout d'un README présentant simplement le mod, ses fonctionnalités, son installation et sa configuration.
+
 r58 (20.08.2026):
 - Le menu des options est désormais organisé à partir de fichiers JSON : les réglages principaux restent accessibles directement et les filtres de buffs sont regroupés dans un sous-menu dédié.
 
