@@ -647,6 +647,49 @@ local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, styl
         panel, x, y, w, h, color, alpha * 0.62, layer + 1,
         style and style.brackets
     )
+
+    -- Signature asymétrique propre à Kyosh1ro HUD : une barre basse épaisse
+    -- prolongée par deux chevrons. À très petite taille, un seul chevron évite
+    -- d'empiéter inutilement sur l'icône.
+    local footer_margin = clamp(w * 0.08, 2, 5)
+    local footer_height = clamp(h * 0.075, 2, 4)
+    local chevron_width = clamp(w * 0.075, 3, 5)
+    local chevron_height = clamp(h * 0.16, 4, 7)
+    local chevron_gap = clamp(w * 0.035, 1, 3)
+    local chevron_count = w < 32 and 1 or 2
+    local chevrons_width = chevron_width * chevron_count
+        + chevron_gap * (chevron_count - 1)
+    local footer_right = x + w - footer_margin
+    local chevrons_x = footer_right - chevrons_width
+    local footer_x = x + footer_margin
+    local footer_width = math.max(4, chevrons_x - footer_x - chevron_gap * 2)
+    local footer_y = y + h - footer_height
+    local footer_alpha = math.min(1, alpha * 1.3)
+
+    panel:rect({
+        x = footer_x,
+        y = footer_y,
+        w = footer_width,
+        h = footer_height,
+        color = color,
+        alpha = footer_alpha,
+        layer = layer + 2,
+    })
+
+    for i = 0, chevron_count - 1 do
+        local chevron_x = chevrons_x + i * (chevron_width + chevron_gap)
+        panel:polyline({
+            points = {
+                Vector3(chevron_x, y + h - chevron_height, 0),
+                Vector3(chevron_x + chevron_width, y + h - chevron_height * 0.5, 0),
+                Vector3(chevron_x, y + h, 0),
+            },
+            line_width = footer_height,
+            color = color,
+            alpha = footer_alpha,
+            layer = layer + 2,
+        })
+    end
 end
 
 -- Trace la partie encore active du contour d'un buff temporaire. Le parcours

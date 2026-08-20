@@ -1,3 +1,6 @@
+r62 (20.08.2026):
+- Les cellules de buffs se distinguent désormais des cadres VanillaHUD+ grâce à une barre tactique épaisse et à des chevrons sur leur bord inférieur.
+
 r61 (20.08.2026):
 - Une installation neuve détecte désormais VanillaHUD+ lorsqu'il est actif et aligne par défaut la rangée de buffs sur la position d'origine de sa liste de buffs.
 
