@@ -55,6 +55,9 @@ local DOZER_BANNER_COLOR = Color(1, 0.38, 0.08)
 local KILLFEED_SCORE_COLOR = Color(1, 0.63, 0.12)
 local KILLFEED_SCORE_PENALTY_COLOR = Color(1, 0.22, 0.12)
 local AI_BUFF_LABEL     = "[AI]"
+local HACKER_SPECIALIZATION_ID = 21
+local POCKET_ECM_GRENADE_ID = "pocket_ecm_jammer"
+local POCKET_ECM_COOLDOWN_ID = "pocket_ecm_jammer_debuff"
 
 local function killfeed_size(settings)
     local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
@@ -321,6 +324,7 @@ end
 -- rangée. Un indicateur absent ne réserve aucun emplacement vide.
 local STATIC_BUFF_SLOTS = {
     "equipped_perk_deck",
+    "pocket_ecm_jammer_debuff",
     "passive_health_regen",
     "standard_armor_regeneration",
     "armor_break_invulnerable_debuff",
@@ -1354,6 +1358,73 @@ function KH:RefreshEquippedSkillCounters()
     end
 end
 
+local function equipped_pocket_ecm_amount()
+    local ok, amount = pcall(function()
+        local session = managers.network and managers.network:session()
+        local peer = session and session:local_peer()
+        local peer_id = peer and peer:id()
+        return peer_id and managers.player and managers.player:get_grenade_amount(peer_id)
+    end)
+    amount = ok and tonumber(amount) or nil
+    return amount and math.max(0, math.floor(amount)) or nil
+end
+
+local function pocket_ecm_cooldown_remaining()
+    local ok, remaining = pcall(function()
+        local player_manager = managers and managers.player
+        if not (player_manager and player_manager.get_timer_remaining) then return nil end
+        return player_manager:get_timer_remaining("replenish_grenades")
+    end)
+    return ok and tonumber(remaining) or nil
+end
+
+function KH:RefreshHackerPocketECMStatus()
+    if self._debug_preview_active then return end
+
+    local deck_entry = equipped_perk_deck_entry(self)
+    local _, base_specialization_id = current_perk_deck_ids()
+    local grenade_ok, grenade_id = pcall(function()
+        return managers.blackmarket and managers.blackmarket:equipped_grenade()
+    end)
+    local hacker_equipped = base_specialization_id == HACKER_SPECIALIZATION_ID
+        and grenade_ok and grenade_id == POCKET_ECM_GRENADE_ID
+
+    if not hacker_equipped then
+        deck_entry.value_text = nil
+        self:remove_buff(POCKET_ECM_COOLDOWN_ID)
+        return
+    end
+
+    local amount = equipped_pocket_ecm_amount()
+    deck_entry.value_text = amount and ("x" .. tostring(amount)) or nil
+
+    local remaining = pocket_ecm_cooldown_remaining()
+    if not self:is_buff_visible(POCKET_ECM_COOLDOWN_ID)
+            or not remaining or remaining <= 0 then
+        self:remove_buff(POCKET_ECM_COOLDOWN_ID)
+        return
+    end
+
+    local t = now()
+    local existing = self._buffs[POCKET_ECM_COOLDOWN_ID]
+    if not existing then
+        self:add_buff(POCKET_ECM_COOLDOWN_ID, nil, remaining, nil, false, true)
+        return
+    end
+
+    -- Une nouvelle recharge peut démarrer immédiatement après la précédente
+    -- lorsqu'il manque encore une charge. Réinitialiser alors la progression,
+    -- mais conserver la position fixe de la cellule.
+    local previous_remaining = existing.t_end and math.max(0, existing.t_end - t) or 0
+    if remaining > previous_remaining + 1 then
+        existing.start_t = t
+        existing.duration = remaining
+    end
+    existing.t_end = t + remaining
+    existing.is_debuff = true
+    existing.color = color_for_buff(POCKET_ECM_COOLDOWN_ID, true)
+end
+
 function KH:RefreshCalculatedBuffValues()
     if self._debug_preview_active then return end
 
@@ -2292,6 +2363,7 @@ end
 -- ═══════════════════════════════════════════════════
 function KH:RefreshHUD()
     self:RefreshDetectedBuffs()
+    self:RefreshHackerPocketECMStatus()
     if self:ensure_panel(false) then
         self:draw()
     end
@@ -2307,6 +2379,7 @@ function KH:DebugSimulate(n)
 
     local demo_static_buffs = {
         { id = "partner_in_crime", value_text = "0/2" },
+        { id = "pocket_ecm_jammer_debuff", is_debuff = true, duration = 45 },
         { id = "passive_health_regen", value_text = "4.5%" },
         { id = "standard_armor_regeneration" },
         { id = "armor_break_invulnerable_debuff", is_debuff = true },
@@ -2324,13 +2397,17 @@ function KH:DebugSimulate(n)
             is_debuff = demo.is_debuff == true,
             order_t = t_now + i * 0.001,
             start_t = t_now,
-            persistent = true,
+            duration = demo.duration,
+            t_end = demo.duration and (t_now + demo.duration) or nil,
+            persistent = demo.duration == nil,
         }
     end
 
     -- Si le deck équipé possède un buff de deck activé dans les options, la
     -- simulation l'active afin de vérifier le remplacement de la position 1.
     local _, base_specialization_id = current_perk_deck_ids()
+    equipped_perk_deck_entry(self).value_text = base_specialization_id == HACKER_SPECIALIZATION_ID
+        and "x2" or nil
     local perk_candidates = base_specialization_id
         and KH.PERK_DECK_BUFFS
         and KH.PERK_DECK_BUFFS[base_specialization_id]
@@ -2422,6 +2499,9 @@ end
 function KH:DebugClear()
     self._debug_preview_active = false
     self._buffs = {}
+    if self._equipped_perk_deck_buff then
+        self._equipped_perk_deck_buff.value_text = nil
+    end
     self._kills = {}
     self._killfeed_score_total = 0
     self._killfeed_score_has_value = false
@@ -2462,6 +2542,7 @@ Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
         KH._value_refresh_acc = 0
         KH:RefreshCalculatedBuffValues()
         KH:RefreshEquippedSkillCounters()
+        KH:RefreshHackerPocketECMStatus()
     end
 
     KH._update_acc = (KH._update_acc or 0) + dt

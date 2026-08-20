@@ -121,6 +121,7 @@ KH.BUFF_MAP = {
     anarchist_armor_recovery_debuff = { perks = { 0, 1 }, texture_bundle_folder = "opera", category = "debuff", color = "debuff", default_show = true },
     ammo_give_out_debuff = { perks = { 5, 5 }, category = "debuff", color = "debuff", default_show = true },
     armor_break_invulnerable_debuff = { perks = { 6, 1 }, category = "debuff", color = "debuff", default_show = true },
+    pocket_ecm_jammer_debuff = { perks = { 0, 0 }, texture_bundle_folder = "joy", category = "debuff", color = "debuff", default_show = true },
     sociopath_debuff = { perks = { 3, 5 }, category = "debuff", color = "debuff", default_show = true },
     life_drain_debuff = { perks = { 7, 4 }, category = "debuff", color = "debuff", default_show = true },
     medical_supplies_debuff = { perks = { 4, 5 }, category = "debuff", color = "debuff", default_show = true },
@@ -166,7 +167,8 @@ KH.PERK_DECK_BUFFS = {
     [18] = { "smoke_screen_grenade", "sicario_dodge" }, -- Sicario
     [19] = { "delayed_damage" }, -- Stoic
     [20] = { "tag_team" }, -- Tag Team
-    [21] = { "pocket_ecm_jammer", "pocket_ecm_kill_dodge" }, -- Hacker
+    -- Hacker conserve toujours l'icône de son deck : ses charges et son
+    -- cooldown de Pocket ECM sont affichés séparément par le HUD.
     [22] = { "copr_ability" }, -- Leech
     [23] = { -- Copycat
         "copycat_health_invul",
@@ -313,7 +315,7 @@ KH.BUFF_SOURCE_TARGETS = {
     copycat_health_shot_debuff = { "copycat_health_shot" },
     delayed_damage_debuff = { "delayed_damage" },
     maniac_debuff = { "maniac" },
-    pocket_ecm_jammer_debuff = { "pocket_ecm_jammer" },
+    pocket_ecm_jammer_debuff = { "pocket_ecm_jammer_debuff" },
     sicario_dodge_debuff = { "sicario_dodge" },
     smoke_screen_grenade_debuff = { "smoke_screen_grenade" },
     tag_team_debuff = { "tag_team" },
@@ -323,6 +325,13 @@ KH.BUFF_SOURCE_TARGETS = {
 }
 
 function KH.GetBuffTargets(source_id)
+    -- VanillaHUD+ regroupe normalement le cooldown avec l'effet actif de la
+    -- Pocket ECM. Kyosh1ro HUD les sépare afin de conserver l'icône Hacker et
+    -- d'afficher le cooldown dans sa propre cellule juste à côté.
+    if source_id == "pocket_ecm_jammer_debuff" then
+        return KH.BUFF_SOURCE_TARGETS[source_id] or { source_id }
+    end
+
     -- Si VanillaHUD+ expose sa table de regroupement, la consulter à chaque
     -- évènement. Cela garde le pont compatible avec de nouveaux alias ajoutés
     -- par VanillaHUD+ sans casser le fonctionnement autonome.

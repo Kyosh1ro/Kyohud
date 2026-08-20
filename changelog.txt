@@ -1,3 +1,6 @@
+r69 (20.08.2026):
+- Le deck Hacker conserve désormais son icône en première position, affiche au-dessus le nombre d'ECM de poche disponibles et place leur cooldown de recharge juste à côté.
+
 r68 (20.08.2026):
 - Avec le deck Anarchiste équipé, l'invulnérabilité de bris d'armure remplace désormais l'icône du deck en première position pendant son activation.
 
