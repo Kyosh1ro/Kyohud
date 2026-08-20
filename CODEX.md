@@ -81,6 +81,16 @@ Le panneau est vidé puis reconstruit environ toutes les 0,05 seconde. Les scans
 
 Les classes et textures PAYDAY 2 ne sont pas disponibles hors du moteur. Une validation statique peut vérifier la syntaxe Lua et JSON, mais le rendu, les hooks, les textures et la compatibilité VanillaHUD+ doivent être validés en jeu.
 
+## Enseignements tirés de Void UI
+
+Le code source local de Void UI, dans `C:\Users\Kyosh1ro\Desktop\Void UI`, est une référence de développement et non une dépendance. Son `mod.txt` dirige de nombreux contextes de hooks vers un même `Main.lua`, qui initialise l'état partagé puis charge le module adapté à la valeur de `RequiredScript`. Cette architecture est pertinente pour une refonte complète du HUD, mais notre découpage direct par responsabilités reste plus simple pour le périmètre actuel.
+
+Void UI crée généralement des panneaux persistants et actualise leurs enfants au fil des évènements. Cette approche pourrait réduire les allocations de notre reconstruction périodique, mais sa migration demanderait de conserver explicitement tous les invariants de tri, d'expiration, de redimensionnement et de recentrage. Elle doit donc être motivée par un problème mesuré ou une refonte dédiée.
+
+Pour la coexistence, Kyosh1ro HUD doit continuer à dessiner uniquement dans son enfant `kyosh1ro_buff_panel`, sans masquer ni vider le panneau parent. Il ne doit pas s'attacher aux éléments de `HUDAssaultCorner`, qu'un HUD complet peut cacher ou remplacer. Les hooks non destructifs sont préférés aux remplacements complets de méthodes ; lorsqu'un remplacement est inévitable, l'original doit être conservé et appelé à un point explicitement vérifié.
+
+Le code du scoreboard de Void UI sait remonter d'un projectile à `thrower_unit` et d'une sentry à son propriétaire. Ces résolutions sont utiles comme références d'attribution, mais son hook de kill ne remplace pas notre séparation hôte/client : `CopDamage:die` et `PlayerManager:on_killshot` restent nécessaires pour ne pas perdre les kills locaux d'un client.
+
 ## Discipline de merge
 
 La création d'une branche destinée à `main` suit obligatoirement cette séquence :
