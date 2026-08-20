@@ -160,6 +160,7 @@ KH.PERK_DECK_BUFFS = {
     [11] = { "grinder" }, -- Grinder
     [12] = { "yakuza" }, -- Yakuza
     [14] = { "maniac" }, -- Maniac
+    [15] = { "armor_break_invulnerable" }, -- Anarchist
     [16] = { "biker" }, -- Biker
     [17] = { "chico_injector" }, -- Kingpin
     [18] = { "smoke_screen_grenade", "sicario_dodge" }, -- Sicario
