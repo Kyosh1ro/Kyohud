@@ -1,3 +1,6 @@
+r64 (20.08.2026):
+- La barre inférieure des cellules de buffs adopte désormais l'épaisseur de 2 px utilisée sur les côtés des cartes du killfeed.
+
 r63 (20.08.2026):
 - Les cellules de buffs remplacent leurs coins et chevrons par trois segments fins en haut et une large barre plus épaisse en bas, dans le style du bandeau multikill.
 
