@@ -73,7 +73,7 @@ x = largeur_panneau * buff_position_x / 100
 y = hauteur_panneau * buff_position_y / 100
 ```
 
-Par défaut, `buff_position_x = 50` et `buff_position_y = 85` placent la rangée en bas au centre, indépendamment de la résolution. Ces valeurs représentent le centre de la rangée, pas son coin supérieur gauche.
+Par défaut, `buff_position_x = 50` et `buff_position_y = 83` alignent la rangée sur la position d'origine des buffs de VanillaHUD+, indépendamment de la résolution. Ces valeurs représentent le centre de la rangée, pas son coin supérieur gauche.
 
 Les icônes sont centrées verticalement sur cette position et leur timer est placé dessous. La rangée complète doit rester dans le panneau : près d'un bord, décaler son point de départ pour conserver tous les cadres et timers visibles.
 

@@ -1,3 +1,6 @@
+r66 (20.08.2026):
+- La configuration standard aligne désormais par défaut la rangée de buffs sur la position d'origine de VanillaHUD+.
+
 r65 (20.08.2026):
 - La barre inférieure des cellules de buffs est désormais affinée à 1 px.
 
