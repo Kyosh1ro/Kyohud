@@ -95,7 +95,7 @@ Les classes et textures PAYDAY 2 ne sont pas disponibles hors du moteur. Une val
 
 ## Enseignements tirés de Void UI
 
-Le code source local de Void UI, dans `C:\Users\Kyosh1ro\Desktop\Void UI`, est une référence de développement et non une dépendance. Son `mod.txt` dirige de nombreux contextes de hooks vers un même `Main.lua`, qui initialise l'état partagé puis charge le module adapté à la valeur de `RequiredScript`. Cette architecture est pertinente pour une refonte complète du HUD, mais notre découpage direct par responsabilités reste plus simple pour le périmètre actuel.
+Le code source local de Void UI, dans `G:\PD2-Modding-Docs\Void UI`, est une référence de développement et non une dépendance. Son `mod.txt` dirige de nombreux contextes de hooks vers un même `Main.lua`, qui initialise l'état partagé puis charge le module adapté à la valeur de `RequiredScript`. Cette architecture est pertinente pour une refonte complète du HUD, mais notre découpage direct par responsabilités reste plus simple pour le périmètre actuel.
 
 Void UI crée généralement des panneaux persistants et actualise leurs enfants au fil des évènements. Cette approche pourrait réduire les allocations de notre reconstruction périodique, mais sa migration demanderait de conserver explicitement tous les invariants de tri, d'expiration, de redimensionnement et de recentrage. Elle doit donc être motivée par un problème mesuré ou une refonte dédiée.
 
@@ -105,7 +105,7 @@ Le code du scoreboard de Void UI sait remonter d'un projectile à `thrower_unit`
 
 ## Enseignements tirés d'Extra Heist Info
 
-Le code source local d'Extra Heist Info, dans `C:\Users\Kyosh1ro\Desktop\Extra Heist Info`, sépare efficacement les définitions de menu en JSON du comportement Lua. Son `MenuManager.lua` lit les fichiers, transforme les entrées en appels `MenuHelper`, relie les boutons avec `next_menu` et centralise la sauvegarde dans un callback générique.
+Le code source local d'Extra Heist Info, dans `G:\PD2-Modding-Docs\Extra Heist Info`, sépare efficacement les définitions de menu en JSON du comportement Lua. Son `MenuManager.lua` lit les fichiers, transforme les entrées en appels `MenuHelper`, relie les boutons avec `next_menu` et centralise la sauvegarde dans un callback générique.
 
 Cette séparation est retenue pour Kyosh1ro HUD, mais pas son parseur complet. Extra Heist Info prend également en charge les dépendances `parent`, les comparaisons entre options, les couleurs personnalisées, la VR et les aperçus en direct. Ces fonctions sont propres à son architecture et ne doivent être ajoutées ici qu'en réponse à un besoin concret, avec un schéma minimal et un test en jeu.
 
