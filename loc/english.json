@@ -197,7 +197,7 @@
   "ky_opt_buff_frenzy_desc": "Toggle Frenzy buff",
 
   "ky_opt_buff_equipped_perk_deck": "Equipped Perk Deck",
-  "ky_opt_buff_equipped_perk_deck_desc": "Show the equipped deck first, replaced by its perk-deck buff while active",
+  "ky_opt_buff_equipped_perk_deck_desc": "Show the equipped deck first; Hacker keeps its icon and shows the available Pocket ECM charges above it",
   "ky_opt_buff_armor_break_invulnerable": "Armor Break Invulnerability",
   "ky_opt_buff_armor_break_invulnerable_desc": "Toggle Armorer invulnerability buff",
   "ky_opt_buff_armorer": "Armorer (Team)",
@@ -222,6 +222,8 @@
   "ky_opt_buff_chico_injector_desc": "Toggle Kingpin injector buff",
   "ky_opt_buff_pocket_ecm_jammer": "Pocket ECM",
   "ky_opt_buff_pocket_ecm_jammer_desc": "Toggle Hacker Pocket ECM buff",
+  "ky_opt_buff_pocket_ecm_jammer_debuff": "Pocket ECM Cooldown",
+  "ky_opt_buff_pocket_ecm_jammer_debuff_desc": "Toggle the Hacker Pocket ECM recharge cooldown",
   "ky_opt_buff_pocket_ecm_kill_dodge": "Pocket ECM Kill Dodge",
   "ky_opt_buff_pocket_ecm_kill_dodge_desc": "Toggle Hacker kill dodge bonus",
   "ky_opt_buff_copr_ability": "Stoic Flask",

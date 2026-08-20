@@ -197,7 +197,7 @@
   "ky_opt_buff_frenzy_desc": "Activer/désactiver le buff Frénésie",
 
   "ky_opt_buff_equipped_perk_deck": "Deck d'atouts équipé",
-  "ky_opt_buff_equipped_perk_deck_desc": "Afficher le deck équipé en première position, remplacé par son buff de deck lorsqu'il est actif",
+  "ky_opt_buff_equipped_perk_deck_desc": "Afficher le deck équipé en première position ; Hacker conserve son icône et affiche au-dessus ses charges d'ECM de poche disponibles",
   "ky_opt_buff_armor_break_invulnerable": "Invulnérabilité bris d'armure",
   "ky_opt_buff_armor_break_invulnerable_desc": "Activer/désactiver le buff d'invulnérabilité Armorer",
   "ky_opt_buff_armorer": "Armorer (Équipe)",
@@ -222,6 +222,8 @@
   "ky_opt_buff_chico_injector_desc": "Activer/désactiver le buff d'injecteur Kingpin",
   "ky_opt_buff_pocket_ecm_jammer": "ECM de poche",
   "ky_opt_buff_pocket_ecm_jammer_desc": "Activer/désactiver le buff ECM de poche Hacker",
+  "ky_opt_buff_pocket_ecm_jammer_debuff": "Cooldown ECM de poche",
+  "ky_opt_buff_pocket_ecm_jammer_debuff_desc": "Activer/désactiver le cooldown de recharge de l'ECM de poche Hacker",
   "ky_opt_buff_pocket_ecm_kill_dodge": "ECM esquive sur kill",
   "ky_opt_buff_pocket_ecm_kill_dodge_desc": "Activer/désactiver le bonus d'esquive sur kill Hacker",
   "ky_opt_buff_copr_ability": "Flasque Stoic",
