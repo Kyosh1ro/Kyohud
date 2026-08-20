@@ -1,3 +1,6 @@
+r58 (20.08.2026):
+- Le menu des options est désormais organisé à partir de fichiers JSON : les réglages principaux restent accessibles directement et les filtres de buffs sont regroupés dans un sous-menu dédié.
+
 r57 (20.08.2026):
 - Les buffs temporaires possèdent désormais un contour lumineux qui se vide autour de leur icône en suivant précisément leur durée restante.
 

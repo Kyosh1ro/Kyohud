@@ -1,6 +1,6 @@
 -- ky_options.lua — Menu BLT + sauvegarde/chargement des paramètres
 -- Kyosh1ro HUD v1.5.0
--- UN SEUL BuildMenu (SuperBLT limitation), sous-menus par deep_clone
+-- Structure fixe en JSON ; UN SEUL BuildMenu, sous-menus par deep_clone
 
 if not Kyosh1roHUD then Kyosh1roHUD = {} end
 local KH = Kyosh1roHUD
@@ -152,10 +152,44 @@ MenuCallbackHandler.KY_DebugSimulate  = function() if KH.DebugSimulate then KH:D
 MenuCallbackHandler.KY_DebugClear     = function() if KH.DebugClear then KH:DebugClear() end end
 MenuCallbackHandler.KY_BackCallback   = function() end
 
-local CAT_ORDER = {
-    "mastermind", "enforcer", "technician", "ghost", "fugitive",
-    "perk", "debuff", "team", "player_action", "gage", "ai",
-}
+local function load_menu_definition(filename)
+    local path = MY_MOD_PATH .. "menu/" .. filename
+    local file = io.open(path, "r")
+    if not file then
+        log("[Kyosh1ro HUD] Impossible d'ouvrir la définition de menu: " .. tostring(path))
+        return nil
+    end
+
+    local raw = file:read("*all")
+    file:close()
+
+    local ok, content = pcall(json.decode, raw)
+    if not ok or type(content) ~= "table" then
+        log("[Kyosh1ro HUD] JSON de menu invalide " .. tostring(path) .. ": " .. tostring(content))
+        return nil
+    end
+    if type(content.menu_id) ~= "string" or type(content.items) ~= "table" then
+        log("[Kyosh1ro HUD] Définition de menu incomplète: " .. tostring(path))
+        return nil
+    end
+    return content
+end
+
+local MAIN_MENU_DEFINITION = load_menu_definition("menu.json")
+local BUFFS_MENU_DEFINITION = load_menu_definition("buffs.json")
+local MENU_ID = MAIN_MENU_DEFINITION and MAIN_MENU_DEFINITION.menu_id or "ky_hud_options"
+local BUFFS_MENU_ID = BUFFS_MENU_DEFINITION and BUFFS_MENU_DEFINITION.menu_id or "ky_buffs_menu"
+
+local CAT_ORDER = {}
+local CAT_MENU_ITEMS = {}
+if BUFFS_MENU_DEFINITION then
+    for _, item in ipairs(BUFFS_MENU_DEFINITION.items) do
+        if item.type == "button" and type(item.category) == "string" and type(item.next_menu) == "string" then
+            table.insert(CAT_ORDER, item.category)
+            CAT_MENU_ITEMS[item.category] = item
+        end
+    end
+end
 
 for _, cat_id in ipairs(CAT_ORDER) do
     local cid = cat_id
@@ -178,87 +212,61 @@ end
 -- ═══════════════════════════════════════════════════
 -- 3) Construction du menu
 -- ═══════════════════════════════════════════════════
-local MENU_ID = "ky_hud_options"
+local function populate_json_menu(definition)
+    if not definition then return end
 
-local CAT_MENU_IDS = {}
-for _, cat_id in ipairs(CAT_ORDER) do
-    CAT_MENU_IDS[cat_id] = "ky_buffs_" .. cat_id
+    local items = definition.items
+    local item_count = #items
+    for index, item in ipairs(items) do
+        local item_type = item.type
+        local priority = item.priority or (item_count - index + 1)
+        local value = item.default_value
+        if item.value and KH.settings[item.value] ~= nil then
+            value = KH.settings[item.value]
+        end
+
+        if item_type == "toggle" then
+            MenuHelper:AddToggle({
+                id = item.id, title = item.title, desc = item.description,
+                callback = item.callback, value = value,
+                menu_id = definition.menu_id, priority = priority,
+            })
+        elseif item_type == "slider" then
+            MenuHelper:AddSlider({
+                id = item.id, title = item.title, desc = item.description,
+                callback = item.callback, value = value,
+                min = item.min or 0, max = item.max or 1, step = item.step or 0.1,
+                show_value = item.show_value ~= false,
+                display_precision = item.display_precision,
+                menu_id = definition.menu_id, priority = priority,
+            })
+        elseif item_type == "button" then
+            MenuHelper:AddButton({
+                id = item.id, title = item.title, desc = item.description,
+                callback = item.callback, next_node = item.next_menu,
+                menu_id = definition.menu_id, priority = priority,
+            })
+        elseif item_type == "divider" then
+            MenuHelper:AddDivider({
+                id = "ky_divider_" .. tostring(index), size = item.size,
+                menu_id = definition.menu_id, priority = priority,
+            })
+        else
+            log("[Kyosh1ro HUD] Type d'élément de menu JSON inconnu: " .. tostring(item_type))
+        end
+    end
 end
 
 -- ── HOOK 1 : Setup ──
 Hooks:Add("MenuManagerSetupCustomMenus", "KY_SetupMenu", function(menu_manager, nodes)
+    if not MAIN_MENU_DEFINITION or not BUFFS_MENU_DEFINITION then return end
     MenuHelper:NewMenu(MENU_ID)
     -- PAS de NewMenu pour les sous-menus, on les crée par clonage
 end)
 
 -- ── HOOK 2 : Populate (items du menu principal uniquement) ──
 Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
-    MenuHelper:AddToggle({
-        id = "ky_enable_killfeed", title = "ky_opt_enable_killfeed",
-        desc = "ky_opt_enable_killfeed_desc", callback = "KY_ToggleKillfeed",
-        value = KH.settings.enable_killfeed, menu_id = MENU_ID, priority = 1000,
-    })
-    MenuHelper:AddSlider({
-        id = "ky_killfeed_size", title = "ky_opt_killfeed_size", desc = "ky_opt_killfeed_size_desc",
-        callback = "KY_SetKillfeedSize", value = KH.settings.killfeed_size,
-        min = 1, max = 3, step = 1, show_value = true,
-        menu_id = MENU_ID, priority = 999,
-    })
-    MenuHelper:AddToggle({
-        id = "ky_enable_buffs", title = "ky_opt_enable_buffs",
-        desc = "ky_opt_enable_buffs_desc", callback = "KY_ToggleBuffs",
-        value = KH.settings.enable_buffs, menu_id = MENU_ID, priority = 998,
-    })
-
-    MenuHelper:AddSlider({
-        id = "ky_circle_radius", title = "ky_opt_radius", desc = "ky_opt_radius_desc",
-        callback = "KY_SetRadius", value = KH.settings.circle_radius,
-        min = 100, max = 500, step = 10, show_value = true,
-        menu_id = MENU_ID, priority = 950,
-    })
-    MenuHelper:AddSlider({
-        id = "ky_buff_position_x", title = "ky_opt_buff_position_x", desc = "ky_opt_buff_position_x_desc",
-        callback = "KY_SetBuffPositionX", value = KH.settings.buff_position_x,
-        min = 0, max = 100, step = 1, show_value = true,
-        menu_id = MENU_ID, priority = 949,
-    })
-    MenuHelper:AddSlider({
-        id = "ky_buff_position_y", title = "ky_opt_buff_position_y", desc = "ky_opt_buff_position_y_desc",
-        callback = "KY_SetBuffPositionY", value = KH.settings.buff_position_y,
-        min = 0, max = 100, step = 1, show_value = true,
-        menu_id = MENU_ID, priority = 948,
-    })
-    MenuHelper:AddSlider({
-        id = "ky_buff_duration", title = "ky_opt_duration", desc = "ky_opt_duration_desc",
-        callback = "KY_SetDuration", value = KH.settings.buff_duration,
-        min = 1, max = 10, step = 0.5, show_value = true,
-        menu_id = MENU_ID, priority = 947,
-    })
-    MenuHelper:AddSlider({
-        id = "ky_opacity", title = "ky_opt_opacity", desc = "ky_opt_opacity_desc",
-        callback = "KY_SetOpacity", value = KH.settings.opacity,
-        min = 0.1, max = 1, step = 0.05, show_value = true,
-        menu_id = MENU_ID, priority = 946,
-    })
-    MenuHelper:AddSlider({
-        id = "ky_icon_size", title = "ky_opt_icon_size", desc = "ky_opt_icon_size_desc",
-        callback = "KY_SetIconSize", value = KH.settings.icon_size,
-        min = 16, max = 64, step = 2, show_value = true,
-        menu_id = MENU_ID, priority = 945,
-    })
-
-    MenuHelper:AddButton({
-        id = "ky_reset_defaults", title = "ky_opt_reset", desc = "ky_opt_reset_desc",
-        callback = "KY_ResetDefaults", menu_id = MENU_ID, priority = 10,
-    })
-    MenuHelper:AddButton({
-        id = "ky_debug_sim", title = "ky_opt_debug_sim", desc = "ky_opt_debug_sim_desc",
-        callback = "KY_DebugSimulate", menu_id = MENU_ID, priority = 5,
-    })
-    MenuHelper:AddButton({
-        id = "ky_debug_clear", title = "ky_opt_debug_clear", desc = "ky_opt_debug_clear_desc",
-        callback = "KY_DebugClear", menu_id = MENU_ID, priority = 4,
-    })
+    populate_json_menu(MAIN_MENU_DEFINITION)
 end)
 
 -- ── Utilitaire : créer un item toggle sur un noeud existant ──
@@ -302,12 +310,33 @@ local function add_toggle_to_node(node, id, title_id, desc_id, callback_name, va
     end
 end
 
+local function add_menu_link_to_node(node, id, title_id, desc_id, next_node)
+    local ok, err = pcall(function()
+        local item = node:create_item(
+            { type = "CoreMenuItem.Item" },
+            {
+                name = id,
+                text_id = title_id,
+                help_id = desc_id,
+                next_node = next_node,
+            }
+        )
+        if item then node:add_item(item) end
+    end)
+    if not ok then
+        log("[Kyosh1ro HUD] Erreur ajout lien de menu " .. tostring(id) .. ": " .. tostring(err))
+    end
+end
+
 -- ── HOOK 3 : Build ──
 Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, nodes)
+    if not MAIN_MENU_DEFINITION or not BUFFS_MENU_DEFINITION then return end
 
     -- 3a. UN SEUL BuildMenu — le menu principal
     local main_ok, main_err = pcall(function()
-        nodes[MENU_ID] = MenuHelper:BuildMenu(MENU_ID, { back_callback = "KY_BackCallback" })
+        nodes[MENU_ID] = MenuHelper:BuildMenu(MENU_ID, {
+            back_callback = MAIN_MENU_DEFINITION.back_callback or "KY_BackCallback",
+        })
     end)
 
     if not main_ok then
@@ -315,10 +344,23 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         return
     end
 
-    -- 3b. Créer les sous-menus par CLONAGE du noeud principal
+    -- 3b. Créer le menu Buffs et les sous-menus par CLONAGE du noeud principal
+    local buffs_node
+    local buffs_ok, buffs_err = pcall(function()
+        buffs_node = deep_clone(nodes[MENU_ID])
+        buffs_node:clean_items()
+        nodes[BUFFS_MENU_ID] = buffs_node
+    end)
+
+    if not buffs_ok then
+        log("[Kyosh1ro HUD] ERREUR clone menu Buffs: " .. tostring(buffs_err))
+        return
+    end
+
     local sub_count = 0
     for _, cat_id in ipairs(CAT_ORDER) do
-        local sub_id = CAT_MENU_IDS[cat_id]
+        local menu_item = CAT_MENU_ITEMS[cat_id]
+        local sub_id = menu_item.next_menu
 
         local clone_ok, clone_err = pcall(function()
             -- Cloner le noeud du menu principal (récupère le renderer, layout, etc.)
@@ -359,12 +401,13 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         end)
 
         if clone_ok then
-            -- Ajouter le lien vers ce sous-menu dans le menu principal
-            MenuHelper:AddMenuItem(
-                nodes[MENU_ID],
-                sub_id,
-                "ky_opt_cat_" .. cat_id .. "_buffs",
-                "ky_opt_cat_" .. cat_id .. "_buffs_desc"
+            -- Ajouter le lien vers la catégorie dans le menu Buffs
+            add_menu_link_to_node(
+                buffs_node,
+                menu_item.id,
+                menu_item.title,
+                menu_item.description,
+                sub_id
             )
             sub_count = sub_count + 1
         else
@@ -373,7 +416,17 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
     end
 
     -- 3c. Lier au menu BLT Options
-    MenuHelper:AddMenuItem(nodes.blt_options, MENU_ID, "ky_menu_title", "ky_menu_desc")
+    local parent_id = MAIN_MENU_DEFINITION.parent_menu_id or "blt_options"
+    if nodes[parent_id] then
+        MenuHelper:AddMenuItem(
+            nodes[parent_id],
+            MENU_ID,
+            MAIN_MENU_DEFINITION.title,
+            MAIN_MENU_DEFINITION.description
+        )
+    else
+        log("[Kyosh1ro HUD] ERREUR menu parent introuvable: " .. tostring(parent_id))
+    end
 
-    log("[Kyosh1ro HUD] Menu construit: principal + " .. sub_count .. "/11 sous-menus (deep_clone).")
+    log("[Kyosh1ro HUD] Menu JSON construit: principal + Buffs + " .. sub_count .. "/" .. #CAT_ORDER .. " catégories (deep_clone).")
 end)

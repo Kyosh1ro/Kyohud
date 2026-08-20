@@ -34,6 +34,8 @@ local function add_fallbacks(loc)
         ky_opt_killfeed_size_desc   = "Number of kills shown in the killfeed (1-3)",
         ky_opt_enable_buffs         = "Enable Buffs",
         ky_opt_enable_buffs_desc    = "Show the equipped perk deck and active buffs in a horizontal row",
+        ky_opt_buffs_menu           = "Buffs Menu",
+        ky_opt_buffs_menu_desc      = "Choose which buff categories and individual buffs are displayed",
         ky_opt_radius               = "Killfeed Vertical Offset",
         ky_opt_radius_desc          = "Vertical distance of the killfeed from the crosshair (100-500)",
         ky_opt_buff_position_x      = "Buff Position X (%)",

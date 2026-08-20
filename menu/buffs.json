@@ -1,0 +1,96 @@
+{
+  "menu_id": "ky_buffs_menu",
+  "parent_menu_id": "ky_hud_options",
+  "title": "ky_opt_buffs_menu",
+  "description": "ky_opt_buffs_menu_desc",
+  "items": [
+    {
+      "type": "button",
+      "category": "mastermind",
+      "id": "ky_buffs_mastermind_button",
+      "title": "ky_opt_cat_mastermind_buffs",
+      "description": "ky_opt_cat_mastermind_buffs_desc",
+      "next_menu": "ky_buffs_mastermind"
+    },
+    {
+      "type": "button",
+      "category": "enforcer",
+      "id": "ky_buffs_enforcer_button",
+      "title": "ky_opt_cat_enforcer_buffs",
+      "description": "ky_opt_cat_enforcer_buffs_desc",
+      "next_menu": "ky_buffs_enforcer"
+    },
+    {
+      "type": "button",
+      "category": "technician",
+      "id": "ky_buffs_technician_button",
+      "title": "ky_opt_cat_technician_buffs",
+      "description": "ky_opt_cat_technician_buffs_desc",
+      "next_menu": "ky_buffs_technician"
+    },
+    {
+      "type": "button",
+      "category": "ghost",
+      "id": "ky_buffs_ghost_button",
+      "title": "ky_opt_cat_ghost_buffs",
+      "description": "ky_opt_cat_ghost_buffs_desc",
+      "next_menu": "ky_buffs_ghost"
+    },
+    {
+      "type": "button",
+      "category": "fugitive",
+      "id": "ky_buffs_fugitive_button",
+      "title": "ky_opt_cat_fugitive_buffs",
+      "description": "ky_opt_cat_fugitive_buffs_desc",
+      "next_menu": "ky_buffs_fugitive"
+    },
+    {
+      "type": "button",
+      "category": "perk",
+      "id": "ky_buffs_perk_button",
+      "title": "ky_opt_cat_perk_buffs",
+      "description": "ky_opt_cat_perk_buffs_desc",
+      "next_menu": "ky_buffs_perk"
+    },
+    {
+      "type": "button",
+      "category": "debuff",
+      "id": "ky_buffs_debuff_button",
+      "title": "ky_opt_cat_debuff_buffs",
+      "description": "ky_opt_cat_debuff_buffs_desc",
+      "next_menu": "ky_buffs_debuff"
+    },
+    {
+      "type": "button",
+      "category": "team",
+      "id": "ky_buffs_team_button",
+      "title": "ky_opt_cat_team_buffs",
+      "description": "ky_opt_cat_team_buffs_desc",
+      "next_menu": "ky_buffs_team"
+    },
+    {
+      "type": "button",
+      "category": "player_action",
+      "id": "ky_buffs_player_action_button",
+      "title": "ky_opt_cat_player_action_buffs",
+      "description": "ky_opt_cat_player_action_buffs_desc",
+      "next_menu": "ky_buffs_player_action"
+    },
+    {
+      "type": "button",
+      "category": "gage",
+      "id": "ky_buffs_gage_button",
+      "title": "ky_opt_cat_gage_buffs",
+      "description": "ky_opt_cat_gage_buffs_desc",
+      "next_menu": "ky_buffs_gage"
+    },
+    {
+      "type": "button",
+      "category": "ai",
+      "id": "ky_buffs_ai_button",
+      "title": "ky_opt_cat_ai_buffs",
+      "description": "ky_opt_cat_ai_buffs_desc",
+      "next_menu": "ky_buffs_ai"
+    }
+  ]
+}

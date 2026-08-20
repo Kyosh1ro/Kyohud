@@ -35,7 +35,8 @@ Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée localement 
 | `ky_hooks.lua` | Détecte l'activation et la désactivation des upgrades temporaires via `PlayerManager`, résout leur durée puis appelle `KH:add_buff` ou `KH:remove_buff`. |
 | `ky_killfeed.lua` | Observe `CopDamage:die` côté hôte et `PlayerManager:on_killshot` côté client, puis transmet les kills locaux au calcul partagé du killfeed. Le script doit rester associé aux deux contextes dans `mod.txt`. |
 | `ky_buffhud.lua` | État actif, résolution des textures, création du panneau, calcul de la rangée horizontale des buffs et rendu du killfeed. Contient aussi les outils de simulation. |
-| `ky_options.lua` | Valeurs par défaut, lecture/écriture de `SavePath/kyosh1ro_hud_settings.json`, callbacks et menus SuperBLT. |
+| `ky_options.lua` | Valeurs par défaut, lecture/écriture de `SavePath/kyosh1ro_hud_settings.json`, callbacks et conversion des définitions JSON en menus SuperBLT. |
+| `menu/menu.json`, `menu/buffs.json` | Structure fixe du menu principal et du sous-menu de catégories de buffs ; les buffs individuels restent générés depuis le catalogue. |
 | `ky_localization.lua` | Fallbacks intégrés et chargement des traductions anglaise/française. Capture immédiatement `ModPath` car SuperBLT peut ensuite écraser ce global. |
 | `loc/english.json`, `loc/french.json` | Libellés visibles dans le menu. |
 | `changelog.txt` | Historique utilisateur numéroté des commits directs et des pull requests fusionnées dans `main`. |
