@@ -23,6 +23,7 @@ Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée localement 
 
 - Les annotations des types du moteur Diesel et des fonctions Lua de PAYDAY 2 sont disponibles dans `G:\PD2-Modding-Docs\pd2-code-doc`. Les consulter pour vérifier les signatures et les objets du moteur, notamment `PlayerManager`, `CopDamage`, `CivilianDamage`, `Panel`, `Bitmap` et `Text`.
 - L'implémentation SuperBLT effectivement installée est disponible dans `G:\SteamLibrary\steamapps\common\PAYDAY 2\mods\base`. La privilégier pour confirmer le comportement de `Hooks`, `MenuHelper`, du chargement des mods et de la localisation.
+- Le code source de Void UI disponible dans `C:\Users\Kyosh1ro\Desktop\Void UI` peut servir de référence pour le cycle de vie des panneaux, le chargement conditionnel par `RequiredScript`, l'enregistrement de textures et la coexistence entre composants HUD. Il ne constitue ni une dépendance ni un modèle à recopier sans vérifier ses choix de hooks.
 - Ces dossiers sont des références de développement uniquement : ne pas les charger à l'exécution, les copier dans le mod ou les inclure dans une publication.
 - Les annotations documentent surtout les signatures. Pour les champs privés, la sémantique réseau et les comportements dépendant du moteur, confronter la documentation au code du jeu disponible et valider en jeu.
 
@@ -80,6 +81,16 @@ Les éléments doivent être séquentiels de gauche à droite. Le pas horizontal
 Le killfeed utilise une rangée tactique horizontale sous le viseur, limitée à 1-3 entrées. L'ordre est chronologique de gauche à droite : le kill le plus ancien visible reste à gauche et le plus récent s'ajoute à droite. La rangée est centrée et doit se resserrer pour rester dans le panneau. Le bandeau de série reste centré au-dessus. Le réglage historique `circle_radius` sert de décalage vertical de ce bloc.
 
 Le panneau est vidé puis reconstruit environ toutes les 0,05 seconde. Éviter les allocations ou logs permanents inutiles dans `KH:draw` ; tout diagnostic temporaire doit être clairement marqué et retiré une fois le problème validé.
+
+## Compatibilité avec les autres HUD
+
+- Conserver un nom de panneau et des identifiants de hooks propres à Kyosh1ro HUD. Ne supprimer, vider, masquer ou modifier que les objets créés par le mod ; ne jamais appliquer `clear`, `remove` ou `set_alpha(0)` au panneau parent ni à ses autres enfants.
+- Attacher l'overlay au panneau d'information du joueur avec le repli plein écran existant. Ne pas dépendre de `HUDAssaultCorner`, car un HUD complet comme Void UI peut masquer ou remplacer ses éléments.
+- Préférer `Hooks:PostHook` ou `Hooks:PreHook` à un remplacement complet d'une méthode du jeu. Si un remplacement est indispensable, mémoriser l'original une seule fois, préserver son ordre d'appel et ajouter un garde idempotent pour éviter les doubles enveloppements.
+- Un point d'entrée commun dispatché par `RequiredScript` est utile pour un mod qui partage un même fichier entre beaucoup de contextes. Ne l'introduire ici que s'il réduit réellement la duplication ; chaque module doit rester chargé dans un contexte où la classe ciblée existe.
+- Conserver les deux chemins du killfeed, `CopDamage:die` pour l'hôte et `PlayerManager:on_killshot` pour le client. Les techniques d'attribution observées ailleurs, comme `thrower_unit` ou le propriétaire d'une sentry, doivent compléter ce modèle seulement si elles correspondent au périmètre fonctionnel voulu.
+
+Void UI conserve généralement ses composants visuels et met à jour leur état, alors que `KH:draw` reconstruit actuellement le panneau. Un rendu persistant est une piste d'optimisation valable si le coût du rendu devient mesurable, mais il doit préserver l'expiration, le tri, le recentrage, les changements de résolution et la compatibilité avec les autres HUD avant de remplacer l'approche actuelle.
 
 ## Ajouter ou modifier un buff
 
