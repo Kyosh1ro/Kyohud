@@ -1,3 +1,6 @@
+r65 (20.08.2026):
+- La barre inférieure des cellules de buffs est désormais affinée à 1 px.
+
 r64 (20.08.2026):
 - La barre inférieure des cellules de buffs adopte désormais l'épaisseur de 2 px utilisée sur les côtés des cartes du killfeed.
 
