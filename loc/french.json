@@ -8,6 +8,8 @@
   "ky_opt_killfeed_size_desc": "Nombre de kills affichés dans le killfeed (1-3). Par défaut : 3",
   "ky_opt_enable_buffs": "Activer l'affichage des buffs",
   "ky_opt_enable_buffs_desc": "Affiche le deck d'atouts équipé et les buffs actifs sur une rangée horizontale",
+  "ky_opt_buffs_menu": "Menu Buffs",
+  "ky_opt_buffs_menu_desc": "Choisir les catégories et les buffs individuels à afficher",
   "ky_opt_radius": "Décalage vertical du killfeed",
   "ky_opt_radius_desc": "Distance verticale du killfeed depuis le viseur (100-500)",
   "ky_opt_buff_position_x": "Position X des buffs (%)",
