@@ -1,3 +1,6 @@
+r57 (20.08.2026):
+- Les buffs temporaires possèdent désormais un contour lumineux qui se vide autour de leur icône en suivant précisément leur durée restante.
+
 r56 (20.08.2026):
 - Les buffs utilisent désormais des cellules plus légères et bien séparées, avec un fond noir discret et de petits accents de coin qui donnent la priorité aux icônes et aux timers.
 

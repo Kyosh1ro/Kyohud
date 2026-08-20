@@ -649,6 +649,66 @@ local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, styl
     )
 end
 
+-- Trace la partie encore active du contour d'un buff temporaire. Le parcours
+-- commence au milieu du bord supérieur et avance dans le sens horaire ; son
+-- extrémité recule donc continûment à mesure que le timer approche de zéro.
+local function append_progress_segment(points, remaining_length, x1, y1, x2, y2, segment_length)
+    if remaining_length <= 0 or segment_length <= 0 then return remaining_length end
+
+    local visible_length = math.min(remaining_length, segment_length)
+    local ratio = visible_length / segment_length
+    if #points == 0 then
+        points[1] = Vector3(x1, y1, 0)
+    end
+    points[#points + 1] = Vector3(
+        x1 + (x2 - x1) * ratio,
+        y1 + (y2 - y1) * ratio,
+        0
+    )
+    return remaining_length - visible_length
+end
+
+local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alpha, layer)
+    progress = clamp(tonumber(progress) or 0, 0, 1)
+    if progress <= 0 then return end
+
+    local line_width = clamp(math.min(w, h) * 0.055, 2, 3)
+    local remaining_length = (w * 2 + h * 2) * progress
+    local half_w = w * 0.5
+    local points = {}
+    remaining_length = append_progress_segment(
+        points, remaining_length, x + half_w, y, x + w, y, half_w
+    )
+    remaining_length = append_progress_segment(
+        points, remaining_length, x + w, y, x + w, y + h, h
+    )
+    remaining_length = append_progress_segment(
+        points, remaining_length, x + w, y + h, x, y + h, w
+    )
+    remaining_length = append_progress_segment(
+        points, remaining_length, x, y + h, x, y, h
+    )
+    append_progress_segment(
+        points, remaining_length, x, y, x + half_w, y, half_w
+    )
+
+    -- Deux polylignes seulement par buff : un halo discret et le trait net.
+    panel:polyline({
+        points = points,
+        line_width = line_width + 2,
+        color = color,
+        alpha = alpha * 0.2,
+        layer = layer,
+    })
+    panel:polyline({
+        points = points,
+        line_width = line_width,
+        color = color,
+        alpha = alpha,
+        layer = layer + 1,
+    })
+end
+
 local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
     panel:gradient({
         x = x,
@@ -1693,6 +1753,21 @@ function KH:draw()
                     buff_cell_style
                 )
 
+                local remaining = buff.t_end and math.max(0, buff.t_end - t)
+                if remaining and buff.duration and buff.duration > 0 then
+                    draw_timed_buff_progress(
+                        self._panel,
+                        frame_x,
+                        frame_y,
+                        frame_w,
+                        frame_h,
+                        remaining / buff.duration,
+                        buff.color or HUD_ACCENT_COLOR,
+                        buff_alpha,
+                        99
+                    )
+                end
+
                 local params = {
                     layer = 101,
                     w     = size,
@@ -1778,7 +1853,6 @@ function KH:draw()
                 end
 
                 -- Timer texte sous l'icône
-                local remaining = buff.t_end and math.max(0, buff.t_end - t)
                 if remaining and remaining > 0 then
                     self._panel:text({
                         text      = string.format("%.1f", remaining),
@@ -2186,7 +2260,8 @@ function KH:DebugSimulate(n)
             is_debuff = demo.is_debuff == true,
             order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n dans la rangée
             start_t  = t_now,
-            -- Pas de t_end : les buffs de debug restent visibles jusqu'à DebugClear.
+            duration = 30 + i * 2,
+            t_end    = t_now + 30 + i * 2,
         }
     end
 
