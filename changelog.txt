@@ -1,3 +1,6 @@
+r60 (20.08.2026):
+- Une installation neuve détecte désormais Void UI lorsqu'il est actif et adapte automatiquement le placement par défaut des buffs et du bloc multikill/killfeed.
+
 r59 (20.08.2026):
 - Ajout d'un README présentant simplement le mod, ses fonctionnalités, son installation et sa configuration.
 

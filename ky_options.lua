@@ -28,6 +28,47 @@ KH._defaults = {
     icon_size       = 32,
 }
 
+local HUD_DEFAULT_LAYOUTS = {
+    {
+        id = "void_ui",
+        mod_name = "Void UI",
+        values = {
+            circle_radius   = 280,
+            buff_position_x = 50,
+            buff_position_y = 98,
+        },
+    },
+}
+
+local function is_blt_mod_enabled(name)
+    if not (BLT and BLT.Mods and BLT.Mods.GetModByName) then
+        return false
+    end
+
+    local found_ok, mod = pcall(function()
+        return BLT.Mods:GetModByName(name)
+    end)
+    if not found_ok or not mod or not mod.IsEnabled then
+        return false
+    end
+
+    local enabled_ok, enabled = pcall(function()
+        return mod:IsEnabled()
+    end)
+    return enabled_ok and enabled == true
+end
+
+KH._default_layout_profile = "standard"
+for _, profile in ipairs(HUD_DEFAULT_LAYOUTS) do
+    if is_blt_mod_enabled(profile.mod_name) then
+        for key, value in pairs(profile.values) do
+            KH._defaults[key] = value
+        end
+        KH._default_layout_profile = profile.id
+        break
+    end
+end
+
 KH._default_categories = {
     mastermind = true, enforcer = true, technician = true,
     ghost = true, fugitive = true, perk = true, debuff = true,
