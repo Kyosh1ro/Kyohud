@@ -628,6 +628,27 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
     )
 end
 
+-- Cellule volontairement sobre pour laisser l'icône et son timer dominer.
+-- Le cadre tactique complet reste réservé aux annonces du killfeed.
+local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, style)
+    local inset = style and style.inset or 1
+
+    panel:rect({
+        x = x + inset,
+        y = y + inset,
+        w = w - inset * 2,
+        h = h - inset * 2,
+        color = Color.black,
+        alpha = alpha * 0.3,
+        layer = layer,
+    })
+
+    draw_corner_brackets(
+        panel, x, y, w, h, color, alpha * 0.62, layer + 1,
+        style and style.brackets
+    )
+end
+
 local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
     panel:gradient({
         x = x,
@@ -1613,8 +1634,8 @@ function KH:draw()
             table.insert(buff_list, buff)
         end
 
-        local frame_pad_x = clamp(size * 0.26, 6, 14)
-        local frame_pad_y = clamp(size * 0.1, 2, 5)
+        local frame_pad_x = clamp(size * 0.16, 4, 9)
+        local frame_pad_y = clamp(size * 0.08, 2, 4)
         local top_label_height = 18
         for _, buff in ipairs(buff_list) do
             if buff.category == "ai" and buff.value_text then
@@ -1633,22 +1654,13 @@ function KH:draw()
             frame_pad_y,
             top_label_height
         )
-        local arrow_w = clamp(size * 0.07, 1.5, 4)
-        local arrow_h = clamp(size * 0.16, 4, 9)
-        local arrow_gap = clamp(size * 0.035, 0.75, 2)
-        local arrow_group_w = arrow_w * 3 + arrow_gap * 2
-        local compact_chevrons = {
-            arrow_w = arrow_w,
-            arrow_h = arrow_h,
-            gap = arrow_gap,
-        }
-        local compact_frame = {
-            inset = 2,
-            glow_alpha = 0.12,
+        local buff_cell_style = {
+            inset = 1,
             brackets = {
-                extension = clamp(size * 0.055, 1, 3),
-                arm_x = clamp(size * 0.16, 3, 9),
-                arm_y = clamp(size * 0.12, 3, 7),
+                extension = 0,
+                arm_x = clamp(size * 0.1, 2, 5),
+                arm_y = clamp(size * 0.08, 2, 4),
+                line_width = 1,
             },
         }
 
@@ -1662,14 +1674,14 @@ function KH:draw()
                 end
                 local buff_alpha = alpha * (0.4 + 0.6 * life)
 
-                -- Version compacte du cadre tactique : les chevrons restent dans
-                -- les marges et convergent vers l'icône sans la recouvrir.
+                -- Chaque buff conserve sa propre cellule, assez discrète pour que
+                -- l'icône et le timer restent les informations dominantes.
                 local frame_x = pos.x - size * 0.5 - frame_pad_x
                 local frame_y = pos.y - size * 0.5 - frame_pad_y
                 local frame_w = size + frame_pad_x * 2
                 local frame_h = size + frame_pad_y * 2
 
-                draw_tactical_frame(
+                draw_buff_cell_frame(
                     self._panel,
                     frame_x,
                     frame_y,
@@ -1678,27 +1690,7 @@ function KH:draw()
                     HUD_ACCENT_COLOR,
                     buff_alpha * 0.72,
                     98,
-                    compact_frame
-                )
-                draw_chevrons(
-                    self._panel,
-                    frame_x + 1,
-                    pos.y,
-                    1,
-                    HUD_ACCENT_COLOR,
-                    buff_alpha * 0.72,
-                    100,
-                    compact_chevrons
-                )
-                draw_chevrons(
-                    self._panel,
-                    frame_x + frame_w - arrow_group_w - 1,
-                    pos.y,
-                    -1,
-                    HUD_ACCENT_COLOR,
-                    buff_alpha * 0.72,
-                    100,
-                    compact_chevrons
+                    buff_cell_style
                 )
 
                 local params = {
