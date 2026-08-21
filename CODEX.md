@@ -1,10 +1,10 @@
-# Kyosh1ro HUD — dossier technique
+# KyoHUD — dossier technique
 
 État fonctionnel attendu au 17 août 2026.
 
 ## Résumé
 
-Kyosh1ro HUD est un mod PAYDAY 2 autonome chargé par SuperBLT. Il affiche :
+KyoHUD est un mod PAYDAY 2 autonome chargé par SuperBLT. Il affiche :
 
 - les buffs actifs et leur temps restant dans une rangée horizontale configurable ;
 - les derniers kills du joueur dans une rangée tactique horizontale sous le viseur ;
@@ -29,7 +29,7 @@ Le mod reprend des identifiants et conventions d'icônes de VanillaHUD+, sans d�
 - `ky_options.lua` gère les valeurs par défaut, la persistance, le chargement des JSON et leur conversion en éléments SuperBLT.
 - `ky_localization.lua` et `loc/` fournissent les fallbacks et les traductions.
 
-Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée en `KH`.
+Tous les modules partagent la table globale `kyohud`, abrégée en `KH`. `Kyosh1roHUD` reste un alias de compatibilité vers cette même table.
 
 ## Cycle de vie des buffs
 
@@ -72,7 +72,7 @@ Les kills partagent actuellement le réglage `buff_duration` pour leur durée d'
 
 ## Menus et persistance
 
-Les paramètres sont enregistrés dans `SavePath/kyosh1ro_hud_settings.json`. Toute nouvelle option doit être ajoutée ensemble aux valeurs par défaut, au chargement, au callback, au menu, aux fallbacks et aux deux fichiers de langue.
+Les paramètres sont enregistrés dans `SavePath/kyohud_settings.json`. L'ancien fichier `kyosh1ro_hud_settings.json` est importé automatiquement s'il existe et si le nouveau fichier est absent. Toute nouvelle option doit être ajoutée ensemble aux valeurs par défaut, au chargement, au callback, au menu, aux fallbacks et aux deux fichiers de langue.
 
 Les tests explicites `value ~= nil` sont nécessaires pour conserver les booléens sauvegardés à `false`. Le menu principal est construit avec `MenuHelper:BuildMenu` ; les sous-menus restent créés par `deep_clone`.
 
@@ -99,7 +99,7 @@ Le code source local de Void UI, dans `G:\PD2-Modding-Docs\Void UI`, est une ré
 
 Void UI crée généralement des panneaux persistants et actualise leurs enfants au fil des évènements. Cette approche pourrait réduire les allocations de notre reconstruction périodique, mais sa migration demanderait de conserver explicitement tous les invariants de tri, d'expiration, de redimensionnement et de recentrage. Elle doit donc être motivée par un problème mesuré ou une refonte dédiée.
 
-Pour la coexistence, Kyosh1ro HUD doit continuer à dessiner uniquement dans son enfant `kyosh1ro_buff_panel`, sans masquer ni vider le panneau parent. Il ne doit pas s'attacher aux éléments de `HUDAssaultCorner`, qu'un HUD complet peut cacher ou remplacer. Les hooks non destructifs sont préférés aux remplacements complets de méthodes ; lorsqu'un remplacement est inévitable, l'original doit être conservé et appelé à un point explicitement vérifié.
+Pour la coexistence, KyoHUD doit continuer à dessiner uniquement dans son enfant `kyohud_buff_panel`, sans masquer ni vider le panneau parent. Il ne doit pas s'attacher aux éléments de `HUDAssaultCorner`, qu'un HUD complet peut cacher ou remplacer. Les hooks non destructifs sont préférés aux remplacements complets de méthodes ; lorsqu'un remplacement est inévitable, l'original doit être conservé et appelé à un point explicitement vérifié.
 
 Le code du scoreboard de Void UI sait remonter d'un projectile à `thrower_unit` et d'une sentry à son propriétaire. Ces résolutions sont utiles comme références d'attribution, mais son hook de kill ne remplace pas notre séparation hôte/client : `CopDamage:die` et `PlayerManager:on_killshot` restent nécessaires pour ne pas perdre les kills locaux d'un client.
 
@@ -107,7 +107,7 @@ Le code du scoreboard de Void UI sait remonter d'un projectile à `thrower_unit`
 
 Le code source local d'Extra Heist Info, dans `G:\PD2-Modding-Docs\Extra Heist Info`, sépare efficacement les définitions de menu en JSON du comportement Lua. Son `MenuManager.lua` lit les fichiers, transforme les entrées en appels `MenuHelper`, relie les boutons avec `next_menu` et centralise la sauvegarde dans un callback générique.
 
-Cette séparation est retenue pour Kyosh1ro HUD, mais pas son parseur complet. Extra Heist Info prend également en charge les dépendances `parent`, les comparaisons entre options, les couleurs personnalisées, la VR et les aperçus en direct. Ces fonctions sont propres à son architecture et ne doivent être ajoutées ici qu'en réponse à un besoin concret, avec un schéma minimal et un test en jeu.
+Cette séparation est retenue pour KyoHUD, mais pas son parseur complet. Extra Heist Info prend également en charge les dépendances `parent`, les comparaisons entre options, les couleurs personnalisées, la VR et les aperçus en direct. Ces fonctions sont propres à son architecture et ne doivent être ajoutées ici qu'en réponse à un besoin concret, avec un schéma minimal et un test en jeu.
 
 Le JSON est une définition d'interface, pas la sauvegarde elle-même. Les valeurs actives restent dans `KH.settings`, et les callbacks Lua restent responsables de leur validation, de leur persistance et de l'actualisation du HUD.
 

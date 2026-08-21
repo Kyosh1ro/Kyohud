@@ -1,20 +1,21 @@
 -- ky_killfeed.lua — Détection des kills locaux côté hôte et client
--- Kyosh1ro HUD
+-- KyoHUD
 -- Ce fichier est chargé dans les contextes PlayerManager et CopDamage (mod.txt).
 -- CopDamage:die reste le chemin hôte historique ; PlayerManager:on_killshot
 -- fournit au client rejoignant une partie sa notification locale de kill.
 
-if not Kyosh1roHUD then Kyosh1roHUD = {} end
-local KH = Kyosh1roHUD
+if not kyohud then kyohud = Kyosh1roHUD or {} end
+Kyosh1roHUD = kyohud
+local KH = kyohud
 local MY_MOD_PATH = ModPath
 
 local score_ok, score_err = pcall(dofile, MY_MOD_PATH .. "ky_killscore.lua")
 if not score_ok then
-    log("[Kyosh1ro HUD] Erreur chargement du calcul des scores : " .. tostring(score_err))
+    log("[KyoHUD] Erreur chargement du calcul des scores : " .. tostring(score_err))
 end
 
 local function HLOG(msg)
-    pcall(function() log("[Kyosh1ro HUD][KillFeed] " .. tostring(msg)) end)
+    pcall(function() log("[KyoHUD][KillFeed] " .. tostring(msg)) end)
 end
 
 local function record_kill(unit, is_civilian)

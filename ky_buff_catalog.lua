@@ -1,8 +1,9 @@
-if not Kyosh1roHUD then
-    Kyosh1roHUD = {}
+if not kyohud then
+    kyohud = Kyosh1roHUD or {}
 end
+Kyosh1roHUD = kyohud -- Alias conservé pour les intégrations antérieures au renommage.
 
-local KH = Kyosh1roHUD
+local KH = kyohud
 
 if KH.BUFF_CATEGORIES and KH.BUFF_COLORS and KH.BUFF_MAP and KH.PERK_DECK_BUFFS
     and KH.UPGRADE_TO_BUFF and KH.BUFF_SOURCE_TARGETS
@@ -24,7 +25,7 @@ KH.BUFF_CATEGORIES = {
     ai = "AI Skills",
 }
 
--- Palette néon tactique propre à Kyosh1ro HUD. Les entrées de BUFF_MAP
+-- Palette néon tactique propre à KyoHUD. Les entrées de BUFF_MAP
 -- référencent ces rôles par leur nom afin que le catalogue ne dépende pas
 -- des objets Color du moteur au moment de son chargement.
 KH.BUFF_COLORS = {
@@ -326,7 +327,7 @@ KH.BUFF_SOURCE_TARGETS = {
 
 function KH.GetBuffTargets(source_id)
     -- VanillaHUD+ regroupe normalement le cooldown avec l'effet actif de la
-    -- Pocket ECM. Kyosh1ro HUD les sépare afin de conserver l'icône Hacker et
+    -- Pocket ECM. KyoHUD les sépare afin de conserver l'icône Hacker et
     -- d'afficher le cooldown dans sa propre cellule juste à côté.
     if source_id == "pocket_ecm_jammer_debuff" then
         return KH.BUFF_SOURCE_TARGETS[source_id] or { source_id }

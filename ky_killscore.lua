@@ -1,8 +1,9 @@
 -- ky_killscore.lua — Calcul partagé des points du killfeed
--- Kyosh1ro HUD
+-- KyoHUD
 
-if not Kyosh1roHUD then Kyosh1roHUD = {} end
-local KH = Kyosh1roHUD
+if not kyohud then kyohud = Kyosh1roHUD or {} end
+Kyosh1roHUD = kyohud
+local KH = kyohud
 
 -- Le fichier est chargé depuis les contextes PlayerManager, CopDamage et CivilianDamage.
 if KH._killscore_catalog_loaded then return end

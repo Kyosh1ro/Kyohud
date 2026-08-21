@@ -1,6 +1,6 @@
 {
-  "menu_id": "ky_buffs_menu",
-  "parent_menu_id": "ky_hud_options",
+  "menu_id": "kyohud_buffs_menu",
+  "parent_menu_id": "kyohud_options",
   "title": "ky_opt_buffs_menu",
   "description": "ky_opt_buffs_menu_desc",
   "items": [

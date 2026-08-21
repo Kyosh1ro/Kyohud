@@ -1,6 +1,6 @@
 {
-  "ky_menu_title": "Kyosh1ro HUD",
-  "ky_menu_desc": "Horizontal buff display and tactical killfeed",
+  "ky_menu_title": "KyoHUD - Killfeed & Combat Score",
+  "ky_menu_desc": "Customizable buffs, killfeed, kill streaks and combat score",
 
   "ky_opt_enable_killfeed": "Enable KillFeed",
   "ky_opt_enable_killfeed_desc": "Show eliminated enemies in a horizontal tactical row beneath the crosshair",

@@ -1,3 +1,6 @@
+r70 (21.08.2026):
+- Kyosh1ro HUD devient KyoHUD - Killfeed & Combat Score, avec l'identifiant interne `kyohud` et une migration automatique des anciens réglages.
+
 r69 (20.08.2026):
 - Le deck Hacker conserve désormais son icône en première position, affiche au-dessus le nombre d'ECM de poche disponibles et place leur cooldown de recharge juste à côté.
 
