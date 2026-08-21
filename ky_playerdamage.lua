@@ -1,13 +1,14 @@
 -- ky_playerdamage.lua — Détection autonome de la régénération passive
 
-if not Kyosh1roHUD then Kyosh1roHUD = {} end
-local KH = Kyosh1roHUD
+if not kyohud then kyohud = Kyosh1roHUD or {} end
+Kyosh1roHUD = kyohud
+local KH = kyohud
 local MY_MOD_PATH = ModPath
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "ky_buff_catalog.lua")
 if not catalog_ok then
     pcall(function()
-        log("[Kyosh1ro HUD][Regen] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
+        log("[KyoHUD][Regen] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
     end)
 end
 

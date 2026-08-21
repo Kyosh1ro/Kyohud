@@ -1,6 +1,6 @@
 {
-  "ky_menu_title": "Kyosh1ro HUD",
-  "ky_menu_desc": "Affichage horizontal des buffs et killfeed tactique",
+  "ky_menu_title": "KyoHUD - Killfeed & Combat Score",
+  "ky_menu_desc": "Buffs, killfeed, séries d'éliminations et score de combat personnalisables",
 
   "ky_opt_enable_killfeed": "Activer le KillFeed",
   "ky_opt_enable_killfeed_desc": "Affiche les ennemis éliminés dans une rangée tactique horizontale sous le viseur",

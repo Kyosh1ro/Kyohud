@@ -1,8 +1,8 @@
 {
-  "name": "Kyosh1ro HUD",
-  "description": "Horizontal buff display and tactical kill feed. Works alongside VanillaHUD+.",
+  "name": "KyoHUD - Killfeed & Combat Score",
+  "description": "Customizable buffs, killfeed, kill streaks and combat score.",
   "author": "Kyosh1ro",
-  "version": "55",
+  "version": "70",
   "blt_version": 2,
   "superblt_version": 1,
   "image": "mod.png",

@@ -1,6 +1,6 @@
-# Kyosh1ro HUD
+# KyoHUD - Killfeed & Combat Score
 
-Kyosh1ro HUD est un mod pour **PAYDAY 2** qui affiche les buffs actifs et un killfeed tactique autour du réticule. Il est conçu pour cohabiter avec le HUD du jeu et **VanillaHUD+**.
+KyoHUD est un mod pour **PAYDAY 2** qui affiche des buffs personnalisables, un killfeed tactique, les séries d'éliminations et le score de combat autour du réticule. Il est conçu pour cohabiter avec le HUD du jeu et **VanillaHUD+**.
 
 ## Fonctionnalités
 
@@ -14,9 +14,9 @@ Kyosh1ro HUD est un mod pour **PAYDAY 2** qui affiche les buffs actifs et un kil
 ## Installation
 
 1. Installez [SuperBLT](https://superblt.znix.xyz/).
-2. Placez le dossier `Kyosh1ro_HUD` dans `PAYDAY 2/mods/`.
+2. Placez le dossier `kyohud` dans `PAYDAY 2/mods/`.
 3. Lancez le jeu.
 
 ## Configuration
 
-Ouvrez **Options > Options des mods > Kyosh1ro HUD** pour personnaliser l'affichage. Les boutons de simulation et de nettoyage permettent de tester rapidement le rendu.
+Ouvrez **Options > Options des mods > KyoHUD - Killfeed & Combat Score** pour personnaliser l'affichage. Les boutons de simulation et de nettoyage permettent de tester rapidement le rendu.

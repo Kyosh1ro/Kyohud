@@ -1,8 +1,8 @@
-# Kyosh1ro HUD — guide de travail
+# KyoHUD — guide de travail
 
 ## But du projet
 
-Kyosh1ro HUD est un mod PAYDAY 2 chargé par SuperBLT. Il affiche autour du réticule :
+KyoHUD est un mod PAYDAY 2 chargé par SuperBLT. Il affiche autour du réticule :
 
 - les buffs temporaires actuellement actifs, avec leur temps restant ;
 - les éliminations du joueur local, sous forme de killfeed ;
@@ -17,7 +17,7 @@ Il n'y a ni étape de compilation, ni gestionnaire de dépendances, ni suite de 
 
 Le code s'appuie sur les API globales de PAYDAY 2/SuperBLT (`Hooks`, `managers`, `TimerManager`, `MenuHelper`, `DB`, `tweak_data`, etc.). Garder une syntaxe compatible avec la version de Lua embarquée par le jeu et protéger les accès fragiles aux API du moteur avec `pcall` quand c'est pertinent.
 
-Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée localement en `KH`. Ne pas créer un second état global concurrent.
+Tous les modules partagent la table globale `kyohud`, abrégée localement en `KH`. L'ancien global `Kyosh1roHUD` reste un alias de compatibilité vers la même table ; ne pas créer un second état global concurrent.
 
 ## Références locales de développement
 
@@ -37,7 +37,7 @@ Tous les modules partagent la table globale `Kyosh1roHUD`, abrégée localement 
 | `ky_hooks.lua` | Détecte l'activation et la désactivation des upgrades temporaires via `PlayerManager`, résout leur durée puis appelle `KH:add_buff` ou `KH:remove_buff`. |
 | `ky_killfeed.lua` | Observe `CopDamage:die` côté hôte et `PlayerManager:on_killshot` côté client, puis transmet les kills locaux au calcul partagé du killfeed. Le script doit rester associé aux deux contextes dans `mod.txt`. |
 | `ky_buffhud.lua` | État actif, résolution des textures, création du panneau, calcul de la rangée horizontale des buffs et rendu du killfeed. Contient aussi les outils de simulation. |
-| `ky_options.lua` | Valeurs par défaut, lecture/écriture de `SavePath/kyosh1ro_hud_settings.json`, callbacks et conversion des définitions JSON en menus SuperBLT. |
+| `ky_options.lua` | Valeurs par défaut, lecture/écriture de `SavePath/kyohud_settings.json`, migration de l'ancien fichier `kyosh1ro_hud_settings.json`, callbacks et conversion des définitions JSON en menus SuperBLT. |
 | `menu/menu.json`, `menu/buffs.json` | Structure fixe du menu principal et du sous-menu de catégories de buffs ; les buffs individuels restent générés depuis le catalogue. |
 | `ky_localization.lua` | Fallbacks intégrés et chargement des traductions anglaise/française. Capture immédiatement `ModPath` car SuperBLT peut ensuite écraser ce global. |
 | `loc/english.json`, `loc/french.json` | Libellés visibles dans le menu. |
@@ -85,7 +85,7 @@ Le panneau est vidé puis reconstruit environ toutes les 0,05 seconde. Éviter l
 
 ## Compatibilité avec les autres HUD
 
-- Conserver un nom de panneau et des identifiants de hooks propres à Kyosh1ro HUD. Ne supprimer, vider, masquer ou modifier que les objets créés par le mod ; ne jamais appliquer `clear`, `remove` ou `set_alpha(0)` au panneau parent ni à ses autres enfants.
+- Conserver un nom de panneau et des identifiants de hooks propres à KyoHUD. Ne supprimer, vider, masquer ou modifier que les objets créés par le mod ; ne jamais appliquer `clear`, `remove` ou `set_alpha(0)` au panneau parent ni à ses autres enfants.
 - Attacher l'overlay au panneau d'information du joueur avec le repli plein écran existant. Ne pas dépendre de `HUDAssaultCorner`, car un HUD complet comme Void UI peut masquer ou remplacer ses éléments.
 - Préférer `Hooks:PostHook` ou `Hooks:PreHook` à un remplacement complet d'une méthode du jeu. Si un remplacement est indispensable, mémoriser l'original une seule fois, préserver son ordre d'appel et ajouter un garde idempotent pour éviter les doubles enveloppements.
 - Un point d'entrée commun dispatché par `RequiredScript` est utile pour un mod qui partage un même fichier entre beaucoup de contextes. Ne l'introduire ici que s'il réduit réellement la duplication ; chaque module doit rester chargé dans un contexte où la classe ciblée existe.
@@ -135,10 +135,10 @@ Avant de considérer une modification terminée :
 
 1. Valider que `mod.txt`, les JSON de `loc/` et les définitions de `menu/` sont syntaxiquement corrects.
 2. Relire le diff pour repérer un changement involontaire de fins de ligne ou de fichier utilisateur.
-3. Lancer PAYDAY 2 avec SuperBLT et ouvrir les options de Kyosh1ro HUD.
+3. Lancer PAYDAY 2 avec SuperBLT et ouvrir les options de KyoHUD.
 4. Utiliser **Debug: Simulate** pour vérifier plusieurs icônes, les timers, l'ordre, les deux rangées horizontales, l'ajout d'un kill à droite et différentes valeurs de position X/Y, de taille et de largeur d'écran.
 5. Utiliser **Debug: Clear**, puis tester en partie un vrai buff, son rafraîchissement et un kill direct ainsi qu'un kill par projectile si le hook concerné a changé.
-6. Contrôler le journal SuperBLT pour les erreurs `[Kyosh1ro HUD]` et supprimer les traces de debug temporaires avant livraison.
+6. Contrôler le journal SuperBLT pour les erreurs `[KyoHUD]` et supprimer les traces de debug temporaires avant livraison.
 
 Une vérification statique ne remplace pas le test en jeu, car les classes et textures PAYDAY 2 ne sont pas disponibles hors du moteur.
 

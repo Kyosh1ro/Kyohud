@@ -1,7 +1,7 @@
 -- ky_localization.lua — Chargement des traductions + fallbacks
--- Kyosh1ro HUD v1.1.1
+-- KyoHUD v1.1.1
 
-local MOD_NAME = "Kyosh1ro HUD"
+local MOD_NAME = "KyoHUD"
 
 -- IMPORTANT : capturer ModPath immédiatement à l'exécution du fichier,
 -- car le global ModPath sera écrasé par BLT quand d'autres mods se chargent.
@@ -24,8 +24,8 @@ logi("ModPath capturé: " .. tostring(MY_MOD_PATH))
 local function add_fallbacks(loc)
     loc:add_localized_strings({
         -- Menu principal
-        ky_menu_title = "Kyosh1ro HUD",
-        ky_menu_desc  = "Horizontal buff display and tactical killfeed",
+        ky_menu_title = "KyoHUD - Killfeed & Combat Score",
+        ky_menu_desc  = "Customizable buffs, killfeed, kill streaks and combat score",
 
         -- Options de base
         ky_opt_enable_killfeed      = "Enable KillFeed",
@@ -152,9 +152,9 @@ local function add_fallbacks(loc)
     })
 
     -- Fallbacks dynamiques pour les buffs individuels
-    if Kyosh1roHUD and Kyosh1roHUD.BUFF_MAP then
+    if kyohud and kyohud.BUFF_MAP then
         local buff_fallbacks = {}
-        for buff_id, _ in pairs(Kyosh1roHUD.BUFF_MAP) do
+        for buff_id, _ in pairs(kyohud.BUFF_MAP) do
             local nice_name = buff_id:gsub("_", " "):gsub("(%a)([%w_']*)", function(a, b)
                 return string.upper(a) .. b
             end)

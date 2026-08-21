@@ -1,5 +1,5 @@
 {
-  "menu_id": "ky_hud_options",
+  "menu_id": "kyohud_options",
   "parent_menu_id": "blt_options",
   "title": "ky_menu_title",
   "description": "ky_menu_desc",
@@ -25,10 +25,10 @@
     },
     {
       "type": "button",
-      "id": "ky_buffs_menu_button",
+      "id": "kyohud_buffs_menu_button",
       "title": "ky_opt_buffs_menu",
       "description": "ky_opt_buffs_menu_desc",
-      "next_menu": "ky_buffs_menu"
+      "next_menu": "kyohud_buffs_menu"
     },
     {
       "type": "divider",

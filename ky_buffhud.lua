@@ -1,15 +1,16 @@
 -- ky_buffhud.lua — Affichage horizontal des buffs + killfeed
--- Kyosh1ro HUD v2.0.0
+-- KyoHUD v2.0.0
 -- Buffs affichés côte à côte sur une rangée horizontale configurable
 -- Icônes compatibles VanillaHUD (skills_new, perks, hud_icons, etc.)
 
-if not Kyosh1roHUD then Kyosh1roHUD = {} end
-local KH = Kyosh1roHUD
+if not kyohud then kyohud = Kyosh1roHUD or {} end
+Kyosh1roHUD = kyohud
+local KH = kyohud
 local MY_MOD_PATH = ModPath
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "ky_buff_catalog.lua")
 if not catalog_ok then
-    log("[Kyosh1ro HUD] Erreur chargement catalogue buffs (HUD): " .. tostring(catalog_err))
+    log("[KyoHUD] Erreur chargement catalogue buffs (HUD): " .. tostring(catalog_err))
 end
 
 -- ═══════════════════════════════════════════════════
@@ -281,7 +282,7 @@ local function color_from_catalog(value)
 end
 
 -- VanillaHUD+ peut fournir les icônes et les évènements, jamais la teinte.
--- La palette visible reste exclusivement celle du catalogue Kyosh1ro HUD.
+-- La palette visible reste exclusivement celle du catalogue KyoHUD.
 local function color_for_buff(buff_id, is_debuff)
     if is_debuff then
         return color_from_catalog("debuff")
@@ -1571,16 +1572,16 @@ function KH:TryRegisterGameInfoBridge()
 
     local ok, err = pcall(function()
         for _, event in ipairs(buff_events) do
-            managers.gameinfo:register_listener("Kyosh1roHUD_buff_bridge", "buff", event, buff_callback)
+            managers.gameinfo:register_listener("kyohud_buff_bridge", "buff", event, buff_callback)
         end
         for _, event in ipairs(action_events) do
-            managers.gameinfo:register_listener("Kyosh1roHUD_action_bridge", "player_action", event, action_callback)
+            managers.gameinfo:register_listener("kyohud_action_bridge", "player_action", event, action_callback)
         end
     end)
     if not ok then
         if not self._gameinfo_bridge_error_logged then
             self._gameinfo_bridge_error_logged = true
-            log("[Kyosh1ro HUD] Pont VanillaHUD+ indisponible: " .. tostring(err))
+            log("[KyoHUD] Pont VanillaHUD+ indisponible: " .. tostring(err))
         end
         return false
     end
@@ -1593,7 +1594,7 @@ function KH:TryRegisterGameInfoBridge()
     self._gameinfo_bridge_active = true
     self._gameinfo_bridge_callbacks = { buff_callback, action_callback }
     self:SyncGameInfoBuffs()
-    log("[Kyosh1ro HUD] Détection complète reliée au gestionnaire de buffs VanillaHUD+.")
+    log("[KyoHUD] Détection complète reliée au gestionnaire de buffs VanillaHUD+.")
     return true
 end
 
@@ -1728,13 +1729,17 @@ function KH:ensure_panel(force)
     if not parent then return false end
 
     if force or not (self._panel and alive(self._panel)) then
-        local old = parent:child("kyosh1ro_buff_panel")
-        if old then
-            parent:remove(old)
+        local current_panel = parent:child("kyohud_buff_panel")
+        local legacy_panel = parent:child("kyosh1ro_buff_panel")
+        if current_panel then
+            parent:remove(current_panel)
+        end
+        if legacy_panel and legacy_panel ~= current_panel then
+            parent:remove(legacy_panel)
         end
 
         self._panel = parent:panel({
-            name  = "kyosh1ro_buff_panel",
+            name  = "kyohud_buff_panel",
             layer = 100,
         })
     end
@@ -2519,7 +2524,7 @@ end
 Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
     KH:ensure_panel(true)
     KH:TryRegisterGameInfoBridge()
-    log("[Kyosh1ro HUD] Panneau HUD initialisé.")
+    log("[KyoHUD] Panneau HUD initialisé.")
 end)
 
 Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
@@ -2554,4 +2559,4 @@ Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
     end
 end)
 
-log("[Kyosh1ro HUD] ky_buffhud.lua v2.0 chargé.")
+log("[KyoHUD] ky_buffhud.lua v2.0 chargé.")

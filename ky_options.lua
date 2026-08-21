@@ -1,20 +1,22 @@
 -- ky_options.lua — Menu BLT + sauvegarde/chargement des paramètres
--- Kyosh1ro HUD v1.5.0
+-- KyoHUD v1.5.0
 -- Structure fixe en JSON ; UN SEUL BuildMenu, sous-menus par deep_clone
 
-if not Kyosh1roHUD then Kyosh1roHUD = {} end
-local KH = Kyosh1roHUD
+if not kyohud then kyohud = Kyosh1roHUD or {} end
+Kyosh1roHUD = kyohud
+local KH = kyohud
 local MY_MOD_PATH = ModPath
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "ky_buff_catalog.lua")
 if not catalog_ok then
-    log("[Kyosh1ro HUD] Erreur chargement catalogue buffs (options): " .. tostring(catalog_err))
+    log("[KyoHUD] Erreur chargement catalogue buffs (options): " .. tostring(catalog_err))
 end
 
 -- ═══════════════════════════════════════════════════
 -- 1) Paramètres par défaut & persistence
 -- ═══════════════════════════════════════════════════
-KH._settings_path = SavePath .. "kyosh1ro_hud_settings.json"
+KH._settings_path = SavePath .. "kyohud_settings.json"
+KH._legacy_settings_path = SavePath .. "kyosh1ro_hud_settings.json"
 
 KH._defaults = {
     enable_killfeed = true,
@@ -117,6 +119,11 @@ end
 
 function KH.Load()
     local f = io.open(KH._settings_path, "r")
+    local loaded_legacy_settings = false
+    if not f then
+        f = io.open(KH._legacy_settings_path, "r")
+        loaded_legacy_settings = f ~= nil
+    end
     if f then
         local raw = f:read("*all"); f:close()
         local ok, data = pcall(json.decode, raw)
@@ -146,6 +153,9 @@ function KH.Load()
                 end
             else
                 KH.settings.buff_toggles = build_default_buff_toggles()
+            end
+            if loaded_legacy_settings then
+                KH.Save()
             end
         end
     end
@@ -206,7 +216,7 @@ local function load_menu_definition(filename)
     local path = MY_MOD_PATH .. "menu/" .. filename
     local file = io.open(path, "r")
     if not file then
-        log("[Kyosh1ro HUD] Impossible d'ouvrir la définition de menu: " .. tostring(path))
+        log("[KyoHUD] Impossible d'ouvrir la définition de menu: " .. tostring(path))
         return nil
     end
 
@@ -215,11 +225,11 @@ local function load_menu_definition(filename)
 
     local ok, content = pcall(json.decode, raw)
     if not ok or type(content) ~= "table" then
-        log("[Kyosh1ro HUD] JSON de menu invalide " .. tostring(path) .. ": " .. tostring(content))
+        log("[KyoHUD] JSON de menu invalide " .. tostring(path) .. ": " .. tostring(content))
         return nil
     end
     if type(content.menu_id) ~= "string" or type(content.items) ~= "table" then
-        log("[Kyosh1ro HUD] Définition de menu incomplète: " .. tostring(path))
+        log("[KyoHUD] Définition de menu incomplète: " .. tostring(path))
         return nil
     end
     return content
@@ -227,8 +237,8 @@ end
 
 local MAIN_MENU_DEFINITION = load_menu_definition("menu.json")
 local BUFFS_MENU_DEFINITION = load_menu_definition("buffs.json")
-local MENU_ID = MAIN_MENU_DEFINITION and MAIN_MENU_DEFINITION.menu_id or "ky_hud_options"
-local BUFFS_MENU_ID = BUFFS_MENU_DEFINITION and BUFFS_MENU_DEFINITION.menu_id or "ky_buffs_menu"
+local MENU_ID = MAIN_MENU_DEFINITION and MAIN_MENU_DEFINITION.menu_id or "kyohud_options"
+local BUFFS_MENU_ID = BUFFS_MENU_DEFINITION and BUFFS_MENU_DEFINITION.menu_id or "kyohud_buffs_menu"
 
 local CAT_ORDER = {}
 local CAT_MENU_ITEMS = {}
@@ -302,7 +312,7 @@ local function populate_json_menu(definition)
                 menu_id = definition.menu_id, priority = priority,
             })
         else
-            log("[Kyosh1ro HUD] Type d'élément de menu JSON inconnu: " .. tostring(item_type))
+            log("[KyoHUD] Type d'élément de menu JSON inconnu: " .. tostring(item_type))
         end
     end
 end
@@ -356,7 +366,7 @@ local function add_toggle_to_node(node, id, title_id, desc_id, callback_name, va
         end
     end)
     if not ok then
-        log("[Kyosh1ro HUD] Erreur ajout toggle " .. id .. ": " .. tostring(err))
+        log("[KyoHUD] Erreur ajout toggle " .. id .. ": " .. tostring(err))
     end
 end
 
@@ -374,7 +384,7 @@ local function add_menu_link_to_node(node, id, title_id, desc_id, next_node)
         if item then node:add_item(item) end
     end)
     if not ok then
-        log("[Kyosh1ro HUD] Erreur ajout lien de menu " .. tostring(id) .. ": " .. tostring(err))
+        log("[KyoHUD] Erreur ajout lien de menu " .. tostring(id) .. ": " .. tostring(err))
     end
 end
 
@@ -390,7 +400,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
     end)
 
     if not main_ok then
-        log("[Kyosh1ro HUD] ERREUR menu principal: " .. tostring(main_err))
+        log("[KyoHUD] ERREUR menu principal: " .. tostring(main_err))
         return
     end
 
@@ -403,7 +413,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
     end)
 
     if not buffs_ok then
-        log("[Kyosh1ro HUD] ERREUR clone menu Buffs: " .. tostring(buffs_err))
+        log("[KyoHUD] ERREUR clone menu Buffs: " .. tostring(buffs_err))
         return
     end
 
@@ -461,7 +471,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
             )
             sub_count = sub_count + 1
         else
-            log("[Kyosh1ro HUD] ERREUR clone sous-menu " .. cat_id .. ": " .. tostring(clone_err))
+            log("[KyoHUD] ERREUR clone sous-menu " .. cat_id .. ": " .. tostring(clone_err))
         end
     end
 
@@ -475,8 +485,8 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
             MAIN_MENU_DEFINITION.description
         )
     else
-        log("[Kyosh1ro HUD] ERREUR menu parent introuvable: " .. tostring(parent_id))
+        log("[KyoHUD] ERREUR menu parent introuvable: " .. tostring(parent_id))
     end
 
-    log("[Kyosh1ro HUD] Menu JSON construit: principal + Buffs + " .. sub_count .. "/" .. #CAT_ORDER .. " catégories (deep_clone).")
+    log("[KyoHUD] Menu JSON construit: principal + Buffs + " .. sub_count .. "/" .. #CAT_ORDER .. " catégories (deep_clone).")
 end)

@@ -1,19 +1,20 @@
 -- ky_hooks.lua — Hooks sur PlayerManager pour détecter les buffs et les kills
--- Kyosh1ro HUD v1.1.0
+-- KyoHUD v1.1.0
 
-if not Kyosh1roHUD then Kyosh1roHUD = {} end
-local KH = Kyosh1roHUD
+if not kyohud then kyohud = Kyosh1roHUD or {} end
+Kyosh1roHUD = kyohud
+local KH = kyohud
 local MY_MOD_PATH = ModPath
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "ky_buff_catalog.lua")
 if not catalog_ok then
     pcall(function()
-        log("[Kyosh1ro HUD][Hooks] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
+        log("[KyoHUD][Hooks] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
     end)
 end
 
 local function HLOG(msg)
-    pcall(function() log("[Kyosh1ro HUD][Hooks] " .. tostring(msg)) end)
+    pcall(function() log("[KyoHUD][Hooks] " .. tostring(msg)) end)
 end
 
 KH._unknown_temp_upgrades = KH._unknown_temp_upgrades or {}
