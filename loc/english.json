@@ -2,6 +2,11 @@
   "ky_menu_title": "KyoHUD - Killfeed & Combat Score",
   "ky_menu_desc": "Customizable buffs, killfeed, kill streaks and combat score",
 
+  "ky_opt_language": "Language",
+  "ky_opt_language_desc": "Choose the mod language. Reload the level to apply the change.",
+  "ky_opt_language_auto": "Detection AUTO",
+  "ky_opt_language_english": "English",
+  "ky_opt_language_french": "Français",
   "ky_opt_enable_killfeed": "Enable KillFeed",
   "ky_opt_enable_killfeed_desc": "Show eliminated enemies in a horizontal tactical row beneath the crosshair",
   "ky_opt_killfeed_size": "Killfeed Size",

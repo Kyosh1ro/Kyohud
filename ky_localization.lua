@@ -28,6 +28,11 @@ local function add_fallbacks(loc)
         ky_menu_desc  = "Customizable buffs, killfeed, kill streaks and combat score",
 
         -- Options de base
+        ky_opt_language           = "Language",
+        ky_opt_language_desc      = "Choose the mod language. Reload the level to apply the change.",
+        ky_opt_language_auto      = "Detection AUTO",
+        ky_opt_language_english   = "English",
+        ky_opt_language_french    = "Français",
         ky_opt_enable_killfeed      = "Enable KillFeed",
         ky_opt_enable_killfeed_desc = "Show kill streaks and a horizontal tactical killfeed below the crosshair",
         ky_opt_killfeed_size        = "Killfeed Size",
@@ -176,7 +181,29 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
     -- donc les fichiers chargés ensuite (english puis french) ont priorité.
     add_fallbacks(loc)
 
-    -- Détecter la langue BLT
+    -- Lire ce réglage ici car le hook de localisation précède ky_options.lua.
+    local language = 1
+    local settings_paths = {
+        SavePath .. "kyohud_settings.json",
+        SavePath .. "kyosh1ro_hud_settings.json",
+    }
+    for _, settings_path in ipairs(settings_paths) do
+        local settings_file = io.open(settings_path, "r")
+        if settings_file then
+            local raw = settings_file:read("*all")
+            settings_file:close()
+            local ok, data = pcall(json.decode, raw)
+            if ok and type(data) == "table" then
+                local saved_language = math.floor(tonumber(data.language) or 1)
+                if saved_language >= 1 and saved_language <= 3 then
+                    language = saved_language
+                end
+            end
+            break
+        end
+    end
+
+    -- Détecter la langue BLT pour le mode automatique.
     local blt_lang = ""
     if BLT and BLT.Localization and BLT.Localization._current then
         blt_lang = tostring(BLT.Localization._current):lower()
@@ -190,7 +217,8 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
 
     -- Charger le fichier de langue approprié
     local try_files = {}
-    local wants_french = blt_lang:match("^fr") or blt_lang:match("french") or game_french
+    local auto_french = blt_lang:match("^fr") or blt_lang:match("french") or game_french
+    local wants_french = language == 3 or (language == 1 and auto_french)
 
     table.insert(try_files, base .. "english.json")
     if wants_french then

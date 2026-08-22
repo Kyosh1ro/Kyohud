@@ -19,6 +19,7 @@ KH._settings_path = SavePath .. "kyohud_settings.json"
 KH._legacy_settings_path = SavePath .. "kyosh1ro_hud_settings.json"
 
 KH._defaults = {
+    language        = 1,
     enable_killfeed = true,
     killfeed_size   = 3,
     enable_buffs    = true,
@@ -188,6 +189,11 @@ local function make_slider_cb(key, is_int)
 end
 
 MenuCallbackHandler.KY_ToggleKillfeed = make_toggle_cb("enable_killfeed")
+MenuCallbackHandler.KY_SetLanguage = function(self, item)
+    local value = math.floor(tonumber(item:value()) or KH._defaults.language)
+    KH.settings.language = math.max(1, math.min(3, value))
+    KH.Save()
+end
 MenuCallbackHandler.KY_SetKillfeedSize = function(self, item)
     local value = math.floor(tonumber(item:value()) or KH._defaults.killfeed_size)
     KH.settings.killfeed_size = math.max(1, math.min(3, value))
@@ -285,7 +291,15 @@ local function populate_json_menu(definition)
             value = KH.settings[item.value]
         end
 
-        if item_type == "toggle" then
+        if item_type == "multiple_choice" then
+            MenuHelper:AddMultipleChoice({
+                id = item.id, title = item.title, desc = item.description,
+                callback = item.callback, items = item.items,
+                item_values = item.item_values, value = value,
+                localized_items = item.localized_items,
+                menu_id = definition.menu_id, priority = priority,
+            })
+        elseif item_type == "toggle" then
             MenuHelper:AddToggle({
                 id = item.id, title = item.title, desc = item.description,
                 callback = item.callback, value = value,
