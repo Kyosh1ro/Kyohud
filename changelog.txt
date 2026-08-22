@@ -1,228 +1,231 @@
+r72 (23.08.2026):
+- The README and changelog are now written in English, and the README highlights the local-player killfeed and combat announcements before buffs.
+
 r71 (23.08.2026):
-- Le menu propose désormais en première position le choix de langue Détection AUTO, English ou Français, avec l'anglais comme langue de repli.
+- The language selector now appears first in the menu and offers AUTO Detection, English, or French, with English as the fallback language.
 
 r70 (21.08.2026):
-- Kyosh1ro HUD devient KyoHUD - Killfeed & Combat Score, avec l'identifiant interne `kyohud` et une migration automatique des anciens réglages.
+- Kyosh1ro HUD is now KyoHUD - Killfeed & Combat Score, with `kyohud` as its internal identifier and automatic migration of existing settings.
 
 r69 (20.08.2026):
-- Le deck Hacker conserve désormais son icône en première position, affiche au-dessus le nombre d'ECM de poche disponibles et place leur cooldown de recharge juste à côté.
+- The Hacker perk deck now keeps its icon in the first slot, displays the number of available Pocket ECMs above it, and places their recharge cooldown next to it.
 
 r68 (20.08.2026):
-- Avec le deck Anarchiste équipé, l'invulnérabilité de bris d'armure remplace désormais l'icône du deck en première position pendant son activation.
+- With the Anarchist perk deck equipped, armor-break invulnerability now replaces the deck icon in the first slot while active.
 
 r67 (20.08.2026):
-- Complice reste désormais affiché lorsqu'il est équipé et activé dans les options, avec un compteur de Jokers `0/1` ou `0/2` selon la capacité de conversion du build.
+- Confident now remains visible when equipped and enabled in the options, with a `0/1` or `0/2` Joker counter depending on the build's conversion capacity.
 
 r66 (20.08.2026):
-- La configuration standard aligne désormais par défaut la rangée de buffs sur la position d'origine de VanillaHUD+.
+- The standard configuration now aligns the buff row with VanillaHUD+'s original buff-list position by default.
 
 r65 (20.08.2026):
-- La barre inférieure des cellules de buffs est désormais affinée à 1 px.
+- The bottom bar of buff cells has been refined to 1 px.
 
 r64 (20.08.2026):
-- La barre inférieure des cellules de buffs adopte désormais l'épaisseur de 2 px utilisée sur les côtés des cartes du killfeed.
+- The bottom bar of buff cells now uses the same 2 px thickness as the sides of killfeed cards.
 
 r63 (20.08.2026):
-- Les cellules de buffs remplacent leurs coins et chevrons par trois segments fins en haut et une large barre plus épaisse en bas, dans le style du bandeau multikill.
+- Buff cells replace their corners and chevrons with three thin top segments and a wider, thicker bottom bar styled after the multikill banner.
 
 r62 (20.08.2026):
-- Les cellules de buffs se distinguent désormais des cadres VanillaHUD+ grâce à une barre tactique épaisse et à des chevrons sur leur bord inférieur.
+- Buff cells now stand apart from VanillaHUD+ frames with a thick tactical bar and chevrons along their bottom edge.
 
 r61 (20.08.2026):
-- Une installation neuve détecte désormais VanillaHUD+ lorsqu'il est actif et aligne par défaut la rangée de buffs sur la position d'origine de sa liste de buffs.
+- A fresh installation now detects VanillaHUD+ when active and aligns the buff row with its original buff-list position by default.
 
 r60 (20.08.2026):
-- Une installation neuve détecte désormais Void UI lorsqu'il est actif et adapte automatiquement le placement par défaut des buffs et du bloc multikill/killfeed.
+- A fresh installation now detects Void UI when active and automatically adjusts the default placement of the buffs and multikill/killfeed block.
 
 r59 (20.08.2026):
-- Ajout d'un README présentant simplement le mod, ses fonctionnalités, son installation et sa configuration.
+- Added a README with a concise overview of the mod, its features, installation, and configuration.
 
 r58 (20.08.2026):
-- Le menu des options est désormais organisé à partir de fichiers JSON : les réglages principaux restent accessibles directement et les filtres de buffs sont regroupés dans un sous-menu dédié.
+- The options menu is now organized from JSON files: primary settings remain directly accessible, while buff filters are grouped into a dedicated submenu.
 
 r57 (20.08.2026):
-- Les buffs temporaires possèdent désormais un contour lumineux qui se vide autour de leur icône en suivant précisément leur durée restante.
+- Temporary buffs now have a glowing outline that drains around their icon in precise proportion to their remaining duration.
 
 r56 (20.08.2026):
-- Les buffs utilisent désormais des cellules plus légères et bien séparées, avec un fond noir discret et de petits accents de coin qui donnent la priorité aux icônes et aux timers.
+- Buffs now use lighter, clearly separated cells with a subtle black background and small corner accents that prioritize icons and timers.
 
 r55 (19.08.2026):
-- Le score cumulé utilise désormais une carte compacte de la même hauteur que le killfeed, avec une largeur adaptée à sa valeur et le même cadre tactique surligné.
+- The cumulative score now uses a compact card matching the killfeed's height, with a width fitted to its value and the same highlighted tactical frame.
 
 r54 (19.08.2026):
-- Le score cumulé du killfeed adopte désormais un cadre hexagonal tactique et une teinte ambre, tandis qu'un total négatif reste signalé en rouge.
+- The cumulative killfeed score now uses a tactical hexagonal frame and amber tint, while a negative total remains highlighted in red.
 
 r53 (19.08.2026):
-- Le score cumulé des éliminations s'affiche désormais en rouge à gauche du killfeed, s'actualise à chaque nouvelle carte et revient à zéro lorsque la dernière carte expire.
+- The cumulative score from eliminations now appears in red to the left of the killfeed, updates with every new card, and resets to zero when the final card expires.
 
 r52 (19.08.2026):
-- Les Bulldozers utilisent désormais eux aussi les annonces colorées du killfeed avec « TANK BUSTER », « ARMOR BREAKER », « HEAVY DOWN » ou « I'VE GOT THE BIG GUY », ainsi qu'un compteur `xN` dédié.
+- Bulldozers now also use colored killfeed announcements with "TANK BUSTER," "ARMOR BREAKER," "HEAVY DOWN," or "I'VE GOT THE BIG GUY," along with a dedicated `xN` counter.
 
 r51 (19.08.2026):
-- Les kills spéciaux reprennent désormais le cadre compact du killfeed normal afin d'éviter tout chevauchement, tout en conservant leurs couleurs, leurs slogans et leur texte coloré.
+- Special kills now use the regular killfeed's compact frame to prevent overlap while retaining their colors, slogans, and colored text.
 
 r50 (19.08.2026):
-- Le bandeau multikill et les cadres du killfeed réservent désormais le dépassement de leurs crochets tactiques afin de conserver 1,5 px d'espace visible entre eux.
+- The multikill banner and killfeed frames now reserve room for their protruding tactical brackets, preserving 1.5 px of visible spacing between them.
 
 r49 (19.08.2026):
-- Les cadres des kills spéciaux adaptent désormais leur largeur au slogan et au score, comme les kills normaux, afin de conserver une rangée compacte.
+- Special-kill frames now fit their width to the slogan and score, like regular kills, to maintain a compact row.
 
 r48 (19.08.2026):
-- Les Medic, Cloaker, Taser, Shield et Sniper utilisent désormais un cadre tactique distinct, aussi large que le bandeau multikill, avec leurs propres annonces et un compteur `xN` pour les éliminations rapprochées du même type.
+- Medics, Cloakers, Tasers, Shields, and Snipers now use a distinct tactical frame as wide as the multikill banner, with unique announcements and an `xN` counter for consecutive eliminations of the same type.
 
 r47 (19.08.2026):
-- L'élimination d'un Bulldozer affiche désormais à tour de rôle « KILLDOZER », « DOZER DOWN » ou « BULLDOZED » dans le grand bandeau tactique, avant de rendre la place au multikill actif.
+- Eliminating a Bulldozer now cycles through "KILLDOZER," "DOZER DOWN," or "BULLDOZED" in the large tactical banner before returning it to the active multikill announcement.
 
 r46 (19.08.2026):
-- Les séries de 2 à 10 kills possèdent désormais des annonces distinctes à l'identité Kyosh1ro HUD, puis affichent « KILL CHAIN xN » à partir du onzième kill.
+- Streaks from 2 to 10 kills now have distinct announcements matching the Kyosh1ro HUD identity, followed by "KILL CHAIN xN" from the eleventh kill onward.
 
 r45 (18.08.2026):
-- La palette Kyosh1ro reste désormais appliquée lorsque VanillaHUD+ est installé ; ses réglages de couleur ne remplacent plus ceux du mod.
+- The Kyosh1ro palette now remains active when VanillaHUD+ is installed; its color settings no longer override the mod's colors.
 
 r44 (18.08.2026):
-- Le killfeed détecte désormais les éliminations du joueur local lorsqu'il rejoint une partie hébergée par un autre joueur.
+- The killfeed now detects local-player eliminations when joining a game hosted by another player.
 
 r43 (18.08.2026):
-- Chaque cadre du killfeed adapte désormais sa largeur au nom de l'unité et à son score, tandis que la rangée reste centrée et se resserre si nécessaire.
+- Each killfeed frame now fits its width to the unit name and score, while the row remains centered and tightens when necessary.
 
 r42 (18.08.2026):
-- Chaque unité éliminée affiche désormais ses points à côté de son nom dans le killfeed, avec un multiplicateur adapté à la difficulté.
-- Les civils tués par le joueur ou ses projectiles apparaissent avec une pénalité, sans alimenter les séries de kills.
+- Every eliminated unit now displays its points next to its name in the killfeed, using a multiplier appropriate to the difficulty.
+- Civilians killed by the player or their projectiles appear with a penalty and do not contribute to kill streaks.
 
 r41 (18.08.2026):
-- Les buffs provenant des compétences d'équipier IA affichent désormais le marqueur `[AI]` au-dessus de leur icône.
+- Buffs granted by AI teammate skills now display an `[AI]` marker above their icon.
 
 r40 (18.08.2026):
-- Le deck équipé conserve la première position comme placeholder et cède sa place à son buff de perk deck lorsqu'un effet associé devient actif.
-- La corrélation tient compte du deck sélectionné, des decks personnalisés basés sur un deck existant et des filtres de la catégorie « Buffs Perk Decks ».
+- The equipped perk deck keeps the first slot as a placeholder and gives way to its perk-deck buff when an associated effect becomes active.
+- The matching accounts for the selected deck, custom decks based on an existing deck, and filters in the "Perk Deck Buffs" category.
 
 r39 (18.08.2026):
-- Les indicateurs prioritaires de régénération, cooldown et dégâts ne s'affichent plus lorsqu'ils sont inactifs ; leur ordre reste fixe lorsqu'ils apparaissent.
-- Le deck d'atouts équipé reste affiché en première position et les autres buffs actifs continuent de s'ajouter à droite.
+- Priority regeneration, cooldown, and damage indicators no longer appear while inactive; their order remains fixed when they appear.
+- The equipped perk deck remains in the first slot, and other active buffs continue to be added to its right.
 
 r38 (18.08.2026):
-- Ajout de sept emplacements statiques au début de la rangée des buffs : deck d'atouts équipé, régénération de santé passive, régénération d'armure standard, cooldown de bris d'armure, augmentation de dégâts, réduction de dégâts et augmentation des dégâts de mêlée.
-- Les autres buffs continuent de s'ajouter chronologiquement à droite des emplacements statiques.
+- Added seven static slots at the start of the buff row: equipped perk deck, passive health regeneration, standard armor regeneration, armor-break cooldown, damage increase, damage reduction, and melee damage increase.
+- Other buffs continue to be added chronologically to the right of the static slots.
 
 r37 (18.08.2026):
-- Création du changelog et reconstruction des révisions r1 à r36.
-- Adoption du versionnage par révision dans mod.txt
+- Created the changelog and reconstructed revisions r1 through r36.
+- Adopted revision-based versioning in `mod.txt`.
 
 r36 (18.08.2026):
-- Affichage des valeurs pour tous les buffs pris en charge.
+- Added value displays for all supported buffs.
 
 r35 (18.08.2026):
-- Affichage de la valeur de régénération de vie passive.
+- Added a value display for passive health regeneration.
 
 r34 (18.08.2026):
-- Ajout de la palette de couleurs Kyosh1ro pour les buffs.
+- Added the Kyosh1ro color palette for buffs.
 
 r33 (18.08.2026):
-- Ajout d'une couleur propre à chaque type de buff.
+- Added a distinct color for each buff type.
 
 r32 (17.08.2026):
-- Affichage du killfeed sur une rangée horizontale.
-- Ajout des protections documentaires destinées à préserver le rendu horizontal lors des merges.
+- Displayed the killfeed as a horizontal row.
+- Added documentation safeguards to preserve horizontal rendering during merges.
 
 r31 (17.08.2026):
-- Suppression du carré gris du killfeed et reprise de son cadre.
+- Removed the gray killfeed square and reworked its frame.
 
 r30 (17.08.2026):
-- Restauration des buffs horizontaux et de leurs options après merge.
-- Ajout de règles pour créer les nouvelles branches depuis une base à jour.
+- Restored horizontal buffs and their options after a merge.
+- Added rules for creating new branches from an up-to-date base.
 
 r29 (17.08.2026):
-- Limitation configurable du killfeed à 1, 2 ou 3 entrées.
+- Added a configurable killfeed limit of 1, 2, or 3 entries.
 
 r28 (17.08.2026):
-- Remplacement de l'arc de buffs par une rangée horizontale configurable.
+- Replaced the buff arc with a configurable horizontal row.
 
 r27 (17.08.2026):
-- Restauration du cadre compact des buffs après un conflit de merge.
+- Restored the compact buff frame after a merge conflict.
 
 r26 (17.08.2026):
-- Harmonisation des cadres des buffs et du bandeau de séries de kills.
+- Harmonized the buff frames and kill-streak banner.
 
 r25 (17.08.2026):
-- Détection autonome des buffs temporaires, cooldowns et régénérations exposés par PAYDAY 2 et VanillaHUD+.
-- Résolution dynamique des icônes avec texture de repli.
-- Correction du cycle de soin de Preneur d'otages et des correspondances de plusieurs buffs.
-- Retrait des options impossibles Iron Man et du doublon Inspire ; ajout d'Endurance.
-- Suppression des logs de position répétitifs.
+- Added autonomous detection of temporary buffs, cooldowns, and regeneration effects exposed by PAYDAY 2 and VanillaHUD+.
+- Added dynamic icon resolution with a fallback texture.
+- Fixed the Hostage Taker healing cycle and several buff mappings.
+- Removed the unavailable Iron Man option and duplicate Inspire option; added Endurance.
+- Removed repetitive position logs.
 
 r24 (17.08.2026):
-- Ajout du style tactique au bandeau de séries de kills.
+- Added tactical styling to the kill-streak banner.
 
 r23 (16.08.2026):
-- Ajout des bandeaux double kill, triple kill et des séries suivantes.
+- Added double-kill, triple-kill, and subsequent streak banners.
 
 r22 (16.08.2026):
-- Correction du positionnement des kills dans l'arc situé à gauche.
+- Fixed kill positioning in the left-side arc.
 
 r21 (16.08.2026):
-- Suppression de l'ancien fichier de diagnostic 2026_04_04_log.txt.
+- Removed the old `2026_04_04_log.txt` diagnostic file.
 
 r20 (16.08.2026):
-- Ajout de la simulation permanente des kills dans les outils de debug.
+- Added persistent kill simulation to the debug tools.
 
 r19 (16.08.2026):
-- Ajout de la simulation permanente des buffs dans les outils de debug.
+- Added persistent buff simulation to the debug tools.
 
 r18 (16.08.2026):
-- Adoption des préfixes fix/ et feature/ pour le nommage des branches.
+- Adopted the `fix/` and `feature/` prefixes for branch names.
 
 r17 (16.08.2026):
-- Correction de l'espacement circulaire des buffs et du killfeed.
+- Fixed circular spacing for buffs and the killfeed.
 
 r16 (16.08.2026):
-- Ajout du guide de travail destiné aux agents Codex.
+- Added the Codex agent working guide.
 
 r15 (12.07.2026):
-- Ajout de la persistance des options et correction du chargement de la langue française.
-- Ajout du killfeed et du réglage de durée des buffs.
-- Retrait de l'activation automatique du mode debug.
+- Added option persistence and fixed French-language loading.
+- Added the killfeed and buff-duration setting.
+- Removed automatic activation of debug mode.
 
 r14 (04.04.2026):
-- Correction du fallback de langue qui forçait l'anglais à la place du français.
+- Fixed the language fallback that forced English instead of French.
 
 r13 (04.04.2026):
-- Chargement du catalogue avant les options et partage avec le HUD, les hooks et la localisation.
+- Loaded the catalog before the options and shared it with the HUD, hooks, and localization.
 
 r12 (04.04.2026):
-- Correction de l'ordre de chargement qui empêchait la création des sous-menus de buffs.
+- Fixed the load order that prevented buff submenus from being created.
 
 r11 (04.04.2026):
-- Correction du crash CoreMenuItemToggle.
-- Ajout des descriptions aux options de sélection.
+- Fixed the CoreMenuItemToggle crash.
+- Added descriptions to selection options.
 
 r10 (04.04.2026):
-- Seconde révision des sous-menus de sélection individuelle des buffs.
+- Completed a second revision of the individual buff-selection submenus.
 
 r9 (04.04.2026):
-- Création des sous-menus de sélection individuelle des buffs.
+- Created the individual buff-selection submenus.
 
 r8 (04.04.2026):
-- Reprise du menu d'options.
-- Activation temporaire de tous les buffs pour le debug et espacement des éléments sur le HUD.
+- Reworked the options menu.
+- Temporarily enabled all buffs for debugging and adjusted HUD element spacing.
 
 r7 (04.04.2026):
-- Correction du menu qui ne s'affichait pas en jeu avec plusieurs sous-menus.
+- Fixed the menu not appearing in-game with multiple submenus.
 
 r6 (03.04.2026):
-- Ajout de fallbacks pour les descriptions du menu et les options individuelles des buffs.
+- Added fallbacks for menu descriptions and individual buff options.
 
 r5 (03.04.2026):
-- Mise à jour des localisations et ajout des fallbacks pour les nouvelles clés.
+- Updated localizations and added fallbacks for new keys.
 
 r4 (03.04.2026):
-- Remplacement de pick_icon par le catalogue KH.BUFF_MAP et les correspondances KH.UPGRADE_TO_BUFF.
+- Replaced `pick_icon` with the `KH.BUFF_MAP` catalog and `KH.UPGRADE_TO_BUFF` mappings.
 
 r3 (03.04.2026):
-- Ajout des options de filtrage par catégorie et par buff individuel.
+- Added filtering options by category and individual buff.
 
 r2 (03.04.2026):
-- Import du catalogue d'icônes inspiré de VanillaHUD+.
-- Ajout d'une première carte complète des buffs et de leur sélection individuelle.
+- Imported the icon catalog inspired by VanillaHUD+.
+- Added an initial complete buff map and individual buff selection.
 
 r1 (03.04.2026):
-- Création du mod SuperBLT et de ses hooks principaux.
+- Created the SuperBLT mod and its primary hooks.
