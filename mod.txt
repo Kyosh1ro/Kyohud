@@ -1,5 +1,5 @@
 {
-  "name": "KyoHUD - Dev build",
+  "name": "KyoHUD - Killfeed & Combat Score",
   "description": "Customizable buffs, killfeed, kill streaks and combat score.",
   "author": "Kyosh1ro",
   "version": "70",
