@@ -1,3 +1,6 @@
+r71 (23.08.2026):
+- Le menu propose désormais en première position le choix de langue Détection AUTO, English ou Français, avec l'anglais comme langue de repli.
+
 r70 (21.08.2026):
 - Kyosh1ro HUD devient KyoHUD - Killfeed & Combat Score, avec l'identifiant interne `kyohud` et une migration automatique des anciens réglages.
 

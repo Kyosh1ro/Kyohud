@@ -6,6 +6,25 @@
   "back_callback": "KY_BackCallback",
   "items": [
     {
+      "type": "multiple_choice",
+      "id": "ky_language",
+      "title": "ky_opt_language",
+      "description": "ky_opt_language_desc",
+      "callback": "KY_SetLanguage",
+      "items": [
+        "ky_opt_language_auto",
+        "ky_opt_language_english",
+        "ky_opt_language_french"
+      ],
+      "item_values": [1, 2, 3],
+      "value": "language",
+      "default_value": 1
+    },
+    {
+      "type": "divider",
+      "size": 15
+    },
+    {
       "type": "toggle",
       "id": "ky_enable_killfeed",
       "title": "ky_opt_enable_killfeed",
