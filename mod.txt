@@ -2,11 +2,20 @@
   "name": "KyoHUD - Killfeed & Combat Score",
   "description": "Customizable buffs, killfeed, kill streaks and combat score.",
   "author": "Kyosh1ro",
-  "version": "73",
+  "version": "74",
   "blt_version": 2,
   "superblt_version": 1,
   "image": "mod.png",
   "color": "0.20 0.80 1.00",
+
+  "updates": [
+    {
+      "identifier": "kyohud",
+      "host": {
+        "meta": "https://raw.githubusercontent.com/Kyosh1ro/kyohud/main/meta.json"
+      }
+    }
+  ],
 
   "hooks": [
     { "hook_id": "lib/managers/localizationmanager", "script_path": "ky_localization.lua" },
