@@ -1,0 +1,8 @@
+[
+    {
+        "ident" : "pd2_sample_autoupdate",
+        "hash" : "%HASH%",
+        "patchnotes_url" : "https://github.com/Kyosh1ro/kyohud/releases/latest",
+        "download_url" : "https://github.com/Kyosh1ro/Kyohud/archive/refs/tags/r75.zip"
+    }
+]
