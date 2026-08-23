@@ -56,7 +56,7 @@ local function add_fallbacks(loc)
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
         ky_opt_debug_sim            = "Debug: Simulate",
-        ky_opt_debug_sim_desc       = "Simulate active buffs, special-enemy kill cards and Killdozer banners",
+        ky_opt_debug_sim_desc       = "Simulate active buffs, special-enemy kill cards and priority-target banners",
         ky_opt_debug_clear          = "Debug: Clear",
         ky_opt_debug_clear_desc     = "Remove active buffs and kills; the equipped perk deck remains visible",
 
@@ -92,6 +92,7 @@ local function add_fallbacks(loc)
         ky_hud_killdozer   = "KILLDOZER",
         ky_hud_dozer_down  = "DOZER DOWN",
         ky_hud_bulldozed   = "BULLDOZED",
+        ky_hud_boss_eliminated = "BOSS ELIMINATED",
         ky_hud_dozer_tank_buster          = "TANK BUSTER",
         ky_hud_dozer_armor_breaker        = "ARMOR BREAKER",
         ky_hud_dozer_heavy_down           = "HEAVY DOWN",

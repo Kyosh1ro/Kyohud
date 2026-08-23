@@ -8,6 +8,15 @@ local KH = kyohud
 -- Le fichier est chargé depuis les contextes PlayerManager, CopDamage et CivilianDamage.
 if KH._killscore_catalog_loaded then return end
 
+local BOSS_UNIT_IDS = {
+    "autumn", "biker_boss", "captain", "captain_female", "chavez_boss",
+    "deep_boss", "drug_lord_boss", "drug_lord_boss_stealth",
+    "fbi_vet_boss", "headless_hatman", "hector_boss",
+    "hector_boss_no_armor", "mobster_boss", "phalanx_vip",
+    "phalanx_vip_break", "snowman_boss", "spooc_titan", "spring",
+    "summers", "triad_boss", "triad_boss_no_armor",
+}
+
 local SCORE_GROUPS = {
     [-1000] = {
         "mute_security_undominatable",
@@ -46,14 +55,7 @@ local SCORE_GROUPS = {
     [20] = {
         "shadow_spooc",
     },
-    [100] = {
-        "autumn", "biker_boss", "captain", "captain_female", "chavez_boss",
-        "deep_boss", "drug_lord_boss", "drug_lord_boss_stealth",
-        "fbi_vet_boss", "headless_hatman", "hector_boss",
-        "hector_boss_no_armor", "mobster_boss", "phalanx_vip",
-        "phalanx_vip_break", "snowman_boss", "spooc_titan", "spring",
-        "summers", "triad_boss", "triad_boss_no_armor",
-    },
+    [100] = BOSS_UNIT_IDS,
 }
 
 local SCORE_BY_UNIT = {}
@@ -61,6 +63,11 @@ for score, unit_ids in pairs(SCORE_GROUPS) do
     for _, unit_id in ipairs(unit_ids) do
         SCORE_BY_UNIT[unit_id] = score
     end
+end
+
+local BOSS_UNIT_ID_SET = {}
+for _, unit_id in ipairs(BOSS_UNIT_IDS) do
+    BOSS_UNIT_ID_SET[unit_id] = true
 end
 
 local DIFFICULTY_MULTIPLIERS = {
@@ -124,9 +131,14 @@ function KH:IsDozerUnitId(unit_id)
     return contains(unit_id, "tank") or contains(unit_id, "dozer")
 end
 
+function KH:IsBossUnitId(unit_id)
+    return unit_id and BOSS_UNIT_ID_SET[unit_id] == true
+end
+
 function KH:GetSpecialEnemyKind(unit_id)
     if not unit_id then return nil end
     if self:IsDozerUnitId(unit_id) then return "dozer" end
+    if self:IsBossUnitId(unit_id) then return "boss" end
 
     -- Prioriser les Cloakers : certaines variantes moddees contiennent aussi
     -- "shield" dans leur identifiant interne (par exemple meme_man_shield).
@@ -206,9 +218,10 @@ function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian)
         self._recorded_kill_units[unit] = true
     end
 
-    local score = self:GetKillScore(unit_id, is_civilian)
-    local special_banner = self:IsDozerUnitId(unit_id) and "dozer" or nil
     local special_enemy_kind = not is_civilian and self:GetSpecialEnemyKind(unit_id) or nil
+    local score = self:GetKillScore(unit_id, is_civilian)
+    local special_banner = (special_enemy_kind == "dozer" or special_enemy_kind == "boss")
+        and special_enemy_kind or nil
     self:add_kill(display_name, score, not is_civilian, special_banner, special_enemy_kind)
 end
 
