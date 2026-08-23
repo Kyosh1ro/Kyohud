@@ -1,3 +1,6 @@
+r74 (23.08.2026):
+- SuperBLT can now detect and download new KyoHUD releases automatically from the public GitHub repository.
+
 r73 (23.08.2026):
 - Multikill announcements now rotate between three complete label sets whenever a combo resets.
 
