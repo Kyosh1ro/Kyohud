@@ -1,55 +1,117 @@
-name: Create PAYDAY mod release
+name: Build SuperBLT release assets
+
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild (for example, r76)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: superblt-release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
     steps:
-    - uses: actions/checkout@master
-    - name: Delete Existing Release
-      uses: ame-yu/action-delete-latest-release@v2
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-    - name: Archive Mod
-      run: |
-         .\.github\7za.exe -tzip a ".\latest.zip" ".\Kyohud"
-      shell: powershell
-    - name: Create New Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        draft: false
-        prerelease: false
-        body: |
-          This release zip is automatically updated on every push. You can ignore the "x commits behind" message.
-    - name: Upload Mod Zip to Release
-      id: upload-release-asset 
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./pd2autoupdatexample.zip
-        asset_name: pd2autoupdatexample.zip
-        asset_content_type: application/zip
-    - name: Hash mod and create mod meta file
-      id: create_meta_file
-      run: |
-         $(cat .\.github\meta.json).Replace("%HASH%", $(./.github/hash.exe "./SampleMod").Substring(17)) > ./meta.json
-    - name: Upload meta file to Release
-      id: upload-meta-asset 
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./meta.json
-        asset_name: meta.json
-        asset_content_type: application/json
+      - name: Check out the released revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Validate tag and mod version
+        shell: pwsh
+        run: |
+          $mod = Get-Content -LiteralPath .\mod.txt -Raw | ConvertFrom-Json
+          $expectedTag = "r$($mod.version)"
+
+          if ($env:RELEASE_TAG -ne $expectedTag) {
+              throw "Release tag '$env:RELEASE_TAG' does not match mod.txt version '$($mod.version)'. Expected '$expectedTag'."
+          }
+
+      - name: Stage the distributable mod
+        shell: pwsh
+        run: |
+          $stageRoot = Join-Path $PWD "release-stage"
+          $modRoot = Join-Path $stageRoot "Kyohud"
+          $outputRoot = Join-Path $PWD "release-output"
+          $excludedFiles = @(
+              ".gitattributes",
+              ".gitignore",
+              "AGENTS.md",
+              "CODEX.md",
+              "meta.json"
+          )
+
+          New-Item -ItemType Directory -Path $modRoot -Force | Out-Null
+          New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+
+          foreach ($file in (git ls-files)) {
+              $normalized = $file.Replace("\", "/")
+              if ($normalized.StartsWith(".github/") -or $excludedFiles -contains $normalized) {
+                  continue
+              }
+
+              $destination = Join-Path $modRoot $normalized
+              $destinationDirectory = Split-Path -Parent $destination
+              New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+              Copy-Item -LiteralPath $file -Destination $destination
+          }
+
+          if (-not (Test-Path -LiteralPath (Join-Path $modRoot "mod.txt"))) {
+              throw "The staged archive does not contain mod.txt."
+          }
+
+      - name: Build latest.zip and SuperBLT metadata
+        shell: pwsh
+        run: |
+          $modRoot = Join-Path $PWD "release-stage\Kyohud"
+          $outputRoot = Join-Path $PWD "release-output"
+
+          $hashOutput = & .\.github\hash.exe $modRoot
+          $hashMatch = [regex]::Match(($hashOutput -join "`n"), "[0-9a-fA-F]{64}")
+          if (-not $hashMatch.Success) {
+              throw "Unable to read the SuperBLT directory hash. Output: $hashOutput"
+          }
+          $hash = $hashMatch.Value.ToLowerInvariant()
+
+          $metadata = @(
+              [ordered]@{
+                  ident = "kyohud"
+                  hash = $hash
+                  patchnotes_url = "https://github.com/Kyosh1ro/kyohud/releases/latest"
+                  download_url = "https://github.com/Kyosh1ro/kyohud/releases/latest/download/latest.zip"
+              }
+          )
+          $metadata | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outputRoot "meta.json") -Encoding utf8NoBOM
+
+          Push-Location .\release-stage
+          try {
+              & ..\.github\7za.exe a -tzip ..\release-output\latest.zip .\Kyohud
+              if ($LASTEXITCODE -ne 0) {
+                  throw "7-Zip failed with exit code $LASTEXITCODE."
+              }
+          }
+          finally {
+              Pop-Location
+          }
+
+      - name: Upload SuperBLT assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload $env:RELEASE_TAG `
+              .\release-output\latest.zip `
+              .\release-output\meta.json `
+              --clobber
