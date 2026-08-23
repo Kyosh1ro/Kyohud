@@ -53,7 +53,7 @@ local KILLFEED_FRAME_CLEARANCE = 1.5
 local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
-local DOZER_BANNER_COLOR = Color(1, 0.38, 0.08)
+local PRIORITY_TARGET_COLOR = Color(1, 0.38, 0.08)
 local KILLFEED_SCORE_COLOR = Color(1, 0.63, 0.12)
 local KILLFEED_SCORE_PENALTY_COLOR = Color(1, 0.22, 0.12)
 local AI_BUFF_LABEL     = "[AI]"
@@ -438,15 +438,34 @@ local DOZER_BANNER_LABELS = {
     { id = "ky_hud_bulldozed",  fallback = "BULLDOZED" },
 }
 
+local BOSS_BANNER_LABELS = {
+    { id = "ky_hud_boss_eliminated", fallback = "BOSS ELIMINATED" },
+}
+
+local SPECIAL_KILL_BANNER_DEFINITIONS = {
+    dozer = {
+        color = PRIORITY_TARGET_COLOR,
+        labels = DOZER_BANNER_LABELS,
+    },
+    boss = {
+        color = PRIORITY_TARGET_COLOR,
+        labels = BOSS_BANNER_LABELS,
+    },
+}
+
 local SPECIAL_ENEMY_DEFINITIONS = {
     dozer = {
-        color = DOZER_BANNER_COLOR,
+        color = PRIORITY_TARGET_COLOR,
         labels = {
             { id = "ky_hud_dozer_tank_buster",          fallback = "TANK BUSTER" },
             { id = "ky_hud_dozer_armor_breaker",        fallback = "ARMOR BREAKER" },
             { id = "ky_hud_dozer_heavy_down",           fallback = "HEAVY DOWN" },
             { id = "ky_hud_dozer_ive_got_the_big_guy", fallback = "I'VE GOT THE BIG GUY" },
         },
+    },
+    boss = {
+        color = PRIORITY_TARGET_COLOR,
+        labels = BOSS_BANNER_LABELS,
     },
     medic = {
         color = Color(0.2, 0.95, 0.55),
@@ -507,9 +526,22 @@ local function combo_color(count)
     return Color(0.9, 0.15, 1)
 end
 
-local function dozer_banner_label(index)
-    local definition = DOZER_BANNER_LABELS[index] or DOZER_BANNER_LABELS[1]
+local function special_kill_banner_definition(kind)
+    return kind and SPECIAL_KILL_BANNER_DEFINITIONS[kind] or nil
+end
+
+local function special_kill_banner_label(kind, index)
+    local banner_definition = special_kill_banner_definition(kind)
+    local labels = banner_definition and banner_definition.labels
+    local definition = labels and (labels[index] or labels[1])
+    if not definition then return nil end
     return localized_text(definition.id, definition.fallback)
+end
+
+
+local function special_kill_banner_color(kind)
+    local definition = special_kill_banner_definition(kind)
+    return definition and definition.color or HUD_ACCENT_COLOR
 end
 
 local function special_enemy_definition(kind)
@@ -1659,6 +1691,16 @@ function KH:_show_dozer_banner(t, preview)
     }
 end
 
+function KH:_show_boss_banner(t, preview)
+    self._special_kill_banner = {
+        kind = "boss",
+        label_index = 1,
+        started_t = t,
+        t_end = t + SPECIAL_KILL_BANNER_DURATION,
+        preview = preview == true,
+    }
+end
+
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
@@ -1686,6 +1728,8 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     end
     if special_banner == "dozer" then
         self:_show_dozer_banner(t, false)
+    elseif special_banner == "boss" then
+        self:_show_boss_banner(t, false)
     end
 
     -- Le score représente tous les points produits pendant une apparition
@@ -2255,7 +2299,7 @@ function KH:draw()
                 local bx = block_center - bw * 0.5
                 local by = block_top - (bh - banner_h) * 0.5
                 local color = special_banner_active
-                    and DOZER_BANNER_COLOR
+                    and special_kill_banner_color(special_banner.kind)
                     or combo_color(combo.count)
 
                 draw_tactical_frame(
@@ -2295,7 +2339,7 @@ function KH:draw()
                 local text_w = bw - 96
                 local font_size = clamp(size * 0.65, 17, 27)
                 local label = special_banner_active
-                    and dozer_banner_label(special_banner.label_index)
+                    and special_kill_banner_label(special_banner.kind, special_banner.label_index)
                     or combo_label(combo.count, combo.label_variant)
                 draw_glowing_text(
                     self._panel,
@@ -2506,7 +2550,7 @@ function KH:DebugSimulate(n)
     -- Simuler quelques kills
     local demo_kills = {
         { name = "Medic", score = 6, special_kind = "medic", special_count = 2, label_index = 1 },
-        { name = "Bulldozer", score = 12, special_kind = "dozer", special_count = 2, label_index = 1 },
+        { name = "Captain Winters", score = 100, special_kind = "boss", special_count = 1, label_index = 1 },
         { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
     }
     local t_now = now()
@@ -2540,7 +2584,7 @@ function KH:DebugSimulate(n)
         updated_t = t_now,
         preview = true,
     }
-    self:_show_dozer_banner(t_now, true)
+    self:_show_boss_banner(t_now, true)
 end
 
 function KH:DebugClear()
