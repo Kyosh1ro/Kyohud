@@ -30,7 +30,7 @@
   "ky_opt_reset": "Réinitialiser par défaut",
   "ky_opt_reset_desc": "Remettre tous les paramètres à leurs valeurs par défaut",
   "ky_opt_debug_sim": "Debug : Simuler buffs et kills",
-  "ky_opt_debug_sim_desc": "Simule les buffs actifs, les cadres de kills spéciaux et les bandeaux Killdozer",
+  "ky_opt_debug_sim_desc": "Simule les buffs actifs, les cadres de kills spéciaux et les bandeaux de cibles prioritaires",
   "ky_opt_debug_clear": "Debug : Tout effacer",
   "ky_opt_debug_clear_desc": "Supprime les buffs et kills actifs ; le deck d'atouts équipé reste visible",
 
@@ -65,6 +65,7 @@
   "ky_hud_killdozer": "KILLDOZER",
   "ky_hud_dozer_down": "DOZER DOWN",
   "ky_hud_bulldozed": "BULLDOZED",
+  "ky_hud_boss_eliminated": "BOSS ÉLIMINÉ",
   "ky_hud_dozer_tank_buster": "TANK BUSTER",
   "ky_hud_dozer_armor_breaker": "ARMOR BREAKER",
   "ky_hud_dozer_heavy_down": "HEAVY DOWN",
