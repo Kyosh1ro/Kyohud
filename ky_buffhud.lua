@@ -40,6 +40,7 @@ KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._killfeed_score_total = 0
 KH._killfeed_score_has_value = false
 KH._special_kill_banner = nil
+KH._combo_label_variant_index = KH._combo_label_variant_index or 0
 KH._dozer_banner_index = KH._dozer_banner_index or 0
 KH._special_enemy_combos = {}
 KH._special_enemy_label_indices = KH._special_enemy_label_indices or {}
@@ -383,16 +384,53 @@ local function localized_text(id, fallback)
 end
 
 local COMBO_LABELS = {
-    [2]  = { id = "ky_hud_combo_2",  fallback = "CLEAN PAIR" },
-    [3]  = { id = "ky_hud_combo_3",  fallback = "EXCELLENT" },
-    [4]  = { id = "ky_hud_combo_4",  fallback = "OVERKILL" },
-    [5]  = { id = "ky_hud_combo_5",  fallback = "FRENZY" },
-    [6]  = { id = "ky_hud_combo_6",  fallback = "CARNAGE" },
-    [7]  = { id = "ky_hud_combo_7",  fallback = "MASSACRE" },
-    [8]  = { id = "ky_hud_combo_8",  fallback = "EXTERMINATION" },
-    [9]  = { id = "ky_hud_combo_9",  fallback = "APOCALYPSE" },
-    [10] = { id = "ky_hud_combo_10", fallback = "PERFECT HEIST" },
+    [2] = {
+        { id = "ky_hud_combo_2",   fallback = "CLEAN PAIR" },
+        { id = "ky_hud_combo_2_2", fallback = "DOUBLE TAP" },
+        { id = "ky_hud_combo_2_3", fallback = "TWO FOR ONE" },
+    },
+    [3] = {
+        { id = "ky_hud_combo_3",   fallback = "EXCELLENT" },
+        { id = "ky_hud_combo_3_2", fallback = "TRIPLE THREAT" },
+        { id = "ky_hud_combo_3_3", fallback = "THREE OF A KIND" },
+    },
+    [4] = {
+        { id = "ky_hud_combo_4",   fallback = "OVERKILL" },
+        { id = "ky_hud_combo_4_2", fallback = "FOUR DOWN" },
+        { id = "ky_hud_combo_4_3", fallback = "QUAD STRIKE" },
+    },
+    [5] = {
+        { id = "ky_hud_combo_5",   fallback = "FRENZY" },
+        { id = "ky_hud_combo_5_2", fallback = "HIGH FIVE" },
+        { id = "ky_hud_combo_5_3", fallback = "FIVEFOLD FURY" },
+    },
+    [6] = {
+        { id = "ky_hud_combo_6",   fallback = "CARNAGE" },
+        { id = "ky_hud_combo_6_2", fallback = "SIX FEET UNDER" },
+        { id = "ky_hud_combo_6_3", fallback = "SIXFOLD SLAUGHTER" },
+    },
+    [7] = {
+        { id = "ky_hud_combo_7",   fallback = "MASSACRE" },
+        { id = "ky_hud_combo_7_2", fallback = "LUCKY SEVEN" },
+        { id = "ky_hud_combo_7_3", fallback = "SEVENTH HEAVEN" },
+    },
+    [8] = {
+        { id = "ky_hud_combo_8",   fallback = "EXTERMINATION" },
+        { id = "ky_hud_combo_8_2", fallback = "EIGHT COUNT" },
+        { id = "ky_hud_combo_8_3", fallback = "OCTUPLE ONSLAUGHT" },
+    },
+    [9] = {
+        { id = "ky_hud_combo_9",   fallback = "APOCALYPSE" },
+        { id = "ky_hud_combo_9_2", fallback = "CLOUD NINE" },
+        { id = "ky_hud_combo_9_3", fallback = "NINE LIVES DENIED" },
+    },
+    [10] = {
+        { id = "ky_hud_combo_10",   fallback = "PERFECT HEIST" },
+        { id = "ky_hud_combo_10_2", fallback = "TEN OUT OF TEN" },
+        { id = "ky_hud_combo_10_3", fallback = "DECADE OF DESTRUCTION" },
+    },
 }
+local COMBO_LABEL_VARIANT_COUNT = #COMBO_LABELS[2]
 
 local DOZER_BANNER_LABELS = {
     { id = "ky_hud_killdozer",  fallback = "KILLDOZER" },
@@ -453,8 +491,9 @@ local SPECIAL_ENEMY_DEFINITIONS = {
     },
 }
 
-local function combo_label(count)
-    local definition = COMBO_LABELS[count]
+local function combo_label(count, variant_index)
+    local variants = COMBO_LABELS[count]
+    local definition = variants and variants[variant_index or 1]
     if definition then
         return localized_text(definition.id, definition.fallback)
     end
@@ -1637,6 +1676,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
             combo.count = (combo.count or 0) + 1
         else
             combo.count = 1
+            self._combo_label_variant_index = ((self._combo_label_variant_index or 0)
+                % COMBO_LABEL_VARIANT_COUNT) + 1
+            combo.label_variant = self._combo_label_variant_index
         end
         combo.last_t = t
         combo.updated_t = t
@@ -2254,7 +2296,7 @@ function KH:draw()
                 local font_size = clamp(size * 0.65, 17, 27)
                 local label = special_banner_active
                     and dozer_banner_label(special_banner.label_index)
-                    or combo_label(combo.count)
+                    or combo_label(combo.count, combo.label_variant)
                 draw_glowing_text(
                     self._panel,
                     label,
