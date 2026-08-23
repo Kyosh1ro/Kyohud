@@ -1,3 +1,6 @@
+r76 (24.08.2026):
+- GitHub releases now automatically receive the `latest.zip` archive and hashed SuperBLT metadata required for in-game updates.
+
 r75 (23.08.2026):
 - Boss eliminations now use the same orange priority-target banner and special killfeed card as Bulldozers, with a dedicated "BOSS ELIMINATED" announcement.
 
