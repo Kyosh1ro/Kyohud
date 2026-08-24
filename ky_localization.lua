@@ -50,7 +50,7 @@ local function add_fallbacks(loc)
         ky_opt_duration             = "Display Duration",
         ky_opt_duration_desc        = "How long buffs/kills stay visible (seconds)",
         ky_opt_opacity              = "Opacity",
-        ky_opt_opacity_desc         = "HUD element opacity (0.1 to 1.0)",
+        ky_opt_opacity_desc         = "HUD element opacity (10-100%). Default: 90%",
         ky_opt_icon_size            = "Icon Size",
         ky_opt_icon_size_desc       = "Size of buff/kill icons in pixels",
         ky_opt_reset                = "Reset to Defaults",

@@ -210,8 +210,12 @@ MenuCallbackHandler.KY_ToggleBuffs    = make_toggle_cb("enable_buffs")
 MenuCallbackHandler.KY_SetRadius      = make_slider_cb("circle_radius", true)
 MenuCallbackHandler.KY_SetBuffPositionX = make_slider_cb("buff_position_x", true)
 MenuCallbackHandler.KY_SetBuffPositionY = make_slider_cb("buff_position_y", true)
-MenuCallbackHandler.KY_SetDuration    = make_slider_cb("buff_duration", false)
-MenuCallbackHandler.KY_SetOpacity     = make_slider_cb("opacity", false)
+MenuCallbackHandler.KY_SetDuration    = make_slider_cb("buff_duration", true)
+MenuCallbackHandler.KY_SetOpacity     = function(self, item)
+    local percent = math.floor(tonumber(item:value()) or (KH._defaults.opacity * 100))
+    KH.settings.opacity = math.max(10, math.min(100, percent)) / 100
+    KH.Save(); if KH.RefreshHUD then KH:RefreshHUD() end
+end
 MenuCallbackHandler.KY_SetIconSize    = make_slider_cb("icon_size", true)
 MenuCallbackHandler.KY_ResetDefaults  = function() KH.ResetDefaults() end
 MenuCallbackHandler.KY_DebugSimulate  = function() if KH.DebugSimulate then KH:DebugSimulate(8) end end
@@ -290,6 +294,9 @@ local function populate_json_menu(definition)
         if item.value and KH.settings[item.value] ~= nil then
             value = KH.settings[item.value]
         end
+        if item_type == "slider" and item.display_multiplier then
+            value = value * item.display_multiplier
+        end
 
         if item_type == "multiple_choice" then
             MenuHelper:AddMultipleChoice({
@@ -309,9 +316,9 @@ local function populate_json_menu(definition)
             MenuHelper:AddSlider({
                 id = item.id, title = item.title, desc = item.description,
                 callback = item.callback, value = value,
-                min = item.min or 0, max = item.max or 1, step = item.step or 0.1,
+                min = item.min or 0, max = item.max or 1, step = item.step or 1,
                 show_value = item.show_value ~= false,
-                display_precision = item.display_precision,
+                display_precision = item.display_precision or 0,
                 menu_id = definition.menu_id, priority = priority,
             })
         elseif item_type == "button" then

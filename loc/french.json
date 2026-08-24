@@ -24,7 +24,7 @@
   "ky_opt_duration": "Durée d'affichage (secondes)",
   "ky_opt_duration_desc": "Durée de visibilité des buffs et kills (1-10s). Par défaut : 5s",
   "ky_opt_opacity": "Opacité",
-  "ky_opt_opacity_desc": "Opacité des éléments du HUD (0.1 à 1.0). Par défaut : 0.9",
+  "ky_opt_opacity_desc": "Opacité des éléments du HUD (10 à 100 %). Par défaut : 90 %",
   "ky_opt_icon_size": "Taille des icônes (pixels)",
   "ky_opt_icon_size_desc": "Taille des icônes de buff et kill (16-64 pixels). Par défaut : 32",
   "ky_opt_reset": "Réinitialiser par défaut",
