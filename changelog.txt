@@ -1,3 +1,6 @@
+r77 (24.08.2026):
+- Sliders in options fixed
+
 r76 (24.08.2026):
 - GitHub releases now automatically receive the `latest.zip` archive and hashed SuperBLT metadata required for in-game updates.
 
