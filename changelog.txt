@@ -1,3 +1,6 @@
+r80 (25.08.2026):
+- Buff frames now change color as they approach expiration, with warning and critical states.
+
 r79 (25.08.2026):
 - Killfeed detection and combat scoring are now consolidated in a single script while preserving the separate host, client, and civilian paths.
 - All runtime Lua scripts are now organized under the `lua/` directory, with SuperBLT hooks and internal loaders updated accordingly.
