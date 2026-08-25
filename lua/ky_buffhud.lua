@@ -706,8 +706,11 @@ end
 
 -- Cellule volontairement sobre pour laisser l'icône et son timer dominer.
 -- Le cadre tactique complet reste réservé aux annonces du killfeed.
+-- `style.emphasis` (0..1) épaissit le cadre pour les états d'urgence sans
+-- changer sa silhouette ni la place occupée par la cellule.
 local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, style)
     local inset = style and style.inset or 1
+    local emphasis = clamp(tonumber(style and style.emphasis) or 0, 0, 1)
 
     panel:rect({
         x = x + inset,
@@ -721,6 +724,8 @@ local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, styl
 
     -- Reprendre en haut les trois segments fins du cadre multikill, sans les
     -- quatre crochets afin de conserver une silhouette propre aux buffs.
+    local glow_alpha = alpha * (0.12 + 0.1 * emphasis)
+    local segment_alpha = alpha * (0.86 + 0.14 * emphasis)
     for i = 1, 3 do
         local segment = TACTICAL_FRAME_SEGMENTS[i]
         local segment_x = x + w * segment[1]
@@ -731,7 +736,7 @@ local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, styl
             w = segment_w,
             h = 3,
             color = color,
-            alpha = alpha * 0.12,
+            alpha = glow_alpha,
             layer = layer + 1,
         })
         panel:rect({
@@ -740,14 +745,14 @@ local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, styl
             w = segment_w,
             h = 1,
             color = color,
-            alpha = alpha * 0.86,
+            alpha = segment_alpha,
             layer = layer + 2,
         })
     end
 
     -- Une seule barre continue et plus épaisse ancre visuellement le bas.
     local footer_margin = clamp(w * 0.08, 2, 5)
-    local footer_height = 1
+    local footer_height = emphasis >= 0.5 and 2 or 1
     local footer_x = x + footer_margin
     local footer_width = w - footer_margin * 2
     local footer_y = y + h - footer_height
@@ -762,6 +767,32 @@ local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, styl
         alpha = footer_alpha,
         layer = layer + 2,
     })
+
+    -- Deux montants latéraux courts n'apparaissent qu'en alerte : ils ferment
+    -- visuellement la cellule sans ajouter de rendu aux buffs calmes.
+    if emphasis > 0 then
+        local post_h = h * 0.34
+        local post_y = y + (h - post_h) * 0.5
+        local post_alpha = math.min(1, alpha * (0.5 + 0.5 * emphasis))
+        panel:rect({
+            x = x,
+            y = post_y,
+            w = 1,
+            h = post_h,
+            color = color,
+            alpha = post_alpha,
+            layer = layer + 2,
+        })
+        panel:rect({
+            x = x + w - 1,
+            y = post_y,
+            w = 1,
+            h = post_h,
+            color = color,
+            alpha = post_alpha,
+            layer = layer + 2,
+        })
+    end
 end
 
 -- Trace la partie encore active du contour d'un buff temporaire. Le parcours
@@ -822,6 +853,116 @@ local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alph
         alpha = alpha,
         layer = layer + 1,
     })
+end
+
+-- ═══════════════════════════════════════════════════
+-- État visuel adaptatif d'une cellule de buff
+-- ═══════════════════════════════════════════════════
+-- Quatre états seulement, résolus une seule fois par buff rendu :
+--
+--   persistent : aucun timer connu. Teinte stable, aucune progression
+--                simulée, aucune pulsation.
+--   normal     : buff temporaire loin de son expiration. Il conserve sa
+--                propre couleur de catalogue, y compris la teinte de debuff.
+--   warning    : approche de l'expiration. Ambre et cadre renforcé.
+--   critical   : expiration imminente. Rouge, cadre renforcé, pulsation
+--                retenue et timer de la même couleur.
+--
+-- Les seuils combinent une fraction de la durée et des bornes en secondes :
+-- un buff de 60 s ne devient donc pas ambre pendant vingt secondes, et un
+-- buff de 3 s garde malgré tout une phase d'alerte lisible.
+local BUFF_WARNING_RATIO        = 0.35
+local BUFF_WARNING_MIN_SECONDS  = 1.5
+local BUFF_WARNING_MAX_SECONDS  = 5
+local BUFF_CRITICAL_RATIO       = 0.15
+local BUFF_CRITICAL_MIN_SECONDS = 0.75
+local BUFF_CRITICAL_MAX_SECONDS = 2
+
+-- `math.sin` reçoit des radians. Une fréquence de 1,6 Hz reste perceptible
+-- sans produire le clignotement agressif d'une alerte à haute fréquence.
+local BUFF_CRITICAL_PULSE_HZ    = 1.6
+local BUFF_CRITICAL_PULSE_DEPTH = 0.16
+
+local BUFF_WARNING_COLOR  = Color(1, 0.68, 0.16)
+local BUFF_CRITICAL_COLOR = Color(1, 0.26, 0.22)
+
+-- Table de travail réutilisée : `KH:draw` reconstruit le panneau vingt fois
+-- par seconde et ne doit pas allouer une table par buff affiché. Sa durée de
+-- vie se limite à une itération de la boucle de rendu.
+local buff_state = {
+    name        = "persistent",
+    remaining   = nil,
+    progress    = nil,
+    frame_color = nil,
+    accent_color = nil,
+    timer_color = nil,
+    emphasis    = 0,
+    alpha_scale = 1,
+}
+
+local function resolve_buff_state(buff, t)
+    local state = buff_state
+    local color = buff.color or HUD_ACCENT_COLOR
+    local duration = tonumber(buff.duration)
+
+    -- L'aperçu de debug fige un temps restant afin de présenter chaque état
+    -- assez longtemps pour l'inspecter ; le jeu n'utilise que `t_end`.
+    local remaining = tonumber(buff.preview_remaining)
+    if not remaining and buff.t_end then
+        remaining = math.max(0, buff.t_end - t)
+    end
+
+    state.remaining   = remaining
+    state.progress    = nil
+    state.timer_color = nil
+    state.emphasis    = 0
+    state.alpha_scale = 1
+
+    if not remaining or not duration or duration <= 0 then
+        -- Indicateur permanent : ni progression ni urgence inventées. Un
+        -- debuff garde sa teinte, les autres restent sur l'accent du HUD.
+        state.name        = "persistent"
+        state.frame_color = buff.is_debuff and color or HUD_ACCENT_COLOR
+        state.accent_color = color
+        return state
+    end
+
+    state.progress = clamp(remaining / duration, 0, 1)
+
+    local critical_at = clamp(
+        duration * BUFF_CRITICAL_RATIO,
+        BUFF_CRITICAL_MIN_SECONDS,
+        BUFF_CRITICAL_MAX_SECONDS
+    )
+    local warning_at = clamp(
+        duration * BUFF_WARNING_RATIO,
+        BUFF_WARNING_MIN_SECONDS,
+        BUFF_WARNING_MAX_SECONDS
+    )
+
+    if remaining <= critical_at then
+        state.name         = "critical"
+        state.frame_color  = BUFF_CRITICAL_COLOR
+        state.accent_color = BUFF_CRITICAL_COLOR
+        state.timer_color  = BUFF_CRITICAL_COLOR
+        state.emphasis     = 1
+        local pulse = 0.5 + 0.5 * math.sin(t * math.pi * 2 * BUFF_CRITICAL_PULSE_HZ)
+        state.alpha_scale = 1 - BUFF_CRITICAL_PULSE_DEPTH * (1 - pulse)
+    elseif remaining <= warning_at then
+        state.name         = "warning"
+        state.frame_color  = BUFF_WARNING_COLOR
+        state.accent_color = BUFF_WARNING_COLOR
+        state.timer_color  = BUFF_WARNING_COLOR
+        state.emphasis     = 0.55
+    else
+        -- Un debuff temporaire reste identifiable par sa propre couleur tant
+        -- qu'aucune urgence ne doit primer.
+        state.name         = "normal"
+        state.frame_color  = color
+        state.accent_color = color
+    end
+
+    return state
 end
 
 local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
@@ -2002,12 +2143,15 @@ function KH:draw()
         for idx, buff in ipairs(buff_list) do
             local pos = positions[idx]
             if pos then
-                -- Alpha dynamique : diminue quand le buff expire.
-                local life = 1
-                if buff.duration and buff.duration > 0 and buff.start_t then
-                    life = clamp(1 - ((t - buff.start_t) / buff.duration), 0, 1)
-                end
-                local buff_alpha = alpha * (0.4 + 0.6 * life)
+                -- L'état visuel est résolu une seule fois par buff rendu : il
+                -- pilote le cadre, le contour, la visibilité et le timer.
+                local state = resolve_buff_state(buff, t)
+
+                -- Alpha dynamique : diminue quand le buff expire, mais un état
+                -- d'alerte remonte vers l'opacité pleine pour rester visible.
+                local buff_alpha = alpha * (0.4 + 0.6 * (state.progress or 1))
+                buff_alpha = buff_alpha + (alpha - buff_alpha) * state.emphasis
+                buff_alpha = buff_alpha * state.alpha_scale
 
                 -- Chaque buff conserve sa propre cellule, assez discrète pour que
                 -- l'icône et le timer restent les informations dominantes.
@@ -2016,28 +2160,29 @@ function KH:draw()
                 local frame_w = size + frame_pad_x * 2
                 local frame_h = size + frame_pad_y * 2
 
+                buff_cell_style.emphasis = state.emphasis
                 draw_buff_cell_frame(
                     self._panel,
                     frame_x,
                     frame_y,
                     frame_w,
                     frame_h,
-                    HUD_ACCENT_COLOR,
-                    buff_alpha * 0.72,
+                    state.frame_color or HUD_ACCENT_COLOR,
+                    buff_alpha * (0.72 + 0.28 * state.emphasis),
                     98,
                     buff_cell_style
                 )
 
-                local remaining = buff.t_end and math.max(0, buff.t_end - t)
-                if remaining and buff.duration and buff.duration > 0 then
+                local remaining = state.remaining
+                if state.progress then
                     draw_timed_buff_progress(
                         self._panel,
                         frame_x,
                         frame_y,
                         frame_w,
                         frame_h,
-                        remaining / buff.duration,
-                        buff.color or HUD_ACCENT_COLOR,
+                        state.progress,
+                        state.accent_color or HUD_ACCENT_COLOR,
                         buff_alpha,
                         99
                     )
@@ -2127,20 +2272,20 @@ function KH:draw()
                     })
                 end
 
-                -- Timer texte sous l'icône
+                -- Timer texte sous l'icône, teinté par l'état d'urgence.
                 if remaining and remaining > 0 then
                     self._panel:text({
                         text      = string.format("%.1f", remaining),
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
                         font_size = 14,
-                        color     = Color.white,
+                        color     = state.timer_color or Color.white,
                         align     = "center",
                         x         = pos.x - size / 2,
                         y         = pos.y + size / 2 + 2,
                         w         = size,
                         h         = 16,
                         layer     = 102,
-                        alpha     = alpha * 0.8,
+                        alpha     = alpha * (0.8 + 0.2 * state.emphasis) * state.alpha_scale,
                     })
                 end
             end
@@ -2544,6 +2689,34 @@ function KH:DebugSimulate(n)
             start_t  = t_now,
             duration = 30 + i * 2,
             t_end    = t_now + 30 + i * 2,
+        }
+    end
+
+    -- Vitrine des états adaptatifs. `preview_remaining` fige le temps restant
+    -- pour que les états normal, warning et critical restent affichés côte à
+    -- côte jusqu'à Debug: Clear, au lieu d'expirer en quelques secondes.
+    -- Avec une durée de 20 s, le seuil warning tombe à 5 s et le seuil
+    -- critical à 2 s : les valeurs choisies encadrent donc chaque état.
+    local demo_state_buffs = {
+        { id = "inspire",        remaining = 14 },
+        { id = "uppers",         remaining = 3.4 },
+        { id = "swan_song",      remaining = 1.2 },
+        { id = "inspire_debuff", remaining = 12, is_debuff = true },
+    }
+    local demo_state_duration = 20
+    for i, demo in ipairs(demo_state_buffs) do
+        local demo_id = "demo_state_" .. demo.id
+        self._buffs[demo_id] = {
+            id       = demo_id,
+            icon     = icon_for_buff(demo.id),
+            color    = color_for_buff(demo.id, demo.is_debuff),
+            category = KH.BUFF_MAP[demo.id] and KH.BUFF_MAP[demo.id].category,
+            is_debuff = demo.is_debuff == true,
+            order_t  = t_now + 0.1 + i * 0.001,
+            start_t  = t_now,
+            duration = demo_state_duration,
+            -- Aucun t_end : l'aperçu ne doit pas être purgé par KH:draw.
+            preview_remaining = demo.remaining,
         }
     end
 
