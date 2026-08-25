@@ -427,7 +427,7 @@ local COMBO_LABELS = {
     [10] = {
         { id = "ky_hud_combo_10",   fallback = "PERFECT HEIST" },
         { id = "ky_hud_combo_10_2", fallback = "TEN OUT OF TEN" },
-        { id = "ky_hud_combo_10_3", fallback = "DECADE OF DESTRUCTION" },
+        { id = "ky_hud_combo_10_3", fallback = "DECADE OF DOOM" },
     },
 }
 local COMBO_LABEL_VARIANT_COUNT = #COMBO_LABELS[2]
@@ -2553,7 +2553,7 @@ function KH:DebugSimulate(n)
         { name = "Captain Winters", score = 100, special_kind = "boss", special_count = 1, label_index = 1 },
         { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
     }
-    local t_now = now()
+    t_now = now()
     self._killfeed_score_total = 0
     self._killfeed_score_has_value = false
     for i = 1, killfeed_size(self.settings) do
