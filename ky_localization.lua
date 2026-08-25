@@ -87,7 +87,7 @@ local function add_fallbacks(loc)
         ky_hud_combo_9_3   = "NINE LIVES DENIED",
         ky_hud_combo_10    = "PERFECT HEIST",
         ky_hud_combo_10_2  = "TEN OUT OF TEN",
-        ky_hud_combo_10_3  = "DECADE OF DESTRUCTION",
+        ky_hud_combo_10_3  = "DECADE OF DOOM",
         ky_hud_combo_chain = "KILL CHAIN",
         ky_hud_killdozer   = "KILLDOZER",
         ky_hud_dozer_down  = "DOZER DOWN",
