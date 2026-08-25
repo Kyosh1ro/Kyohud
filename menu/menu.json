@@ -100,7 +100,7 @@
       "description": "ky_opt_buff_position_y_desc",
       "callback": "KY_SetBuffPositionY",
       "value": "buff_position_y",
-      "default_value": 85,
+      "default_value": 83,
       "min": 0,
       "max": 100,
       "step": 1

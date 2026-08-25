@@ -6,7 +6,7 @@ Kyosh1roHUD = kyohud
 local KH = kyohud
 local MY_MOD_PATH = ModPath
 
-local score_ok, score_err = pcall(dofile, MY_MOD_PATH .. "ky_killscore.lua")
+local score_ok, score_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_killfeed.lua")
 if not score_ok then
     log("[KyoHUD] Erreur chargement du calcul des scores civils : " .. tostring(score_err))
 end
