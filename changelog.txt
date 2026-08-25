@@ -1,3 +1,6 @@
+r78 (25.08.2026):
+- Killstreak x10 : DECADE OF DESTRUCTION changed to DECADE OF DOOM
+
 r77 (24.08.2026):
 - Sliders in options fixed
 

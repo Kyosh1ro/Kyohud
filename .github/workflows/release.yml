@@ -93,7 +93,18 @@ jobs:
                   download_url = "https://github.com/Kyosh1ro/kyohud/releases/latest/download/latest.zip"
               }
           )
-          $metadata | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $outputRoot "meta.json") -Encoding utf8NoBOM
+          $metadataPath = Join-Path $outputRoot "meta.json"
+          ConvertTo-Json -InputObject $metadata -Depth 3 | Set-Content -LiteralPath $metadataPath -Encoding utf8NoBOM
+
+          $generatedMetadata = ConvertFrom-Json -InputObject (Get-Content -LiteralPath $metadataPath -Raw) -NoEnumerate
+          if ($generatedMetadata -isnot [array] -or $generatedMetadata.Count -ne 1) {
+              throw "SuperBLT metadata must be a JSON array containing exactly one update entry."
+          }
+
+          $updateEntry = $generatedMetadata[0]
+          if ($updateEntry.ident -ne "kyohud" -or $updateEntry.hash -notmatch "^[0-9a-f]{64}$" -or -not $updateEntry.download_url) {
+              throw "Generated SuperBLT metadata is invalid."
+          }
 
           Push-Location .\release-stage
           try {
