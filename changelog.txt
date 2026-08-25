@@ -1,3 +1,8 @@
+r79 (25.08.2026):
+- Killfeed detection and combat scoring are now consolidated in a single script while preserving the separate host, client, and civilian paths.
+- All runtime Lua scripts are now organized under the `lua/` directory, with SuperBLT hooks and internal loaders updated accordingly.
+- The default buff-row position and the internal "DECADE OF DOOM" fallback are now consistent with the menu and localization files.
+
 r78 (25.08.2026):
 - Killstreak x10 : DECADE OF DESTRUCTION changed to DECADE OF DOOM
 
