@@ -8,7 +8,7 @@ Kyosh1roHUD = kyohud
 local KH = kyohud
 local MY_MOD_PATH = ModPath
 
-local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "ky_buff_catalog.lua")
+local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
     log("[KyoHUD] Erreur chargement catalogue buffs (HUD): " .. tostring(catalog_err))
 end
