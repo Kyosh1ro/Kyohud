@@ -112,6 +112,38 @@ function KH:RefreshPassiveHealthRegen()
     end
 end
 
+-- ── Chute du joueur : remise à zéro des séries d'arme ──
+-- Les compteurs de médailles ne survivent pas à une mise à terre. Seuls les
+-- évènements de PlayerDamage sont utilisés, jamais les accesseurs d'état :
+-- `bleed_out()`, `incapacitated()` et `arrested()` renvoient simplement l'état
+-- courant et sont interrogés en boucle, ce qui déclencherait un reset permanent.
+-- `on_downed`, `on_incapacitated` et `on_arrested` sont eux appelés une fois à
+-- l'entrée dans chaque état (voir les annotations de
+-- `lib/units/beings/player/playerdamage`).
+local PLAYER_DOWN_EVENTS = { "on_downed", "on_incapacitated", "on_arrested" }
+
+local function reset_weapon_streaks()
+    if not KH.ResetWeaponStreaks then return end
+    KH:ResetWeaponStreaks()
+end
+
+for _, event in ipairs(PLAYER_DOWN_EVENTS) do
+    -- Ne rien enrober si la méthode n'existe pas dans cette version du jeu :
+    -- un PostHook sur une méthode absente créerait une fonction fantôme.
+    if type(PlayerDamage[event]) == "function" then
+        Hooks:PostHook(
+            PlayerDamage,
+            event,
+            "KH_ResetWeaponStreaks_" .. event,
+            reset_weapon_streaks
+        )
+    else
+        pcall(function()
+            log("[KyoHUD][Streak] PlayerDamage:" .. event .. "() absent, reset non installé.")
+        end)
+    end
+end
+
 Hooks:PostHook(PlayerDamage, "set_health", "KH_RefreshPassiveRegenOnHealth", function(player_damage)
     refresh_passive_regen(player_damage)
 end)

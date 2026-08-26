@@ -40,6 +40,10 @@ KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._killfeed_score_total = 0
 KH._killfeed_score_has_value = false
 KH._special_kill_banner = nil
+KH._banner_queue = {}          -- FIFO bornée : annonces en attente d'affichage
+KH._weapon_streaks = {}        -- { [family] = { count, tier_index } }
+KH._weapon_streak_card = nil   -- médaille de palier affichée dans le killfeed
+KH._weapon_streak_queue = {}   -- FIFO bornée, indépendante du bandeau supérieur
 KH._combo_label_variant_index = KH._combo_label_variant_index or 0
 KH._dozer_banner_index = KH._dozer_banner_index or 0
 KH._debug_banner_preview_index = KH._debug_banner_preview_index or 0
@@ -53,6 +57,9 @@ local KILL_SCROLL_TIME  = 0.2
 local KILLFEED_FRAME_CLEARANCE = 1.5
 local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
+-- La médaille de série vit dans le killfeed et reste un peu plus longtemps que
+-- les annonces prioritaires afin que son palier soit lisible pendant l'action.
+local WEAPON_STREAK_CARD_DURATION = 1.75
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
 local PRIORITY_TARGET_COLOR = Color(1, 0.38, 0.08)
 local KILLFEED_SCORE_COLOR = Color(1, 0.63, 0.12)
@@ -454,6 +461,73 @@ local SPECIAL_KILL_BANNER_DEFINITIONS = {
     },
 }
 
+-- ── Séries persistantes par famille de dégâts / d'arme ──
+-- Chaque famille possède son propre compteur, indépendant des autres : un kill
+-- au fusil à pompe n'interrompt pas une série au sniper. Les paliers sont
+-- strictement croissants et ne sont franchis qu'une seule fois par série.
+local WEAPON_STREAK_DEFINITIONS = {
+    shotgun = {
+        color = Color(1, 0.55, 0.12),               -- orange
+        tiers = {
+            { count = 5,  id = "ky_hud_streak_shotgun_5",  fallback = "SHOTGUN SPREE" },
+            { count = 10, id = "ky_hud_streak_shotgun_10", fallback = "OPEN SEASON" },
+            { count = 15, id = "ky_hud_streak_shotgun_15", fallback = "BUCK WILD" },
+        },
+    },
+    sniper = {
+        color = Color(0.32, 0.66, 1),               -- bleu froid
+        tiers = {
+            { count = 5,  id = "ky_hud_streak_sniper_5",  fallback = "SNIPER SPREE" },
+            { count = 10, id = "ky_hud_streak_sniper_10", fallback = "SHARPSHOOTER" },
+            { count = 15, id = "ky_hud_streak_sniper_15", fallback = "BE THE BULLET" },
+        },
+    },
+    incendiary = {
+        color = Color(1, 0.3, 0.06),                -- orange-rouge
+        tiers = {
+            { count = 3,  id = "ky_hud_streak_incendiary_3",  fallback = "BURN NOTICE" },
+            { count = 6,  id = "ky_hud_streak_incendiary_6",  fallback = "INCINERATION" },
+            { count = 10, id = "ky_hud_streak_incendiary_10", fallback = "HELLFIRE" },
+        },
+    },
+    melee = {
+        color = Color(0.78, 0.28, 1),               -- violet / magenta
+        tiers = {
+            { count = 2, id = "ky_hud_streak_melee_2", fallback = "ONE-TWO" },
+            { count = 3, id = "ky_hud_streak_melee_3", fallback = "BONE CRACKER" },
+            { count = 4, id = "ky_hud_streak_melee_4", fallback = "PUMMEL" },
+            { count = 5, id = "ky_hud_streak_melee_5", fallback = "WRECKING CREW" },
+        },
+    },
+    explosive = {
+        color = Color(1, 0.79, 0.16),               -- jaune ambre
+        tiers = {
+            { count = 3, id = "ky_hud_streak_explosive_3", fallback = "BOOM" },
+            { count = 5, id = "ky_hud_streak_explosive_5", fallback = "DEMOLITION" },
+            { count = 8, id = "ky_hud_streak_explosive_8", fallback = "BLAST ZONE" },
+        },
+    },
+}
+
+-- Le bandeau supérieur est exclusivement réservé au multikill, au boss et au
+-- Dozer. Priorité d'affichage : boss > dozer. Le multikill n'entre pas dans la
+-- file : il reste le repli affiché quand aucune annonce prioritaire n'occupe le
+-- bandeau. Les paliers de série d'arme ont leur propre rangée dans le killfeed
+-- et n'apparaissent jamais ici.
+local BANNER_PRIORITIES = {
+    boss  = 2,
+    dozer = 1,
+}
+
+-- Bornée : quelques annonces suffisent à couvrir une salve, et la file ne doit
+-- jamais croître sans limite pendant un assaut.
+local MAX_BANNER_QUEUE = 4
+
+-- Les paliers d'arme sont tous de même mérite : leur file est strictement FIFO
+-- et n'interagit jamais avec celle du bandeau. Une borne courte suffit, les
+-- paliers étant rares même pendant une salve.
+local MAX_WEAPON_STREAK_QUEUE = 3
+
 local SPECIAL_ENEMY_DEFINITIONS = {
     dozer = {
         color = PRIORITY_TARGET_COLOR,
@@ -527,22 +601,41 @@ local function combo_color(count)
     return Color(0.9, 0.15, 1)
 end
 
-local function special_kill_banner_definition(kind)
-    return kind and SPECIAL_KILL_BANNER_DEFINITIONS[kind] or nil
-end
-
-local function special_kill_banner_label(kind, index)
-    local banner_definition = special_kill_banner_definition(kind)
-    local labels = banner_definition and banner_definition.labels
-    local definition = labels and (labels[index] or labels[1])
+-- Un bandeau porte directement son libellé et sa couleur. `KH:draw` n'a donc
+-- aucune table de définitions à parcourir, et une nouvelle famille d'annonce se
+-- branche sans toucher au rendu.
+local function make_special_kill_banner(kind, label_index)
+    local definition = kind and SPECIAL_KILL_BANNER_DEFINITIONS[kind]
     if not definition then return nil end
-    return localized_text(definition.id, definition.fallback)
+
+    local labels = definition.labels
+    local label_definition = labels and (labels[label_index] or labels[1])
+    if not label_definition then return nil end
+
+    return {
+        kind  = kind,
+        label = localized_text(label_definition.id, label_definition.fallback),
+        color = definition.color or HUD_ACCENT_COLOR,
+    }
 end
 
+local function weapon_streak_definition(family)
+    return family and WEAPON_STREAK_DEFINITIONS[family] or nil
+end
 
-local function special_kill_banner_color(kind)
-    local definition = special_kill_banner_definition(kind)
-    return definition and definition.color or HUD_ACCENT_COLOR
+--- Médaille de palier : elle porte directement son libellé et sa couleur, comme
+--- un bandeau, mais elle est rendue dans le killfeed et n'a ni nom d'unité ni
+--- score à afficher.
+local function make_weapon_streak_card(family, tier_index)
+    local definition = weapon_streak_definition(family)
+    local tier = definition and definition.tiers[tier_index]
+    if not tier then return nil end
+
+    return {
+        family = family,
+        label  = localized_text(tier.id, tier.fallback),
+        color  = definition.color or HUD_ACCENT_COLOR,
+    }
 end
 
 local function special_enemy_definition(kind)
@@ -1155,6 +1248,87 @@ local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
         x = x + w - 2, y = y + 2, w = 2, h = h - 4,
         color = color, alpha = alpha * 0.9, layer = layer + 1,
     })
+end
+
+-- ── Médaille de palier d'arme ──
+-- Silhouette volontairement distincte des cartes de kills et du bandeau
+-- supérieur : montants latéraux pleine hauteur et ruban centré sur les deux
+-- bords, au lieu des trois segments décalés du cadre tactique. Elle occupe la
+-- largeur du bandeau mais reste à la hauteur d'une rangée de killfeed.
+local WEAPON_MEDAL_POST_W = 3
+local WEAPON_MEDAL_RIBBON_RATIO = 0.52
+-- Écart entre la médaille et la rangée des noms qui la suit.
+local WEAPON_MEDAL_ROW_GAP = 6
+-- Séparer d'un demi-pixel la médaille du prolongement inférieur du bandeau :
+-- les deux accents ne se confondent plus lorsque les deux niveaux sont actifs.
+local WEAPON_MEDAL_TOP_GAP = 0.5
+-- Trois flèches décoratives réduites : elles rappellent les annonces sans
+-- reprendre les banques de progression du multikill.
+local WEAPON_MEDAL_CHEVRON_STYLE = { arrow_w = 6, arrow_h = 9, gap = 3 }
+local WEAPON_MEDAL_CHEVRON_GROUP_W = SPECIAL_CHEVRON_SLOTS
+    * WEAPON_MEDAL_CHEVRON_STYLE.arrow_w
+    + (SPECIAL_CHEVRON_SLOTS - 1) * WEAPON_MEDAL_CHEVRON_STYLE.gap
+local WEAPON_MEDAL_CHEVRON_MARGIN = 13
+local WEAPON_MEDAL_CHEVRON_TEXT_GAP = 6
+
+--- Un bord de la médaille : ruban lumineux au centre, prolongé par un filet
+--- discret jusqu'aux montants. Le contraste centre/bords donne la lecture
+--- « ruban » sans refermer la carte comme un cadre plein.
+local function draw_weapon_medal_edge(panel, x, y, w, color, alpha, layer)
+    local ribbon_w = w * WEAPON_MEDAL_RIBBON_RATIO
+    local ribbon_x = x + (w - ribbon_w) * 0.5
+
+    panel:rect({
+        x = ribbon_x, y = y - 1, w = ribbon_w, h = 3,
+        color = color, alpha = alpha * 0.2, layer = layer,
+    })
+    panel:rect({
+        x = ribbon_x, y = y, w = ribbon_w, h = 1,
+        color = color, alpha = alpha, layer = layer + 1,
+    })
+    panel:rect({
+        x = x + WEAPON_MEDAL_POST_W,
+        y = y,
+        w = math.max(0, ribbon_x - x - WEAPON_MEDAL_POST_W),
+        h = 1,
+        color = color, alpha = alpha * 0.32, layer = layer + 1,
+    })
+    panel:rect({
+        x = ribbon_x + ribbon_w,
+        y = y,
+        w = math.max(0, x + w - WEAPON_MEDAL_POST_W - ribbon_x - ribbon_w),
+        h = 1,
+        color = color, alpha = alpha * 0.32, layer = layer + 1,
+    })
+end
+
+local function draw_weapon_medal_frame(panel, x, y, w, h, color, alpha, layer)
+    -- Fond symétrique : la médaille se lit d'un bloc, alors que les cartes de
+    -- kills gardent leur dégradé asymétrique orienté vers la droite.
+    panel:gradient({
+        x = x, y = y + 1, w = w, h = h - 2,
+        orientation = "horizontal",
+        gradient_points = {
+            0,    Color.black:with_alpha(alpha * 0.14),
+            0.26, Color.black:with_alpha(alpha * 0.7),
+            0.5,  Color.black:with_alpha(alpha * 0.82),
+            0.74, Color.black:with_alpha(alpha * 0.7),
+            1,    Color.black:with_alpha(alpha * 0.14),
+        },
+        layer = layer,
+    })
+
+    panel:rect({
+        x = x, y = y, w = WEAPON_MEDAL_POST_W, h = h,
+        color = color, alpha = alpha, layer = layer + 1,
+    })
+    panel:rect({
+        x = x + w - WEAPON_MEDAL_POST_W, y = y, w = WEAPON_MEDAL_POST_W, h = h,
+        color = color, alpha = alpha, layer = layer + 1,
+    })
+
+    draw_weapon_medal_edge(panel, x, y, w, color, alpha, layer + 1)
+    draw_weapon_medal_edge(panel, x, y + h - 1, w, color, alpha, layer + 1)
 end
 
 local TEXT_GLOW_OFFSETS = {
@@ -1981,31 +2155,193 @@ function KH:RefreshDetectedBuffs()
     self:RefreshEquippedSkillCounters()
 end
 
+-- ═══════════════════════════════════════════════════
+-- Bandeau prioritaire : affichage courant et file d'attente
+-- ═══════════════════════════════════════════════════
+local function banner_priority(banner)
+    return banner and BANNER_PRIORITIES[banner.kind] or 0
+end
+
+function KH:_start_special_banner(t, banner, preview)
+    banner.preview = preview == true
+    banner.started_t = t
+    banner.t_end = t + SPECIAL_KILL_BANNER_DURATION
+    self._special_kill_banner = banner
+end
+
+--- Rang d'insertion respectant l'ordre décroissant de priorité : la nouvelle
+--- annonce se place derrière toutes celles de priorité supérieure ou égale.
+--- À priorité égale l'ordre d'arrivée est donc conservé (FIFO stable).
+local function banner_queue_insert_index(queue, priority)
+    for index = 1, #queue do
+        if banner_priority(queue[index]) < priority then
+            return index
+        end
+    end
+    return #queue + 1
+end
+
+--- Insertion dans la file bornée, maintenue triée boss > dozer. Quand elle est
+--- pleine, seule une annonce plus prioritaire entre, à la place de la dernière
+--- des moins prioritaires ; une annonce de priorité inférieure ou égale à la
+--- plus faible en attente est simplement abandonnée.
+function KH:_enqueue_special_banner(banner)
+    if not banner then return end
+
+    local queue = self._banner_queue
+    if not queue then
+        queue = {}
+        self._banner_queue = queue
+    end
+
+    local priority = banner_priority(banner)
+
+    while #queue >= MAX_BANNER_QUEUE do
+        -- La file reste triée : sa dernière entrée est toujours la moins
+        -- prioritaire et, à priorité égale, la plus récemment ajoutée.
+        if banner_priority(queue[#queue]) >= priority then return end
+        table.remove(queue)
+    end
+
+    table.insert(queue, banner_queue_insert_index(queue, priority), banner)
+end
+
+--- Présente une annonce. Une cible prioritaire prend immédiatement le bandeau
+--- et renvoie l'annonce en cours dans la file : rien n'est perdu.
+function KH:_show_special_banner(t, banner, preview)
+    if not banner then return end
+
+    if preview then
+        self:_start_special_banner(t, banner, true)
+        return
+    end
+
+    local current = self._special_kill_banner
+    -- Un aperçu de debug ne bloque jamais une vraie annonce.
+    if current and not current.preview then
+        if banner_priority(banner) > banner_priority(current) then
+            self:_enqueue_special_banner(current)
+        else
+            self:_enqueue_special_banner(banner)
+            return
+        end
+    end
+
+    self:_start_special_banner(t, banner, false)
+end
+
 function KH:_show_dozer_banner(t, preview)
     self._dozer_banner_index = ((self._dozer_banner_index or 0) % #DOZER_BANNER_LABELS) + 1
-    self._special_kill_banner = {
-        kind = "dozer",
-        label_index = self._dozer_banner_index,
-        started_t = t,
-        t_end = t + SPECIAL_KILL_BANNER_DURATION,
-        preview = preview == true,
-    }
+    self:_show_special_banner(
+        t,
+        make_special_kill_banner("dozer", self._dozer_banner_index),
+        preview == true
+    )
 end
 
 function KH:_show_boss_banner(t, preview)
-    self._special_kill_banner = {
-        kind = "boss",
-        label_index = 1,
-        started_t = t,
-        t_end = t + SPECIAL_KILL_BANNER_DURATION,
-        preview = preview == true,
-    }
+    self:_show_special_banner(t, make_special_kill_banner("boss", 1), preview == true)
+end
+
+-- ═══════════════════════════════════════════════════
+-- Médaille de série d'arme : rangée dédiée du killfeed
+-- ═══════════════════════════════════════════════════
+-- État strictement séparé du bandeau supérieur : une médaille n'entre jamais en
+-- concurrence avec un boss ou un Dozer, et les deux peuvent être visibles en
+-- même temps sur deux niveaux distincts.
+function KH:_start_weapon_streak_card(t, card, preview)
+    card.preview = preview == true
+    card.started_t = t
+    card.t_end = t + WEAPON_STREAK_CARD_DURATION
+    self._weapon_streak_card = card
+end
+
+--- Présente une médaille. Tous les paliers ont le même mérite : celui déjà
+--- affiché garde sa place et les suivants s'enchaînent dans l'ordre d'arrivée.
+--- Une médaille de trop est abandonnée plutôt que d'allonger la file : la série
+--- reste comptée, seule son annonce est perdue.
+function KH:_show_weapon_streak_card(t, family, tier_index, preview)
+    local card = make_weapon_streak_card(family, tier_index)
+    if not card then return end
+
+    local queue = self._weapon_streak_queue
+    if not queue then
+        queue = {}
+        self._weapon_streak_queue = queue
+    end
+
+    local current = self._weapon_streak_card
+    -- Un aperçu de debug remplace tout et ne s'accumule jamais.
+    if preview then
+        for index = #queue, 1, -1 do queue[index] = nil end
+        self:_start_weapon_streak_card(t, card, true)
+        return
+    end
+
+    -- Un aperçu ne bloque pas une vraie médaille.
+    if current and not current.preview then
+        if #queue < MAX_WEAPON_STREAK_QUEUE then
+            table.insert(queue, card)
+        end
+        return
+    end
+
+    self:_start_weapon_streak_card(t, card, false)
+end
+
+--- Compte un kill pour sa famille et renvoie l'indice du palier franchi.
+--- Les compteurs sont persistants : ils survivent aux kills des autres
+--- familles et ne repartent qu'à zéro sur chute du joueur ou Debug: Clear.
+function KH:_register_weapon_family_kill(family)
+    local definition = weapon_streak_definition(family)
+    if not definition then return nil end
+
+    local streaks = self._weapon_streaks
+    if not streaks then
+        streaks = {}
+        self._weapon_streaks = streaks
+    end
+
+    local streak = streaks[family]
+    if not streak then
+        streak = { count = 0, tier_index = 0 }
+        streaks[family] = streak
+    end
+    streak.count = streak.count + 1
+
+    -- Un seul palier peut tomber par kill, et jamais deux fois le même.
+    local next_tier = definition.tiers[streak.tier_index + 1]
+    if next_tier and streak.count >= next_tier.count then
+        streak.tier_index = streak.tier_index + 1
+        return streak.tier_index
+    end
+    return nil
+end
+
+--- Remise à zéro des séries d'arme : les compteurs repartent de zéro et toute
+--- médaille encore affichée ou en attente disparaît, car elle ne récompense
+--- plus une série vivante. Les annonces de boss et de Dozer restent intactes :
+--- elles saluent un kill déjà acquis, indépendant des séries.
+function KH:ResetWeaponStreaks()
+    self._weapon_streaks = {}
+    self._weapon_streak_card = nil
+
+    -- La file de médailles est vidée sur place : elle est propre aux séries et
+    -- ne contient jamais d'annonce de boss ou de Dozer.
+    local queue = self._weapon_streak_queue
+    if queue then
+        for index = #queue, 1, -1 do
+            queue[index] = nil
+        end
+    else
+        self._weapon_streak_queue = {}
+    end
 end
 
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
-function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind)
+function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family)
     if not self.settings or not self.settings.enable_killfeed then return end
 
     local dur = self.settings.buff_duration or 5
@@ -2031,6 +2367,15 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         self:_show_dozer_banner(t, false)
     elseif special_banner == "boss" then
         self:_show_boss_banner(t, false)
+    end
+
+    -- La médaille de palier vit dans le killfeed : elle ne dispute jamais le
+    -- bandeau supérieur à une cible prioritaire, les deux peuvent coexister.
+    local streak_tier_index = weapon_family
+        and self:_register_weapon_family_kill(weapon_family)
+        or nil
+    if streak_tier_index then
+        self:_show_weapon_streak_card(t, weapon_family, streak_tier_index, false)
     end
 
     -- Le score représente tous les points produits pendant une apparition
@@ -2216,11 +2561,35 @@ function KH:draw()
     end
 
     -- L'annonce spéciale masque brièvement le multikill, qui reprend ensuite
-    -- tant que sa propre fenêtre de trois secondes reste active.
+    -- tant que sa propre fenêtre de trois secondes reste active. À l'expiration,
+    -- l'annonce suivante de la file enchaîne immédiatement.
     local special_banner = self._special_kill_banner
     if special_banner and not special_banner.preview and special_banner.t_end <= t then
         self._special_kill_banner = nil
         special_banner = nil
+    end
+    if not special_banner then
+        local queue = self._banner_queue
+        if queue and #queue > 0 then
+            self:_start_special_banner(t, table.remove(queue, 1), false)
+            special_banner = self._special_kill_banner
+        end
+    end
+
+    -- La médaille de série suit le même cycle, sur son propre état : elle
+    -- expire seule et laisse la place au palier suivant s'il y en a un en
+    -- attente. La file n'est parcourue qu'à cette expiration.
+    local streak_card = self._weapon_streak_card
+    if streak_card and not streak_card.preview and streak_card.t_end <= t then
+        self._weapon_streak_card = nil
+        streak_card = nil
+    end
+    if not streak_card then
+        local queue = self._weapon_streak_queue
+        if queue and #queue > 0 then
+            self:_start_weapon_streak_card(t, table.remove(queue, 1), false)
+            streak_card = self._weapon_streak_card
+        end
     end
 
     -- Nettoyer le panneau pour redessiner
@@ -2456,7 +2825,8 @@ function KH:draw()
     local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
     local special_banner_active = special_banner ~= nil
     local banner_active = special_banner_active or combo_active
-    if s.enable_killfeed and (#self._kills > 0 or banner_active) then
+    local streak_card_active = streak_card ~= nil
+    if s.enable_killfeed and (#self._kills > 0 or banner_active or streak_card_active) then
         local killfeed_limit = killfeed_size(s)
         local visible_count = math.min(#self._kills, killfeed_limit)
         local item_h = clamp(size * 0.72 + 6, 28, 42)
@@ -2537,10 +2907,22 @@ function KH:draw()
         local banner_h = math.max(38, size + 8)
         local banner_feed_gap = BANNER_FRAME_EXTENSION
             + KILLFEED_FRAME_CLEARANCE
-        local block_h = banner_h + banner_feed_gap + (visible_count > 0 and item_h or 0)
+        -- Le bloc conserve l'emplacement historique du bandeau supérieur, puis
+        -- ajoute dynamiquement la médaille et la rangée des noms. Seule la
+        -- médaille ajoute un niveau : les noms remontent dès qu'elle expire,
+        -- sans laisser d'espace vide entre le bandeau et le killfeed.
+        local medal_h = streak_card_active and clamp(item_h + 6, 34, 46) or 0
+        local medal_top_gap = streak_card_active and WEAPON_MEDAL_TOP_GAP or 0
+        local medal_feed_gap = (streak_card_active and visible_count > 0)
+            and WEAPON_MEDAL_ROW_GAP
+            or 0
+        local block_h = banner_h + banner_feed_gap + medal_top_gap
+            + medal_h + medal_feed_gap
+            + (visible_count > 0 and item_h or 0)
         local preferred_top = cy + clamp(radius * 0.55, 70, 160)
         local block_top = math.max(8, math.min(preferred_top, h - block_h - 16))
-        local feed_y = block_top + banner_h + banner_feed_gap
+        local medal_y = block_top + banner_h + banner_feed_gap + medal_top_gap
+        local feed_y = medal_y + medal_h + medal_feed_gap
         local feed_color = HUD_ACCENT_COLOR
         local card_row_w = score_w + score_gap + feed_row_w
         local block_w = math.max(banner_w, card_row_w)
@@ -2604,7 +2986,7 @@ function KH:draw()
                 local bx = block_center - bw * 0.5
                 local by = block_top - (bh - banner_h) * 0.5
                 local color = special_banner_active
-                    and special_kill_banner_color(special_banner.kind)
+                    and (special_banner.color or HUD_ACCENT_COLOR)
                     or combo_color(combo.count)
 
                 draw_tactical_frame(
@@ -2650,7 +3032,7 @@ function KH:draw()
                 local text_w = math.max(1, bw - arrow_reserved * 2)
                 local font_size = clamp(size * 0.65, 17, 27)
                 local label = special_banner_active
-                    and special_kill_banner_label(special_banner.kind, special_banner.label_index)
+                    and special_banner.label
                     or combo_label(combo.count, combo.label_variant)
                 draw_glowing_text(
                     self._panel,
@@ -2664,6 +3046,69 @@ function KH:draw()
                     bh,
                     banner_alpha,
                     106
+                )
+            end
+        end
+
+        -- ── Médaille de palier : rangée propre au killfeed ──
+        -- Même largeur que le bandeau, mais hauteur de rangée de killfeed, sans
+        -- nom d'unité ni score. Elle pousse simplement les noms d'un cran.
+        if streak_card_active then
+            local remaining = streak_card.preview
+                and WEAPON_STREAK_CARD_DURATION
+                or streak_card.t_end - t
+            if remaining > 0 then
+                local intro = clamp((t - (streak_card.started_t or t)) / 0.15, 0, 1)
+                local fade_out = clamp(remaining / 0.3, 0, 1)
+                local medal_alpha = alpha * fade_out
+                local scale = 1 + (1 - intro) * 0.05
+                local mw = banner_w * scale
+                local mh = medal_h * scale
+                local mx = block_center - mw * 0.5
+                local my = medal_y - (mh - medal_h) * 0.5
+                local medal_color = streak_card.color or HUD_ACCENT_COLOR
+
+                draw_weapon_medal_frame(
+                    self._panel, mx, my, mw, mh, medal_color, medal_alpha, 101
+                )
+
+                local arrow_reserved = WEAPON_MEDAL_CHEVRON_MARGIN
+                    + WEAPON_MEDAL_CHEVRON_GROUP_W
+                    + WEAPON_MEDAL_CHEVRON_TEXT_GAP
+                local arrow_y = my + mh * 0.5
+                draw_chevrons(
+                    self._panel,
+                    mx + WEAPON_MEDAL_CHEVRON_MARGIN,
+                    arrow_y,
+                    1,
+                    medal_color,
+                    medal_alpha,
+                    104,
+                    WEAPON_MEDAL_CHEVRON_STYLE
+                )
+                draw_chevrons(
+                    self._panel,
+                    mx + mw - WEAPON_MEDAL_CHEVRON_MARGIN - WEAPON_MEDAL_CHEVRON_GROUP_W,
+                    arrow_y,
+                    -1,
+                    medal_color,
+                    medal_alpha,
+                    104,
+                    WEAPON_MEDAL_CHEVRON_STYLE
+                )
+
+                draw_glowing_text(
+                    self._panel,
+                    streak_card.label,
+                    tweak_data.menu.pd2_medium_font or "fonts/font_medium_mf",
+                    clamp(size * 0.48, 15, 21),
+                    medal_color,
+                    mx + arrow_reserved,
+                    my,
+                    math.max(1, mw - arrow_reserved * 2),
+                    mh,
+                    medal_alpha,
+                    104
                 )
             end
         end
@@ -2774,12 +3219,20 @@ end
 -- ═══════════════════════════════════════════════════
 -- Debug : simulation
 -- ═══════════════════════════════════════════════════
--- Cas de bandeau parcourus par appels successifs à Debug: Simulate :
---   4  : multikill partiel, 3 encoches allumées sur 5 ;
---   11 : banque saturée et repli dynamique « KILL CHAIN xN » ;
---   0  : annonce spéciale (chevrons décoratifs pleins).
+-- Cas parcourus par appels successifs à Debug: Simulate :
+--   multikill partiel, 3 encoches allumées sur 5 ;
+--   banque saturée et repli dynamique « KILL CHAIN xN » ;
+--   annonce de cible prioritaire (chevrons décoratifs pleins) ;
+--   médaille de série d'arme dans le killfeed, avec les noms sous celle-ci.
 -- Le premier appel montre directement l'exemple demandé, partiellement rempli.
-local DEBUG_BANNER_PREVIEW_COMBOS = { 4, 11, 0 }
+-- `combo` reste à 0 pour les cas d'annonce afin que seul le bandeau spécial soit
+-- visible ; l'aperçu ne compte aucun kill dans les séries réelles.
+local DEBUG_BANNER_PREVIEWS = {
+    { combo = 4 },
+    { combo = 11 },
+    { combo = 0, banner = "boss" },
+    { combo = 0, banner = "weapon_streak", family = "shotgun", tier_index = 2 },
+}
 
 function KH:DebugSimulate(n)
     self:DebugClear()
@@ -2928,19 +3381,22 @@ function KH:DebugSimulate(n)
     -- le multikill : chaque Debug: Simulate avance donc d'un cas de bandeau,
     -- et chacun reste affiché jusqu'au suivant ou jusqu'à Debug: Clear.
     self._debug_banner_preview_index = (self._debug_banner_preview_index
-        % #DEBUG_BANNER_PREVIEW_COMBOS) + 1
-    local preview_combo = DEBUG_BANNER_PREVIEW_COMBOS[self._debug_banner_preview_index]
+        % #DEBUG_BANNER_PREVIEWS) + 1
+    local preview = DEBUG_BANNER_PREVIEWS[self._debug_banner_preview_index]
 
     self._kill_combo = {
-        count = preview_combo,
+        count = preview.combo,
         last_t = t_now,
         updated_t = t_now,
         label_variant = 1,
         preview = true,
     }
     self._special_kill_banner = nil
-    if preview_combo < 2 then
+    self._banner_queue = {}
+    if preview.banner == "boss" then
         self:_show_boss_banner(t_now, true)
+    elseif preview.banner == "weapon_streak" then
+        self:_show_weapon_streak_card(t_now, preview.family, preview.tier_index, true)
     end
 end
 
@@ -2955,6 +3411,8 @@ function KH:DebugClear()
     self._killfeed_score_has_value = false
     self._kill_combo = { count = 0, last_t = nil, updated_t = nil }
     self._special_kill_banner = nil
+    self._banner_queue = {}
+    self:ResetWeaponStreaks()
     self._special_enemy_combos = {}
     if self._panel and alive(self._panel) then
         self._panel:clear()
@@ -2965,6 +3423,9 @@ end
 -- Hooks HUD : initialisation et mise à jour
 -- ═══════════════════════════════════════════════════
 Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
+    -- Un nouveau HUD correspond à une nouvelle partie : aucune série d'arme
+    -- de la partie précédente ne doit être conservée.
+    KH:ResetWeaponStreaks()
     KH:ensure_panel(true)
     KH:TryRegisterGameInfoBridge()
     log("[KyoHUD] Panneau HUD initialisé.")
