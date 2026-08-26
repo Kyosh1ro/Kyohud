@@ -42,6 +42,7 @@ KH._killfeed_score_has_value = false
 KH._special_kill_banner = nil
 KH._combo_label_variant_index = KH._combo_label_variant_index or 0
 KH._dozer_banner_index = KH._dozer_banner_index or 0
+KH._debug_banner_preview_index = KH._debug_banner_preview_index or 0
 KH._special_enemy_combos = {}
 KH._special_enemy_label_indices = KH._special_enemy_label_indices or {}
 KH._update_acc  = 0
@@ -611,11 +612,170 @@ local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer, styl
     end
 end
 
+-- ── Chevrons du bandeau ──
+-- Deux banques miroir encadrent le texte. Les annonces spéciales gardent trois
+-- flèches purement décoratives ; le multikill utilise une banque compacte et
+-- fixe de cinq encoches par côté, remplies d'un cran par kill supplémentaire.
+local SPECIAL_CHEVRON_SLOTS = 3
+local SPECIAL_CHEVRON_W = 7
+local SPECIAL_CHEVRON_H = 12
+local SPECIAL_CHEVRON_GAP = 3
+local SPECIAL_CHEVRON_GROUP_W = SPECIAL_CHEVRON_SLOTS * SPECIAL_CHEVRON_W
+    + (SPECIAL_CHEVRON_SLOTS - 1) * SPECIAL_CHEVRON_GAP
+local SPECIAL_CHEVRON_MARGIN = 16
+
+local MULTIKILL_CHEVRON_SLOTS = 5
+local MULTIKILL_CHEVRON_W = 6
+local MULTIKILL_CHEVRON_H = 12
+local MULTIKILL_CHEVRON_GAP = 2
+local MULTIKILL_CHEVRON_GROUP_W = MULTIKILL_CHEVRON_SLOTS * MULTIKILL_CHEVRON_W
+    + (MULTIKILL_CHEVRON_SLOTS - 1) * MULTIKILL_CHEVRON_GAP
+-- La banque multikill est plus large que les trois flèches décoratives : sa
+-- marge est réduite d'autant pour que les deux bandeaux réservent exactement la
+-- même place et que le texte reste centré, même à la largeur minimale.
+local MULTIKILL_CHEVRON_MARGIN = SPECIAL_CHEVRON_MARGIN
+    + SPECIAL_CHEVRON_GROUP_W
+    - MULTIKILL_CHEVRON_GROUP_W
+local BANNER_CHEVRON_TEXT_GAP = 5
+
+-- Dimensions paires et halo entier : les pointes restent sur la grille de
+-- pixels au lieu de tomber à 5,5 px ou dans une boîte mise à l'échelle.
+local MULTIKILL_CHEVRON_GLOW_W = MULTIKILL_CHEVRON_W + 2
+local MULTIKILL_CHEVRON_GLOW_H = MULTIKILL_CHEVRON_H + 2
+local MULTIKILL_CHEVRON_GLOW_DX = 1
+local MULTIKILL_CHEVRON_HOLE_INSET = 1
+local MULTIKILL_CHEVRON_OUTLINE_ALPHA = 0.26
+local MULTIKILL_CHEVRON_HOLE_ALPHA = 0.7
+local MULTIKILL_CHEVRON_GLOW_ALPHA = 0.18
+
+--- Sommets d'un chevron inscrit dans la boîte `w * h`, pointe vers l'intérieur.
+local function chevron_triangles(w, h, direction)
+    if direction > 0 then
+        return {
+            Vector3(0, 0, 0),
+            Vector3(0, h, 0),
+            Vector3(w, h * 0.5, 0),
+        }
+    end
+    return {
+        Vector3(w, 0, 0),
+        Vector3(w, h, 0),
+        Vector3(0, h * 0.5, 0),
+    }
+end
+
+--- Chevron intérieur simple. À cette taille, des coordonnées entières donnent
+--- un contour plus régulier que la réduction géométrique à base de racine.
+local function inset_chevron_triangles(w, h, direction, inset)
+    if direction > 0 then
+        return {
+            Vector3(inset, inset, 0),
+            Vector3(inset, h - inset, 0),
+            Vector3(w - inset, h * 0.5, 0),
+        }
+    end
+    return {
+        Vector3(w - inset, inset, 0),
+        Vector3(w - inset, h - inset, 0),
+        Vector3(inset, h * 0.5, 0),
+    }
+end
+
+-- Formes figées une seule fois : `KH:draw` n'alloue aucun point par encoche.
+local MULTIKILL_CHEVRON_SHAPES = {}
+for _, direction in ipairs({ 1, -1 }) do
+    MULTIKILL_CHEVRON_SHAPES[direction] = {
+        fill = chevron_triangles(MULTIKILL_CHEVRON_W, MULTIKILL_CHEVRON_H, direction),
+        glow = chevron_triangles(MULTIKILL_CHEVRON_GLOW_W, MULTIKILL_CHEVRON_GLOW_H, direction),
+        hole = inset_chevron_triangles(
+            MULTIKILL_CHEVRON_W,
+            MULTIKILL_CHEVRON_H,
+            direction,
+            MULTIKILL_CHEVRON_HOLE_INSET
+        ),
+    }
+end
+
+--- Nombre d'encoches allumées pour une série : x2 = 1/5 ... x6 et plus = 5/5.
+local function multikill_chevron_fill(count)
+    return clamp((tonumber(count) or 2) - 1, 1, MULTIKILL_CHEVRON_SLOTS)
+end
+
+--- Banque de progression multikill.
+--- `direction > 0` dessine le groupe gauche (encoches pointant vers le texte,
+--- la plus proche du texte étant la dernière) ; `direction < 0` son miroir.
+--- Le remplissage part donc du texte vers l'extérieur, symétriquement.
+local function draw_multikill_chevrons(panel, x, y, direction, color, alpha, layer, filled)
+    local shapes = MULTIKILL_CHEVRON_SHAPES[direction > 0 and 1 or -1]
+    local start_x = math.floor(x + 0.5)
+    local center_y = math.floor(y + 0.5)
+    local top = center_y - MULTIKILL_CHEVRON_H * 0.5
+    local glow_top = center_y - MULTIKILL_CHEVRON_GLOW_H * 0.5
+
+    for slot = 1, MULTIKILL_CHEVRON_SLOTS do
+        local arrow_x = start_x + (slot - 1) * (MULTIKILL_CHEVRON_W + MULTIKILL_CHEVRON_GAP)
+        -- `rank` = distance au texte, 1 pour l'encoche la plus proche.
+        local rank = direction > 0 and (MULTIKILL_CHEVRON_SLOTS - slot + 1) or slot
+
+        if rank <= filled then
+            -- Dégradé retenu vers l'extérieur : la progression reste lisible
+            -- sans que la banque saturée n'écrase le texte.
+            local prominence = 1 - (rank - 1) / (MULTIKILL_CHEVRON_SLOTS - 1)
+            local slot_alpha = alpha * (0.72 + 0.28 * prominence)
+
+            panel:polygon({
+                x = arrow_x - MULTIKILL_CHEVRON_GLOW_DX,
+                y = glow_top,
+                w = MULTIKILL_CHEVRON_GLOW_W,
+                h = MULTIKILL_CHEVRON_GLOW_H,
+                triangles = shapes.glow,
+                color = color,
+                alpha = slot_alpha * MULTIKILL_CHEVRON_GLOW_ALPHA,
+                layer = layer,
+            })
+            panel:polygon({
+                x = arrow_x,
+                y = top,
+                w = MULTIKILL_CHEVRON_W,
+                h = MULTIKILL_CHEVRON_H,
+                triangles = shapes.fill,
+                color = color,
+                alpha = slot_alpha,
+                layer = layer + 1,
+            })
+        else
+            -- Encoche libre : chevron évidé, assez discret pour ne pas être
+            -- confondu avec un cran acquis, assez net pour rester lisible.
+            panel:polygon({
+                x = arrow_x,
+                y = top,
+                w = MULTIKILL_CHEVRON_W,
+                h = MULTIKILL_CHEVRON_H,
+                triangles = shapes.fill,
+                color = color,
+                alpha = alpha * MULTIKILL_CHEVRON_OUTLINE_ALPHA,
+                layer = layer,
+            })
+            panel:polygon({
+                x = arrow_x,
+                y = top,
+                w = MULTIKILL_CHEVRON_W,
+                h = MULTIKILL_CHEVRON_H,
+                triangles = shapes.hole,
+                color = Color.black,
+                alpha = alpha * MULTIKILL_CHEVRON_HOLE_ALPHA,
+                layer = layer + 1,
+            })
+        end
+    end
+end
+
+-- Chevrons décoratifs pleins, réservés aux annonces spéciales (dozer, boss).
 local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
-    local count = 3
-    local arrow_w = style and style.arrow_w or 7
-    local arrow_h = style and style.arrow_h or 12
-    local gap = style and style.gap or 3
+    local count = SPECIAL_CHEVRON_SLOTS
+    local arrow_w = style and style.arrow_w or SPECIAL_CHEVRON_W
+    local arrow_h = style and style.arrow_h or SPECIAL_CHEVRON_H
+    local gap = style and style.gap or SPECIAL_CHEVRON_GAP
 
     for i = 0, count - 1 do
         local arrow_x = x + i * (arrow_w + gap)
@@ -2459,29 +2619,35 @@ function KH:draw()
                     BANNER_FRAME_STYLE
                 )
 
-                local arrow_group_w = 27
-                local arrow_margin = 16
-                draw_chevrons(
-                    self._panel,
-                    bx + arrow_margin,
-                    by + bh * 0.5,
-                    1,
-                    color,
-                    banner_alpha,
-                    106
-                )
-                draw_chevrons(
-                    self._panel,
-                    bx + bw - arrow_margin - arrow_group_w,
-                    by + bh * 0.5,
-                    -1,
-                    color,
-                    banner_alpha,
-                    106
-                )
+                -- Les deux banques réservent la même largeur, quel que soit le
+                -- bandeau : le texte reste centré et ne les chevauche jamais.
+                local arrow_group_w = special_banner_active
+                    and SPECIAL_CHEVRON_GROUP_W
+                    or MULTIKILL_CHEVRON_GROUP_W
+                local arrow_margin = special_banner_active
+                    and SPECIAL_CHEVRON_MARGIN
+                    or MULTIKILL_CHEVRON_MARGIN
+                local arrow_reserved = arrow_margin + arrow_group_w + BANNER_CHEVRON_TEXT_GAP
+                local arrow_y = by + bh * 0.5
+                local left_arrow_x = bx + arrow_margin
+                local right_arrow_x = bx + bw - arrow_margin - arrow_group_w
 
-                local text_x = bx + 48
-                local text_w = bw - 96
+                if special_banner_active then
+                    draw_chevrons(self._panel, left_arrow_x, arrow_y, 1, color, banner_alpha, 106)
+                    draw_chevrons(self._panel, right_arrow_x, arrow_y, -1, color, banner_alpha, 106)
+                else
+                    -- Un cran de plus par kill supplémentaire de la série.
+                    local filled = multikill_chevron_fill(combo.count)
+                    draw_multikill_chevrons(
+                        self._panel, left_arrow_x, arrow_y, 1, color, banner_alpha, 106, filled
+                    )
+                    draw_multikill_chevrons(
+                        self._panel, right_arrow_x, arrow_y, -1, color, banner_alpha, 106, filled
+                    )
+                end
+
+                local text_x = bx + arrow_reserved
+                local text_w = math.max(1, bw - arrow_reserved * 2)
                 local font_size = clamp(size * 0.65, 17, 27)
                 local label = special_banner_active
                     and special_kill_banner_label(special_banner.kind, special_banner.label_index)
@@ -2608,6 +2774,13 @@ end
 -- ═══════════════════════════════════════════════════
 -- Debug : simulation
 -- ═══════════════════════════════════════════════════
+-- Cas de bandeau parcourus par appels successifs à Debug: Simulate :
+--   4  : multikill partiel, 3 encoches allumées sur 5 ;
+--   11 : banque saturée et repli dynamique « KILL CHAIN xN » ;
+--   0  : annonce spéciale (chevrons décoratifs pleins).
+-- Le premier appel montre directement l'exemple demandé, partiellement rempli.
+local DEBUG_BANNER_PREVIEW_COMBOS = { 4, 11, 0 }
+
 function KH:DebugSimulate(n)
     self:DebugClear()
     self._debug_preview_active = true
@@ -2751,13 +2924,24 @@ function KH:DebugSimulate(n)
             self._killfeed_score_has_value = true
         end
     end
+    -- Une annonce spéciale d'aperçu ne s'éteint jamais et masquerait toujours
+    -- le multikill : chaque Debug: Simulate avance donc d'un cas de bandeau,
+    -- et chacun reste affiché jusqu'au suivant ou jusqu'à Debug: Clear.
+    self._debug_banner_preview_index = (self._debug_banner_preview_index
+        % #DEBUG_BANNER_PREVIEW_COMBOS) + 1
+    local preview_combo = DEBUG_BANNER_PREVIEW_COMBOS[self._debug_banner_preview_index]
+
     self._kill_combo = {
-        count = 11, -- Tester le format dynamique KILL CHAIN xN dans l'aperçu.
+        count = preview_combo,
         last_t = t_now,
         updated_t = t_now,
+        label_variant = 1,
         preview = true,
     }
-    self:_show_boss_banner(t_now, true)
+    self._special_kill_banner = nil
+    if preview_combo < 2 then
+        self:_show_boss_banner(t_now, true)
+    end
 end
 
 function KH:DebugClear()
