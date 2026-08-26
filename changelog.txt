@@ -1,3 +1,6 @@
+r81 (26.08.2026):
+- Multikill banners now fill mirrored chevrons with each additional kill.
+
 r80 (25.08.2026):
 - Buff frames now change color as they approach expiration, with warning and critical states.
 
