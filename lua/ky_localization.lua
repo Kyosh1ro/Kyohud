@@ -114,6 +114,25 @@ local function add_fallbacks(loc)
         ky_hud_sniper_scope_breaker  = "SCOPE BREAKER",
         ky_hud_sniper_longshot_denied = "LONGSHOT DENIED",
 
+        -- Paliers des séries par famille d'arme. Comme les autres libellés de
+        -- bandeau, ces médailles restent en anglais dans les deux langues.
+        ky_hud_streak_shotgun_5      = "SHOTGUN SPREE",
+        ky_hud_streak_shotgun_10     = "OPEN SEASON",
+        ky_hud_streak_shotgun_15     = "BUCK WILD",
+        ky_hud_streak_sniper_5       = "SNIPER SPREE",
+        ky_hud_streak_sniper_10      = "SHARPSHOOTER",
+        ky_hud_streak_sniper_15      = "BE THE BULLET",
+        ky_hud_streak_incendiary_3   = "BURN NOTICE",
+        ky_hud_streak_incendiary_6   = "INCINERATION",
+        ky_hud_streak_incendiary_10  = "HELLFIRE",
+        ky_hud_streak_melee_2        = "ONE-TWO",
+        ky_hud_streak_melee_3        = "BONE CRACKER",
+        ky_hud_streak_melee_4        = "PUMMEL",
+        ky_hud_streak_melee_5        = "WRECKING CREW",
+        ky_hud_streak_explosive_3    = "BOOM",
+        ky_hud_streak_explosive_5    = "DEMOLITION",
+        ky_hud_streak_explosive_8    = "BLAST ZONE",
+
         -- Sous-menu filtres
         ky_opt_buff_filter          = "Buff Filters",
         ky_opt_buff_filter_desc     = "Toggle buff categories and individual buffs",
