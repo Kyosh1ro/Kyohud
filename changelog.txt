@@ -1,3 +1,7 @@
+r82 (26.08.2026):
+- Weapon-family streaks now award tiered medals for shotguns, sniper rifles, incendiary kills, melee kills, and explosives.
+- Weapon medals use a dedicated full-width killfeed row while the score and latest eliminated-unit names remain visible below.
+
 r81 (26.08.2026):
 - Multikill banners now fill mirrored chevrons with each additional kill.
 
