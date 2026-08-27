@@ -17,6 +17,8 @@ local function HLOG(msg)
     pcall(function() log("[KyoHUD][Hooks] " .. tostring(msg)) end)
 end
 
+local DEFAULT_TEMPORARY_BUFF_DURATION = 5
+
 KH._unknown_temp_upgrades = KH._unknown_temp_upgrades or {}
 
 -- ═══════════════════════════════════════════════════
@@ -46,8 +48,8 @@ local function get_temp_duration(pm, upgrade)
         return tonumber(v2[2])
     end
 
-    -- Méthode 3 : durée par défaut des settings
-    return (KH.settings and KH.settings.buff_duration) or 5
+    -- Méthode 3 : durée de secours interne
+    return DEFAULT_TEMPORARY_BUFF_DURATION
 end
 
 local function get_temp_value(pm, category, upgrade)
@@ -122,7 +124,7 @@ if PlayerManager.disable_cooldown_upgrade then
                 duration = entry.cooldown_time - Application:time()
             end
         end)
-        duration = tonumber(duration) or ((KH.settings and KH.settings.buff_duration) or 5)
+        duration = tonumber(duration) or DEFAULT_TEMPORARY_BUFF_DURATION
 
         if KH.handle_buff_event then
             KH:handle_buff_event("activate", upgrade, { duration = duration }, "cooldown")

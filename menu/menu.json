@@ -62,7 +62,7 @@
       "value": "killfeed_size",
       "default_value": 3,
       "min": 1,
-      "max": 3,
+      "max": 5,
       "step": 1
     },
     {
@@ -111,18 +111,6 @@
     },
     {
       "type": "slider",
-      "id": "ky_buff_duration",
-      "title": "ky_opt_duration",
-      "description": "ky_opt_duration_desc",
-      "callback": "KY_SetDuration",
-      "value": "buff_duration",
-      "default_value": 5,
-      "min": 1,
-      "max": 10,
-      "step": 1
-    },
-    {
-      "type": "slider",
       "id": "ky_opacity",
       "title": "ky_opt_opacity",
       "description": "ky_opt_opacity_desc",
@@ -142,8 +130,8 @@
       "callback": "KY_SetIconSize",
       "value": "icon_size",
       "default_value": 32,
-      "min": 16,
-      "max": 64,
+      "min": 32,
+      "max": 40,
       "step": 1
     },
     {
