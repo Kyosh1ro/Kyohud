@@ -26,7 +26,6 @@ KH._defaults = {
     circle_radius   = 250,
     buff_position_x = 50,
     buff_position_y = 83,
-    buff_duration   = 5,
     opacity         = 0.9,
     icon_size       = 32,
 }
@@ -155,7 +154,9 @@ function KH.Load()
             else
                 KH.settings.buff_toggles = build_default_buff_toggles()
             end
-            if loaded_legacy_settings then
+            -- Réécrire une ancienne sauvegarde pour retirer l'option publique
+            -- `buff_duration`, désormais remplacée par des constantes internes.
+            if loaded_legacy_settings or data.buff_duration ~= nil then
                 KH.Save()
             end
         end
@@ -196,7 +197,7 @@ MenuCallbackHandler.KY_SetLanguage = function(self, item)
 end
 MenuCallbackHandler.KY_SetKillfeedSize = function(self, item)
     local value = math.floor(tonumber(item:value()) or KH._defaults.killfeed_size)
-    KH.settings.killfeed_size = math.max(1, math.min(3, value))
+    KH.settings.killfeed_size = math.max(1, math.min(5, value))
 
     if type(KH._kills) == "table" then
         while #KH._kills > KH.settings.killfeed_size do
@@ -210,7 +211,6 @@ MenuCallbackHandler.KY_ToggleBuffs    = make_toggle_cb("enable_buffs")
 MenuCallbackHandler.KY_SetRadius      = make_slider_cb("circle_radius", true)
 MenuCallbackHandler.KY_SetBuffPositionX = make_slider_cb("buff_position_x", true)
 MenuCallbackHandler.KY_SetBuffPositionY = make_slider_cb("buff_position_y", true)
-MenuCallbackHandler.KY_SetDuration    = make_slider_cb("buff_duration", true)
 MenuCallbackHandler.KY_SetOpacity     = function(self, item)
     local percent = math.floor(tonumber(item:value()) or (KH._defaults.opacity * 100))
     KH.settings.opacity = math.max(10, math.min(100, percent)) / 100

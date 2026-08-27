@@ -1,3 +1,8 @@
+r82 (27.08.2026):
+- The killfeed can now display up to five cards while preserving chronological order and adaptive horizontal spacing.
+- The icon-size slider now ranges from 32 to 40 pixels and keeps 32 pixels as its default.
+- The public Display Duration option has been removed; killfeed cards and unknown temporary durations use an internal five-second fallback.
+
 r81 (26.08.2026):
 - Multikill banners now fill mirrored chevrons with each additional kill.
 - Weapon-family streaks now award tiered medals for shotguns, sniper rifles, incendiary kills, melee kills, and explosives.
