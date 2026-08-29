@@ -51,7 +51,9 @@ KH._special_enemy_combos = {}
 KH._special_enemy_label_indices = KH._special_enemy_label_indices or {}
 KH._update_acc  = 0
 
-local MAX_KILLFEED_SIZE = 3
+local MAX_KILLFEED_SIZE = 5
+local DEFAULT_TEMPORARY_BUFF_DURATION = 5
+local KILLFEED_ENTRY_DURATION = 5
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
 local KILLFEED_FRAME_CLEARANCE = 1.5
@@ -1399,7 +1401,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
 
     local dur = tonumber(duration)
     if not persistent then
-        dur = dur or (self.settings.buff_duration or 5)
+        dur = dur or DEFAULT_TEMPORARY_BUFF_DURATION
     end
     local t = now()
     local definition = KH.BUFF_MAP and KH.BUFF_MAP[resolved_id]
@@ -2344,7 +2346,7 @@ end
 function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family)
     if not self.settings or not self.settings.enable_killfeed then return end
 
-    local dur = self.settings.buff_duration or 5
+    local dur = KILLFEED_ENTRY_DURATION
     local t = now()
     if contributes_to_combo ~= false then
         local combo = self._kill_combo or { count = 0 }
@@ -2379,7 +2381,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     end
 
     -- Le score représente tous les points produits pendant une apparition
-    -- continue du killfeed. Une carte retirée par la limite de 1 à 3 entrées
+    -- continue du killfeed. Une carte retirée par la limite de 1 à 5 entrées
     -- conserve donc ses points jusqu'à l'expiration de la dernière carte.
     if not has_active_killfeed_entry(self._kills, t) then
         self._killfeed_score_total = 0
@@ -2600,7 +2602,7 @@ function KH:draw()
     local cx = w * 0.5
     local cy = h * 0.5
     local radius    = clamp(s.circle_radius or 250, 100, 500)
-    local size      = clamp(s.icon_size or 32, 16, 64)
+    local size      = clamp(s.icon_size or 32, 32, 40)
     local alpha     = clamp(s.opacity or 0.9, 0.1, 1.0)
 
     -- ── Dessiner les buffs ──
@@ -3351,6 +3353,8 @@ function KH:DebugSimulate(n)
         { name = "Medic", score = 6, special_kind = "medic", special_count = 2, label_index = 1 },
         { name = "Captain Winters", score = 100, special_kind = "boss", special_count = 1, label_index = 1 },
         { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
+        { name = "Cloaker", score = 8, special_kind = "cloaker", special_count = 2, label_index = 1 },
+        { name = "Taser", score = 7, special_kind = "taser", special_count = 2, label_index = 1 },
     }
     t_now = now()
     self._killfeed_score_total = 0
