@@ -4,7 +4,6 @@ v1.0.0 (01.09.2026):
 - Complete feature set: local-player killfeed, kill-streak and special-enemy announcements, weapon-family medals, combat score with total and best streak, and a horizontal buff row with adaptive frames.
 - Full options menu in English and French, with configurable positions, icon size, opacity, and per-category or per-buff filters.
 - Automatic in-game updates through SuperBLT, served by the generated `latest.zip` and `meta.json` release assets.
-- Redistribution terms and third-party source lineage are now documented in `README.md` and `CREDITS.md`.
 - Earlier `rN` entries below are kept as the historical record of pre-1.0 development.
 
 r84 (01.09.2026):
