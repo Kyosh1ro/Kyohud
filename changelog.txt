@@ -1,3 +1,8 @@
+r84 (01.09.2026):
+- A persistent heist score widget now tracks the total combat score, including civilian penalties, and the best continuous scoring streak after killfeed cards expire.
+- The score widget can be toggled, its Best Streak line can be hidden separately, and its horizontal and vertical positions are configurable.
+- Combat-score inspiration and source lineage now credit Joy's Score Counter while documenting KyoHUD's independent detection, attribution, rendering, and state management.
+
 r83 (01.09.2026):
 - Buffs, killfeed cards, combat score, banners, combos, and weapon streaks now reset cleanly between heists and after previews.
 - Buff detection is more resilient without VanillaHUD Plus, while passive health-regeneration updates avoid redundant work and use the local minion count reliably.
