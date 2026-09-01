@@ -38,9 +38,9 @@ KH._kills       = {}           -- { {name, score?, score_text?, start_t, t_end?}
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
 KH._killfeed_score_total = 0     -- score de la rafale de killfeed en cours
 KH._killfeed_score_has_value = false
-KH._heist_score_total = 0        -- somme de tous les évènements scorés du braquage
-KH._heist_score_best_streak = 0  -- plus haut total de rafale atteint dans le braquage
-KH._heist_score_recorded = false -- au moins un évènement scoré depuis le début
+KH._heist_score_total = 0
+KH._heist_score_best_streak = 0
+KH._heist_score_recorded = false
 KH._special_kill_banner = nil
 KH._banner_queue = {}          -- FIFO bornée : annonces en attente d'affichage
 KH._weapon_streaks = {}        -- { [family] = { count, tier_index } }
@@ -396,16 +396,12 @@ local function localized_text(id, fallback)
     return value
 end
 
--- Les deux libellés du widget de score sont fixes pendant toute la session.
--- `KH:draw` reconstruit le panneau vingt fois par seconde : les résoudre une
--- seule fois évite autant d'appels à `managers.localization`. Tant que le
--- gestionnaire n'existe pas, le repli est renvoyé sans être mémorisé.
 local heist_score_labels_cache = nil
 local function heist_score_labels()
     if heist_score_labels_cache then return heist_score_labels_cache end
 
     local labels = {
-        total       = localized_text("ky_hud_score_total", "TOTAL SCORE"),
+        total = localized_text("ky_hud_score_total", "TOTAL SCORE"),
         best_streak = localized_text("ky_hud_score_best_streak", "BEST STREAK"),
     }
     if managers and managers.localization then
@@ -2402,8 +2398,6 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._kills = {}
     self._killfeed_score_total = 0
     self._killfeed_score_has_value = false
-    -- Le total et le record appartiennent au braquage : seul ce reset les
-    -- efface, jamais l'expiration d'une rafale.
     self._heist_score_total = 0
     self._heist_score_best_streak = 0
     self._heist_score_recorded = false
@@ -2420,22 +2414,13 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     end
 end
 
---- Enregistre un évènement scoré dans l'état du braquage. `score` a déjà été
---- ajouté à la rafale courante (`_killfeed_score_total`) par l'appelant.
----
---- Le total cumule tous les évènements scorés du braquage, pénalités civiles
---- comprises : il peut donc descendre. Le record de rafale ne suit que le
---- maximum atteint par une rafale continue ; une pénalité qui fait redescendre
---- la rafale active ne l'abaisse jamais. Une rafale part de zéro, le record ne
---- peut donc pas être négatif — un braquage qui n'aurait produit que des
---- pénalités affiche `0`.
 function KH:_record_heist_score(score)
     self._heist_score_recorded = true
     self._heist_score_total = (self._heist_score_total or 0) + score
 
-    local burst = self._killfeed_score_total or 0
-    if burst > (self._heist_score_best_streak or 0) then
-        self._heist_score_best_streak = burst
+    local streak = self._killfeed_score_total or 0
+    if streak > (self._heist_score_best_streak or 0) then
+        self._heist_score_best_streak = streak
     end
 end
 
@@ -2627,6 +2612,124 @@ local function compare_buff_arrival(a, b)
     local ob = b.order_t or b.start_t or 0
     if oa ~= ob then return oa < ob end
     return a.id < b.id
+end
+
+local HEIST_SCORE_LABEL_COLOR = Color(0.86, 0.96, 1)
+local HEIST_SCORE_EDGE_MARGIN = 6
+local HEIST_SCORE_ROW_GAP = 2
+
+local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha, settings)
+    local labels = heist_score_labels()
+    local total = hud._heist_score_total or 0
+    local best_streak = hud._heist_score_best_streak or 0
+    local show_best_streak = settings.show_best_streak ~= false
+    local total_text = format_kill_score(total)
+    local best_streak_text = format_kill_score(best_streak)
+    local font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
+    local label_font_size = clamp(size * 0.34, 11, 14)
+    local value_font_size = clamp(size * 0.46, 14, 19)
+    local row_h = math.ceil(value_font_size + 6)
+    local row_count = show_best_streak and 2 or 1
+    local pad_x = clamp(size * 0.3, 9, 14)
+    local pad_y = 4
+    local column_gap = clamp(size * 0.4, 10, 18)
+    local label_w = approximate_text_width(labels.total, label_font_size)
+    local value_w = approximate_text_width(total_text, value_font_size)
+
+    if show_best_streak then
+        label_w = math.max(label_w, approximate_text_width(labels.best_streak, label_font_size))
+        value_w = math.max(value_w, approximate_text_width(best_streak_text, value_font_size))
+    end
+
+    local block_w = math.min(
+        math.ceil(label_w + column_gap + value_w + pad_x * 2),
+        math.max(1, panel_w - HEIST_SCORE_EDGE_MARGIN * 2)
+    )
+    local block_h = math.ceil(
+        row_h * row_count + HEIST_SCORE_ROW_GAP * (row_count - 1) + pad_y * 2
+    )
+    local anchor_x = panel_w * clamp(tonumber(settings.score_position_x) or 100, 0, 100) / 100
+    local anchor_y = panel_h * clamp(tonumber(settings.score_position_y) or 75, 0, 100) / 100
+    local x = clamp(
+        anchor_x - block_w * 0.5,
+        HEIST_SCORE_EDGE_MARGIN,
+        math.max(HEIST_SCORE_EDGE_MARGIN, panel_w - HEIST_SCORE_EDGE_MARGIN - block_w)
+    )
+    local y = clamp(
+        anchor_y - block_h * 0.5,
+        HEIST_SCORE_EDGE_MARGIN,
+        math.max(HEIST_SCORE_EDGE_MARGIN, panel_h - HEIST_SCORE_EDGE_MARGIN - block_h)
+    )
+    local total_color = total < 0
+        and KILLFEED_SCORE_PENALTY_COLOR
+        or KILLFEED_SCORE_COLOR
+
+    draw_killfeed_card_frame(panel, x, y, block_w, block_h, total_color, alpha, 101)
+
+    local label_x = x + pad_x
+    local value_x = math.max(label_x + label_w, x + block_w - pad_x - value_w)
+    local total_row_y = y + pad_y
+
+    panel:text({
+        text = labels.total,
+        font = font,
+        font_size = label_font_size,
+        color = HEIST_SCORE_LABEL_COLOR,
+        align = "left",
+        vertical = "center",
+        x = label_x,
+        y = total_row_y,
+        w = label_w,
+        h = row_h,
+        layer = 103,
+        alpha = alpha * 0.85,
+    })
+    panel:text({
+        text = total_text,
+        font = font,
+        font_size = value_font_size,
+        color = total_color,
+        align = "right",
+        vertical = "center",
+        x = value_x,
+        y = total_row_y,
+        w = value_w,
+        h = row_h,
+        layer = 103,
+        alpha = alpha,
+    })
+
+    if show_best_streak then
+        local best_row_y = total_row_y + row_h + HEIST_SCORE_ROW_GAP
+        panel:text({
+            text = labels.best_streak,
+            font = font,
+            font_size = label_font_size,
+            color = HEIST_SCORE_LABEL_COLOR,
+            align = "left",
+            vertical = "center",
+            x = label_x,
+            y = best_row_y,
+            w = label_w,
+            h = row_h,
+            layer = 103,
+            alpha = alpha * 0.7,
+        })
+        panel:text({
+            text = best_streak_text,
+            font = font,
+            font_size = value_font_size,
+            color = KILLFEED_SCORE_COLOR,
+            align = "right",
+            vertical = "center",
+            x = value_x,
+            y = best_row_y,
+            w = value_w,
+            h = row_h,
+            layer = 103,
+            alpha = alpha * 0.85,
+        })
+    end
 end
 
 -- ═══════════════════════════════════════════════════
@@ -3449,12 +3552,8 @@ function KH:draw()
         end
     end
 
-    -- ── Widget de score du braquage ──
-    -- Bloc autonome, hors du bloc du killfeed : ses deux valeurs sont à
-    -- l'échelle du braquage, il reste donc dessiné à l'identique lorsque plus
-    -- aucune carte n'est visible. `enable_killfeed` reste l'interrupteur
-    -- maître, et rien n'est dessiné tant qu'aucun évènement scoré n'a eu lieu.
-    if s.enable_killfeed and self._heist_score_recorded then
+    if s.enable_killfeed and s.show_total_score ~= false
+            and self._heist_score_recorded then
         draw_heist_score_widget(self, self._panel, w, h, size, alpha, s)
     end
 end
@@ -3637,9 +3736,6 @@ function KH:DebugSimulate(n)
             self:_record_heist_score(demo.score)
         end
     end
-    -- Le score de rafale reste dans le killfeed. Le widget latéral montre un
-    -- total de braquage et un meilleur streak volontairement distincts.
-    self._heist_score_recorded = true
     self._heist_score_total = (self._heist_score_total or 0) + 137
     self._heist_score_best_streak = (self._killfeed_score_total or 0) + 50
     -- Une annonce spéciale d'aperçu ne s'éteint jamais et masquerait toujours

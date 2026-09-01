@@ -35,6 +35,25 @@
     },
     {
       "type": "toggle",
+      "id": "ky_show_total_score",
+      "title": "ky_opt_show_total_score",
+      "description": "ky_opt_show_total_score_desc",
+      "callback": "KY_ToggleTotalScore",
+      "value": "show_total_score",
+      "default_value": true
+    },
+    {
+      "type": "toggle",
+      "id": "ky_show_best_streak",
+      "title": "ky_opt_show_best_streak",
+      "description": "ky_opt_show_best_streak_desc",
+      "callback": "KY_ToggleBestStreak",
+      "value": "show_best_streak",
+      "enabled_by": "show_total_score",
+      "default_value": true
+    },
+    {
+      "type": "toggle",
       "id": "ky_enable_buffs",
       "title": "ky_opt_enable_buffs",
       "description": "ky_opt_enable_buffs_desc",
