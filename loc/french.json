@@ -16,7 +16,7 @@
   "ky_opt_buffs_menu": "Menu Buffs",
   "ky_opt_buffs_menu_desc": "Choisir les catégories et les buffs individuels à afficher",
   "ky_opt_radius": "Décalage vertical du killfeed",
-  "ky_opt_radius_desc": "Distance verticale du killfeed depuis le viseur (100-500)",
+  "ky_opt_radius_desc": "Distance verticale du killfeed depuis le viseur (128-291). Par défaut : 250",
   "ky_opt_buff_position_x": "Position X des buffs (%)",
   "ky_opt_buff_position_x_desc": "Centre horizontal de la rangée (0-100 %). Par défaut : 50 %",
   "ky_opt_buff_position_y": "Position Y des buffs (%)",
@@ -27,10 +27,10 @@
   "ky_opt_icon_size_desc": "Taille des icônes de buff et kill (32-40 pixels). Par défaut : 32",
   "ky_opt_reset": "Réinitialiser par défaut",
   "ky_opt_reset_desc": "Remettre tous les paramètres à leurs valeurs par défaut",
-  "ky_opt_debug_sim": "Debug : Simuler buffs et kills",
-  "ky_opt_debug_sim_desc": "Simule les buffs actifs, les cadres de kills spéciaux et les bandeaux de cibles prioritaires",
-  "ky_opt_debug_clear": "Debug : Tout effacer",
-  "ky_opt_debug_clear_desc": "Supprime les buffs et kills actifs ; le deck d'atouts équipé reste visible",
+  "ky_opt_debug_sim": "Prévisualiser buffs et kills",
+  "ky_opt_debug_sim_desc": "Prévisualise les buffs actifs, les cadres de kills spéciaux et les bandeaux de cibles prioritaires",
+  "ky_opt_debug_clear": "Effacer l'aperçu",
+  "ky_opt_debug_clear_desc": "Supprime les buffs et kills de l'aperçu ; le deck d'atouts équipé reste visible",
 
   "ky_hud_combo_2": "TIR GROUPÉ",
   "ky_hud_combo_2_2": "DOUBLE IMPACT",
@@ -102,8 +102,6 @@
   "ky_hud_streak_explosive_5": "DEMOLITION",
   "ky_hud_streak_explosive_8": "BLAST ZONE",
 
-  "ky_opt_buff_filter": "Filtres de buffs",
-  "ky_opt_buff_filter_desc": "Activer/désactiver les catégories et buffs individuels",
 
   "ky_opt_cat_mastermind": "Cerveau",
   "ky_opt_cat_mastermind_desc": "Afficher/masquer tous les buffs du Cerveau",
