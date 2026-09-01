@@ -1,3 +1,12 @@
+v1.0.0 (01.09.2026):
+- First stable public release of KyoHUD - Killfeed & Combat Score.
+- Versioning moves from internal revisions (rN) to semantic versions (vN.N.N); this release contains the same mod as r84.
+- Complete feature set: local-player killfeed, kill-streak and special-enemy announcements, weapon-family medals, combat score with total and best streak, and a horizontal buff row with adaptive frames.
+- Full options menu in English and French, with configurable positions, icon size, opacity, and per-category or per-buff filters.
+- Automatic in-game updates through SuperBLT, served by the generated `latest.zip` and `meta.json` release assets.
+- Redistribution terms and third-party source lineage are now documented in `README.md` and `CREDITS.md`.
+- Earlier `rN` entries below are kept as the historical record of pre-1.0 development.
+
 r84 (01.09.2026):
 - A persistent heist score widget now tracks the total combat score, including civilian penalties, and the best continuous scoring streak after killfeed cards expire.
 - The score widget can be toggled, its Best Streak line can be hidden separately, and its horizontal and vertical positions are configurable.

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to rebuild (for example, r76)
+        description: Existing release tag to rebuild (for example, v1.0.0)
         required: true
         type: string
 
@@ -32,10 +32,21 @@ jobs:
       - name: Validate tag and mod version
         shell: pwsh
         run: |
-          $mod = Get-Content -LiteralPath .\mod.txt -Raw | ConvertFrom-Json
-          $expectedTag = "r$($mod.version)"
+          $number = '(?:0|[1-9][0-9]*)'
+          $semver = "\A$number\.$number\.$number\z"
+          $tagPattern = "\Av$number\.$number\.$number\z"
 
-          if ($env:RELEASE_TAG -ne $expectedTag) {
+          if ($env:RELEASE_TAG -cnotmatch $tagPattern) {
+              throw "Release tag '$env:RELEASE_TAG' is not a semantic version tag. Expected the exact form 'vMAJOR.MINOR.PATCH', for example 'v1.0.0'."
+          }
+
+          $mod = Get-Content -LiteralPath .\mod.txt -Raw | ConvertFrom-Json
+          if ($mod.version -cnotmatch $semver) {
+              throw "mod.txt version '$($mod.version)' is not a semantic version. Expected the exact form 'MAJOR.MINOR.PATCH', for example '1.0.0'."
+          }
+
+          $expectedTag = "v$($mod.version)"
+          if ($env:RELEASE_TAG -cne $expectedTag) {
               throw "Release tag '$env:RELEASE_TAG' does not match mod.txt version '$($mod.version)'. Expected '$expectedTag'."
           }
 
@@ -62,7 +73,7 @@ jobs:
 
           foreach ($file in (git ls-files)) {
               $normalized = $file.Replace("\", "/")
-              if ($normalized.StartsWith(".github/") -or $excludedFiles -contains $normalized) {
+              if ($normalized.StartsWith(".github/") -or $normalized.StartsWith("docs/") -or $excludedFiles -contains $normalized) {
                   continue
               }
 
