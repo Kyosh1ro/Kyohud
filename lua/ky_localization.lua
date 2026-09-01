@@ -1,6 +1,4 @@
 -- ky_localization.lua — Chargement des traductions + fallbacks
--- KyoHUD v1.1.1
-
 local MOD_NAME = "KyoHUD"
 
 -- IMPORTANT : capturer ModPath immédiatement à l'exécution du fichier,
@@ -42,7 +40,7 @@ local function add_fallbacks(loc)
         ky_opt_buffs_menu           = "Buffs Menu",
         ky_opt_buffs_menu_desc      = "Choose which buff categories and individual buffs are displayed",
         ky_opt_radius               = "Killfeed Vertical Offset",
-        ky_opt_radius_desc          = "Vertical distance of the killfeed from the crosshair (100-500)",
+        ky_opt_radius_desc          = "Vertical distance of the killfeed from the crosshair (128-291). Default: 250",
         ky_opt_buff_position_x      = "Buff Position X (%)",
         ky_opt_buff_position_x_desc = "Horizontal center of the buff row (0-100%). Default: 50%",
         ky_opt_buff_position_y      = "Buff Position Y (%)",
@@ -53,10 +51,10 @@ local function add_fallbacks(loc)
         ky_opt_icon_size_desc       = "Size of buff/kill icons in pixels (32-40). Default: 32",
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
-        ky_opt_debug_sim            = "Debug: Simulate",
-        ky_opt_debug_sim_desc       = "Simulate active buffs, special-enemy kill cards and priority-target banners",
-        ky_opt_debug_clear          = "Debug: Clear",
-        ky_opt_debug_clear_desc     = "Remove active buffs and kills; the equipped perk deck remains visible",
+        ky_opt_debug_sim            = "Preview Buffs & Kills",
+        ky_opt_debug_sim_desc       = "Preview active buffs, special-enemy kill cards and priority-target banners",
+        ky_opt_debug_clear          = "Clear Preview",
+        ky_opt_debug_clear_desc     = "Remove preview buffs and kills; the equipped perk deck remains visible",
 
         -- Bandeau des séries de kills
         ky_hud_combo_2     = "CLEAN PAIR",
@@ -130,10 +128,6 @@ local function add_fallbacks(loc)
         ky_hud_streak_explosive_3    = "BOOM",
         ky_hud_streak_explosive_5    = "DEMOLITION",
         ky_hud_streak_explosive_8    = "BLAST ZONE",
-
-        -- Sous-menu filtres
-        ky_opt_buff_filter          = "Buff Filters",
-        ky_opt_buff_filter_desc     = "Toggle buff categories and individual buffs",
 
         -- Catégories
         ky_opt_cat_mastermind           = "Mastermind",
