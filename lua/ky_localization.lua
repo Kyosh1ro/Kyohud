@@ -16,8 +16,6 @@ local function logi(msg)
     pcall(function() log("[" .. MOD_NAME .. "][Loc] " .. tostring(msg)) end)
 end
 
-logi("ModPath capturé: " .. tostring(MY_MOD_PATH))
-
 -- Fallbacks intégrés pour garantir aucun "ERROR:" dans les menus
 local function add_fallbacks(loc)
     loc:add_localized_strings({

@@ -3681,5 +3681,3 @@ Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
         KH:draw()
     end
 end)
-
-log("[KyoHUD] ky_buffhud.lua chargé.")
