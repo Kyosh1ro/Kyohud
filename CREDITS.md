@@ -27,6 +27,14 @@ https://modworkshop.net/mod/25629
 
 When VanillaHUD Plus exposes its optional `managers.gameinfo` interface, KyoHUD can use that interface to enrich buff detection. KyoHUD continues to provide its own native hooks and remains usable without VanillaHUD Plus.
 
+## Joy's Score Counter
+
+KyoHUD's combat-score concept and initial unit score values were inspired by **Joy's Score Counter** by **Offyerrocker**, whose scoring rubric is based on Joy's in-game scoring voice lines:
+
+https://modworkshop.net/mod/24730
+
+KyoHUD does not include Joy's Score Counter and does not reuse its kill-detection, popup, high-score, menu, or persistence implementation. KyoHUD independently handles local-player attribution, host/client kill detection, civilian penalties, deduplication, killfeed rendering, combat-state lifetime, and its later scoring fallbacks and extensions.
+
 ## KyoHUD
 
-KyoHUD's horizontal HUD layout, tactical frames, killfeed, combat scoring, kill-streak announcements, weapon-family medals, settings, localization, state management, and release tooling are implemented specifically for KyoHUD by **Kyosh1ro** and its contributors.
+KyoHUD's horizontal HUD layout, tactical frames, killfeed, combat-score implementation, kill-streak announcements, weapon-family medals, settings, localization, state management, and release tooling are implemented specifically for KyoHUD by **Kyosh1ro** and its contributors.

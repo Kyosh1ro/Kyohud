@@ -27,6 +27,10 @@ KH._defaults = {
     circle_radius   = 250,
     buff_position_x = 50,
     buff_position_y = 83,
+    -- Widget de score de combat : même convention que la rangée de buffs, un
+    -- pourcentage du panneau interprété comme le centre du bloc.
+    score_position_x = 100,
+    score_position_y = 75,
     opacity         = 0.9,
     icon_size       = 32,
 }
@@ -223,6 +227,8 @@ MenuCallbackHandler.KY_ToggleBuffs    = make_toggle_cb("enable_buffs")
 MenuCallbackHandler.KY_SetRadius      = make_slider_cb("circle_radius", true)
 MenuCallbackHandler.KY_SetBuffPositionX = make_slider_cb("buff_position_x", true)
 MenuCallbackHandler.KY_SetBuffPositionY = make_slider_cb("buff_position_y", true)
+MenuCallbackHandler.KY_SetScorePositionX = make_slider_cb("score_position_x", true)
+MenuCallbackHandler.KY_SetScorePositionY = make_slider_cb("score_position_y", true)
 MenuCallbackHandler.KY_SetOpacity     = function(self, item)
     local percent = math.floor(tonumber(item:value()) or (KH._defaults.opacity * 100))
     KH.settings.opacity = math.max(10, math.min(100, percent)) / 100
