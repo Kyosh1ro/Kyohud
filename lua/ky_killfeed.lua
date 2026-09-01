@@ -347,10 +347,6 @@ end -- fin de la garde _killscore_catalog_loaded
 -- Hooks de détection des kills (contextuels)
 -- ═══════════════════════════════════════════════════
 
-local function HLOG(msg)
-    pcall(function() log("[KyoHUD][KillFeed] " .. tostring(msg)) end)
-end
-
 -- Table de travail unique : la cause du kill n'est lue que le temps de
 -- l'attribution, sans allouer une table par mort.
 local ATTACK_INFO = { variant = nil, weapon_unit = nil, weapon_id = nil }
@@ -391,8 +387,6 @@ if RequiredScript == "lib/managers/playermanager" then
         )
     end)
 
-    HLOG("Hook PlayerManager:on_killshot() installé pour le killfeed client.")
-
 elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
     Hooks:PostHook(CopDamage, "die", "KH_OnEnemyDie", function(self, attack_data)
         if not attack_data then return end
@@ -419,8 +413,6 @@ elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
             id_ok and weapon_id or nil
         ))
     end)
-
-    HLOG("Hook CopDamage:die() installé pour le killfeed.")
 end
 -- Lorsque ce fichier est chargé par dofile depuis ky_civilian_killfeed.lua
 -- (contexte CivilianDamage), aucune branche RequiredScript ne correspond :

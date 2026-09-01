@@ -161,5 +161,3 @@ end
 
 -- Le killfeed (hook CopDamage:die) vit dans ky_killfeed.lua, accroché à
 -- lib/units/enemies/cop/copdamage : CopDamage n'existe pas encore ici.
-
-HLOG("ky_hooks.lua chargé — hooks buffs actifs.")
