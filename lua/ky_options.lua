@@ -7,6 +7,13 @@ local KH = kyohud
 local MY_MOD_PATH = ModPath
 local KILLFEED_OFFSET_MIN = 128
 local KILLFEED_OFFSET_MAX = 291
+local best_streak_menu_item = nil
+
+local function update_best_streak_menu_enabled()
+    if best_streak_menu_item and best_streak_menu_item.set_enabled then
+        best_streak_menu_item:set_enabled(KH.settings.show_total_score ~= false)
+    end
+end
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
@@ -27,6 +34,10 @@ KH._defaults = {
     circle_radius   = 250,
     buff_position_x = 50,
     buff_position_y = 83,
+    score_position_x = 100,
+    score_position_y = 75,
+    show_total_score = true,
+    show_best_streak = true,
     opacity         = 0.9,
     icon_size       = 32,
 }
@@ -181,6 +192,7 @@ function KH.ResetDefaults()
     for k, v in pairs(KH._default_categories) do KH.settings.buff_categories[k] = v end
     KH.settings.buff_toggles = build_default_buff_toggles()
     KH.Save()
+    update_best_streak_menu_enabled()
     if KH.RefreshHUD then KH:RefreshHUD() end
 end
 
@@ -202,6 +214,12 @@ local function make_slider_cb(key, is_int)
 end
 
 MenuCallbackHandler.KY_ToggleKillfeed = make_toggle_cb("enable_killfeed")
+MenuCallbackHandler.KY_ToggleTotalScore = function(self, item)
+    KH.settings.show_total_score = (item:value() == "on")
+    update_best_streak_menu_enabled()
+    KH.Save(); if KH.RefreshHUD then KH:RefreshHUD() end
+end
+MenuCallbackHandler.KY_ToggleBestStreak = make_toggle_cb("show_best_streak")
 MenuCallbackHandler.KY_SetLanguage = function(self, item)
     local value = math.floor(tonumber(item:value()) or KH._defaults.language)
     KH.settings.language = math.max(1, math.min(3, value))
@@ -223,6 +241,8 @@ MenuCallbackHandler.KY_ToggleBuffs    = make_toggle_cb("enable_buffs")
 MenuCallbackHandler.KY_SetRadius      = make_slider_cb("circle_radius", true)
 MenuCallbackHandler.KY_SetBuffPositionX = make_slider_cb("buff_position_x", true)
 MenuCallbackHandler.KY_SetBuffPositionY = make_slider_cb("buff_position_y", true)
+MenuCallbackHandler.KY_SetScorePositionX = make_slider_cb("score_position_x", true)
+MenuCallbackHandler.KY_SetScorePositionY = make_slider_cb("score_position_y", true)
 MenuCallbackHandler.KY_SetOpacity     = function(self, item)
     local percent = math.floor(tonumber(item:value()) or (KH._defaults.opacity * 100))
     KH.settings.opacity = math.max(10, math.min(100, percent)) / 100
@@ -319,11 +339,15 @@ local function populate_json_menu(definition)
                 menu_id = definition.menu_id, priority = priority,
             })
         elseif item_type == "toggle" then
-            MenuHelper:AddToggle({
+            local created_item = MenuHelper:AddToggle({
                 id = item.id, title = item.title, desc = item.description,
                 callback = item.callback, value = value,
+                disabled = item.enabled_by and KH.settings[item.enabled_by] == false,
                 menu_id = definition.menu_id, priority = priority,
             })
+            if item.id == "ky_show_best_streak" then
+                best_streak_menu_item = created_item
+            end
         elseif item_type == "slider" then
             MenuHelper:AddSlider({
                 id = item.id, title = item.title, desc = item.description,
@@ -348,6 +372,7 @@ local function populate_json_menu(definition)
             log("[KyoHUD] Type d'élément de menu JSON inconnu: " .. tostring(item_type))
         end
     end
+    update_best_streak_menu_enabled()
 end
 
 -- ── HOOK 1 : Setup ──
