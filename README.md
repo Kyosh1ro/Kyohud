@@ -24,6 +24,8 @@ Open **Options > Mod Options > KyoHUD - Killfeed & Combat Score** to customize t
 
 ## Credits
 
+KyoHUD's combat-score concept and initial unit score values were inspired by **Joy's Score Counter** by **Offyerrocker**, itself based on Joy's in-game scoring voice lines. KyoHUD uses its own kill detection, attribution, rendering, and state management.
+
 KyoHUD's buff catalog and icon descriptor conventions are adapted from **HUDList** and **GameInfoManager** by **NN / pjal3urb (Thomas G. Hall)**, and from the expanded implementation maintained in **VanillaHUD Plus** by **Test1, LT71/Bunnie, Kamikaze94, and BangL**.
 
 VanillaHUD Plus support is optional; KyoHUD keeps its own local catalog and does not bundle HUDList or GameInfoManager. See [CREDITS.md](CREDITS.md) for the full source lineage and links.
