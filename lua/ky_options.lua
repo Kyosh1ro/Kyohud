@@ -1,11 +1,12 @@
 -- ky_options.lua — Menu BLT + sauvegarde/chargement des paramètres
--- KyoHUD v1.5.0
 -- Structure fixe en JSON ; UN SEUL BuildMenu, sous-menus par deep_clone
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
 local KH = kyohud
 local MY_MOD_PATH = ModPath
+local KILLFEED_OFFSET_MIN = 128
+local KILLFEED_OFFSET_MAX = 291
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
@@ -80,11 +81,10 @@ for _, profile in ipairs(HUD_DEFAULT_LAYOUTS) do
     end
 end
 
-KH._default_categories = {
-    mastermind = true, enforcer = true, technician = true,
-    ghost = true, fugitive = true, perk = true, debuff = true,
-    team = true, player_action = true, gage = true, ai = true,
-}
+KH._default_categories = {}
+for category_id in pairs(KH.BUFF_CATEGORIES or {}) do
+    KH._default_categories[category_id] = true
+end
 
 local function build_default_buff_toggles()
     if KH.BuildDefaultBuffToggles then
@@ -154,9 +154,21 @@ function KH.Load()
             else
                 KH.settings.buff_toggles = build_default_buff_toggles()
             end
+            -- L'ancienne plage 100-500 était visuellement bornée à 70-160 px.
+            -- 128-291 couvre la même zone utile sans conserver de portion inerte.
+            local saved_radius = KH.settings.circle_radius
+            local normalized_radius = math.max(
+                KILLFEED_OFFSET_MIN,
+                math.min(
+                    KILLFEED_OFFSET_MAX,
+                    math.floor(tonumber(saved_radius) or KH._defaults.circle_radius)
+                )
+            )
+            KH.settings.circle_radius = normalized_radius
             -- Réécrire une ancienne sauvegarde pour retirer l'option publique
-            -- `buff_duration`, désormais remplacée par des constantes internes.
-            if loaded_legacy_settings or data.buff_duration ~= nil then
+            -- `buff_duration` et normaliser l'ancienne plage du décalage vertical.
+            if loaded_legacy_settings or data.buff_duration ~= nil
+                    or saved_radius ~= normalized_radius then
                 KH.Save()
             end
         end

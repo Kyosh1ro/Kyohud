@@ -29,7 +29,7 @@ local function has_hostage_or_minion()
         count = count + (managers.player:num_local_minions() or 0)
     end)
 
-    return count > 0 or (managers.player and managers.player._HAS_HOSTAGES == true)
+    return count > 0
 end
 
 local function has_upgrade(category, upgrade)
@@ -80,10 +80,21 @@ local function emit(event, source_id, duration, value)
     end
 end
 
-local function refresh_passive_regen(player_damage)
+-- Champ privé KyoHUD porté par l'instance PlayerDamage : dernier état de santé
+-- réellement observé par la régénération passive. `nil` tant qu'aucun
+-- rafraîchissement n'a eu lieu, afin que la première observation émette toujours.
+local HEALTH_STATE_FIELD = "_kh_passive_regen_injured"
+
+local function refresh_passive_regen(player_damage, injured)
     if KH._gameinfo_bridge_active or not player_damage then return end
 
-    local injured = not is_full_health(player_damage)
+    if injured == nil then
+        injured = not is_full_health(player_damage)
+    end
+    -- Tout chemin de rafraîchissement explicite met l'état en cache à jour :
+    -- un set_health suivant sur le même état ne refera donc pas le travail.
+    player_damage[HEALTH_STATE_FIELD] = injured
+
     local duration = tonumber(player_damage._health_regen_update_timer)
 
     for source_id, definition in pairs(PASSIVE_REGEN) do
@@ -144,8 +155,18 @@ for _, event in ipairs(PLAYER_DOWN_EVENTS) do
     end
 end
 
+-- `set_health` est appelé en boucle (soins, dégâts, régénération). Ne rafraîchir
+-- que lorsque l'état blessé/plein change réellement : les indicateurs de
+-- régénération passive ne dépendent que de ce booléen, et le HUD fait lui-même
+-- le compte à rebours. Le redémarrage du cycle reste couvert par
+-- `_upd_health_regen`, et les otages par `PlayerManager:update_hostage_situation`.
 Hooks:PostHook(PlayerDamage, "set_health", "KH_RefreshPassiveRegenOnHealth", function(player_damage)
-    refresh_passive_regen(player_damage)
+    if KH._gameinfo_bridge_active or not player_damage then return end
+
+    local injured = not is_full_health(player_damage)
+    if player_damage[HEALTH_STATE_FIELD] == injured then return end
+
+    refresh_passive_regen(player_damage, injured)
 end)
 
 Hooks:PreHook(PlayerDamage, "_upd_health_regen", "KH_RememberPassiveRegenTimer", function(player_damage)

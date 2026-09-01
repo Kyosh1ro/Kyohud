@@ -1,3 +1,10 @@
+r83 (01.09.2026):
+- Buffs, killfeed cards, combat score, banners, combos, and weapon streaks now reset cleanly between heists and after previews.
+- Buff detection is more resilient without VanillaHUD Plus, while passive health-regeneration updates avoid redundant work and use the local minion count reliably.
+- The killfeed vertical-offset slider now covers only its effective 128-291 range, with existing settings migrated automatically.
+- Debug-facing preview controls now use release-ready labels, and multikill labels remain stable while special banners are displayed.
+- Source lineage is now documented, and the release workflow replaces its opaque hash executable with a tested, standard-library Python implementation.
+
 r82 (27.08.2026):
 - The killfeed can now display up to five cards while preserving chronological order and adaptive horizontal spacing.
 - The icon-size slider now ranges from 32 to 40 pixels and keeps 32 pixels as its default.

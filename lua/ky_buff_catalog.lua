@@ -5,6 +5,12 @@ Kyosh1roHUD = kyohud -- Alias conservé pour les intégrations antérieures au r
 
 local KH = kyohud
 
+-- Source lineage: buff identifiers and icon descriptor conventions are adapted
+-- from HUDList/GameInfoManager by NN (pjal3urb / Thomas G. Hall) and from the
+-- expanded VanillaHUD Plus implementation. KyoHUD keeps its own local catalog;
+-- neither upstream project is bundled as a required runtime dependency.
+-- See CREDITS.md at the mod root.
+
 if KH.BUFF_CATEGORIES and KH.BUFF_COLORS and KH.BUFF_MAP and KH.PERK_DECK_BUFFS
     and KH.UPGRADE_TO_BUFF and KH.BUFF_SOURCE_TARGETS
     and KH.BuildDefaultBuffToggles and KH.GetSortedBuffIdsForCategory and KH.GetBuffTargets then

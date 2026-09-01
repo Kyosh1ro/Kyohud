@@ -1,6 +1,4 @@
 -- ky_hooks.lua — Hooks sur PlayerManager pour détecter les buffs et les kills
--- KyoHUD v1.1.0
-
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
 local KH = kyohud

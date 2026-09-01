@@ -1,7 +1,6 @@
 -- ky_buffhud.lua — Affichage horizontal des buffs + killfeed
--- KyoHUD v2.0.0
 -- Buffs affichés côte à côte sur une rangée horizontale configurable
--- Icônes compatibles VanillaHUD (skills_new, perks, hud_icons, etc.)
+-- Descripteurs d'icônes locaux inspirés de HUDList/VanillaHUD Plus ; voir CREDITS.md.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -144,13 +143,13 @@ local BANNER_FRAME_STYLE = {
     brackets = { extension = BANNER_FRAME_EXTENSION },
 }
 -- ═══════════════════════════════════════════════════
--- Résolution d'icônes — système VanillaHUD
+-- Résolution d'icônes — conventions HUDList adaptées localement
 -- ═══════════════════════════════════════════════════
 local function has_texture(path)
     return path and DB and DB:has(Idstring("texture"), Idstring(path))
 end
 
---- Résout une icône à partir d'une table de description (format VanillaHUD)
+--- Résout une icône à partir d'une table de description compatible HUDList.
 --- Supporte : skills_new, skills, perks, hud_tweak, hud_icons, hudtabs, hudpickups, waypoints, texture direct
 local function get_icon_data(icon)
     if not icon then return FALLBACK_TEXTURE, nil end
@@ -228,7 +227,8 @@ end
 -- ═══════════════════════════════════════════════════
 local function icon_for_buff(buff_id)
     local vhud_map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
-    local map_entry = (vhud_map and vhud_map[buff_id]) or KH.BUFF_MAP[buff_id]
+    local map_entry = (vhud_map and vhud_map[buff_id])
+        or (KH.BUFF_MAP and KH.BUFF_MAP[buff_id])
     if map_entry then
         local tex, rect = get_icon_data(map_entry)
         return { texture = tex, rect = rect }
@@ -311,7 +311,7 @@ end
 function KH:is_buff_visible(buff_id)
     if not self.settings or not self.settings.enable_buffs then return false end
 
-    local map_entry = KH.BUFF_MAP[buff_id]
+    local map_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
     if not map_entry then return true end -- buff inconnu, on l'affiche
 
     -- Vérifier le toggle de catégorie
@@ -1392,7 +1392,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
 
     -- Résoudre le vrai buff_id depuis l'upgrade
     local resolved_id = buff_id
-    if raw_upgrade_id and KH.UPGRADE_TO_BUFF[raw_upgrade_id] then
+    if raw_upgrade_id and KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[raw_upgrade_id] then
         resolved_id = KH.UPGRADE_TO_BUFF[raw_upgrade_id]
     end
 
@@ -1429,7 +1429,7 @@ end
 function KH:remove_buff(buff_id)
     -- Essayer aussi le buff résolu
     self._buffs[buff_id] = nil
-    if KH.UPGRADE_TO_BUFF[buff_id] then
+    if KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[buff_id] then
         self._buffs[KH.UPGRADE_TO_BUFF[buff_id]] = nil
     end
 end
@@ -1882,7 +1882,7 @@ function KH:RefreshEquippedSkillCounters()
     if self._debug_preview_active then return end
 
     for _, buff_id in ipairs(EQUIPPED_SKILL_COUNTER_BUFFS) do
-        local definition = KH.BUFF_MAP[buff_id]
+        local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
         local visible = self:is_buff_visible(buff_id)
         local equipped, value_text = equipped_skill_counter_text(definition)
         local existing = self._buffs[buff_id]
@@ -2066,7 +2066,6 @@ function KH:handle_buff_event(event, source_id, data, source_type)
         elseif event == "set_stack_count" and (not data or data.stack_count == nil) then
             source.stack_count = nil
         end
-        source.updated_t = application_time()
         source.source_id = source_id
         source.is_debuff = string.match(tostring(source_id), "_debuff$") ~= nil
         self._buff_sources[buff_id][source_key] = source
@@ -2075,7 +2074,7 @@ function KH:handle_buff_event(event, source_id, data, source_type)
 end
 
 function KH:SyncGameInfoBuffs()
-    if not (managers and managers.gameinfo) then return end
+    if self._debug_preview_active or not (managers and managers.gameinfo) then return end
 
     local ok_buffs, buffs = pcall(function()
         return managers.gameinfo:get_buffs()
@@ -2341,6 +2340,61 @@ function KH:ResetWeaponStreaks()
 end
 
 -- ═══════════════════════════════════════════════════
+-- Remise à zéro de l'état de combat d'une partie
+-- ═══════════════════════════════════════════════════
+
+--- Vide sur place la table de déduplication des kills tenue par
+--- `ky_killfeed.lua`. Elle peut ne pas exister encore selon l'ordre de
+--- chargement des scripts. Elle n'est jamais remplacée : son métatable à clés
+--- faibles doit survivre au reset, sans quoi les unités enregistrées seraient
+--- retenues en mémoire jusqu'au prochain rechargement du mod.
+local function clear_recorded_kill_units(hud)
+    local recorded = hud._recorded_kill_units
+    if type(recorded) ~= "table" then return end
+
+    for unit in pairs(recorded) do
+        recorded[unit] = nil
+    end
+end
+
+--- Remet à zéro tout l'état de combat propre à une partie : buffs affichés et
+--- leurs sources, killfeed et son score, multikill, bandeaux prioritaires,
+--- séries d'arme et combos de spéciaux. Une partie ne doit jamais hériter de
+--- l'état de la précédente, ni d'un aperçu de debug resté affiché.
+---
+--- Ce qui n'appartient pas à une partie est volontairement conservé : les
+--- réglages, le catalogue, le panneau KyoHUD et les listeners du pont
+--- VanillaHUD+. Lors d'un nouveau braquage, `rearm_bridge_sync` réarme la
+--- synchronisation différée afin de repeupler les buffs réels sans réenregistrer
+--- les listeners. Un simple effacement d'aperçu conserve au contraire le latch
+--- courant pour ne pas injecter des buffs réels dans les cellules de démo.
+function KH:ResetHeistCombatState(rearm_bridge_sync)
+    self._debug_preview_active = false
+
+    self._buffs = {}
+    self._buff_sources = {}
+    self._source_targets = {}
+    if self._equipped_perk_deck_buff then
+        self._equipped_perk_deck_buff.value_text = nil
+    end
+
+    self._kills = {}
+    self._killfeed_score_total = 0
+    self._killfeed_score_has_value = false
+    self._kill_combo = { count = 0, last_t = nil, updated_t = nil }
+    self._special_kill_banner = nil
+    self._banner_queue = {}
+    self:ResetWeaponStreaks()
+    self._special_enemy_combos = {}
+    clear_recorded_kill_units(self)
+
+    if rearm_bridge_sync then
+        self._bridge_delayed_sync_acc = 0
+        self._bridge_delayed_sync_done = false
+    end
+end
+
+-- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
 function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family)
@@ -2363,6 +2417,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         end
         combo.last_t = t
         combo.updated_t = t
+        combo.label = combo.count >= 2
+            and combo_label(combo.count, combo.label_variant)
+            or nil
         self._kill_combo = combo
     end
     if special_banner == "dozer" then
@@ -2418,8 +2475,6 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         score      = score,
         score_text = format_kill_score(score),
         special_kind = special_definition and special_enemy_kind or nil,
-        special_count = special_count,
-        special_label_index = special_label_index,
         display_text = special_enemy_label(
             special_enemy_kind,
             special_label_index,
@@ -2521,6 +2576,13 @@ local function compute_horizontal_positions(
     return positions
 end
 
+local function compare_buff_arrival(a, b)
+    local oa = a.order_t or a.start_t or 0
+    local ob = b.order_t or b.start_t or 0
+    if oa ~= ob then return oa < ob end
+    return a.id < b.id
+end
+
 -- ═══════════════════════════════════════════════════
 -- Dessin du HUD
 -- ═══════════════════════════════════════════════════
@@ -2560,6 +2622,7 @@ function KH:draw()
         combo.count = 0
         combo.last_t = nil
         combo.updated_t = nil
+        combo.label = nil
     end
 
     -- L'annonce spéciale masque brièvement le multikill, qui reprend ensuite
@@ -2601,7 +2664,7 @@ function KH:draw()
     local h = self._panel:h()
     local cx = w * 0.5
     local cy = h * 0.5
-    local radius    = clamp(s.circle_radius or 250, 100, 500)
+    local radius    = clamp(s.circle_radius or 250, 128, 291)
     local size      = clamp(s.icon_size or 32, 32, 40)
     local alpha     = clamp(s.opacity or 0.9, 0.1, 1.0)
 
@@ -2637,12 +2700,7 @@ function KH:draw()
         end
         -- Tri par ordre d'arrivée : les nouveaux buffs s'ajoutent à la suite
         -- des emplacements fixes, sans réordonner les icônes existantes.
-        table.sort(extra_buffs, function(a, b)
-            local oa = a.order_t or a.start_t or 0
-            local ob = b.order_t or b.start_t or 0
-            if oa ~= ob then return oa < ob end
-            return a.id < b.id
-        end)
+        table.sort(extra_buffs, compare_buff_arrival)
         for _, buff in ipairs(extra_buffs) do
             table.insert(buff_list, buff)
         end
@@ -3035,6 +3093,7 @@ function KH:draw()
                 local font_size = clamp(size * 0.65, 17, 27)
                 local label = special_banner_active
                     and special_banner.label
+                    or combo.label
                     or combo_label(combo.count, combo.label_variant)
                 draw_glowing_text(
                     self._panel,
@@ -3309,7 +3368,8 @@ function KH:DebugSimulate(n)
             id       = "demo_" .. base .. "_" .. tostring(i),
             icon     = icon,
             color    = color_for_buff(base, demo.is_debuff),
-            category = KH.BUFF_MAP[base] and KH.BUFF_MAP[base].category,
+            category = KH.BUFF_MAP and KH.BUFF_MAP[base]
+                and KH.BUFF_MAP[base].category,
             value_text = demo.value_text,
             stack_text = demo.stack_text,
             is_debuff = demo.is_debuff == true,
@@ -3338,7 +3398,8 @@ function KH:DebugSimulate(n)
             id       = demo_id,
             icon     = icon_for_buff(demo.id),
             color    = color_for_buff(demo.id, demo.is_debuff),
-            category = KH.BUFF_MAP[demo.id] and KH.BUFF_MAP[demo.id].category,
+            category = KH.BUFF_MAP and KH.BUFF_MAP[demo.id]
+                and KH.BUFF_MAP[demo.id].category,
             is_debuff = demo.is_debuff == true,
             order_t  = t_now + 0.1 + i * 0.001,
             start_t  = t_now,
@@ -3366,8 +3427,6 @@ function KH:DebugSimulate(n)
             score      = demo.score,
             score_text = format_kill_score(demo.score),
             special_kind = demo.special_kind,
-            special_count = demo.special_count,
-            special_label_index = demo.label_index,
             display_text = special_enemy_label(
                 demo.special_kind,
                 demo.label_index,
@@ -3393,6 +3452,7 @@ function KH:DebugSimulate(n)
         last_t = t_now,
         updated_t = t_now,
         label_variant = 1,
+        label = preview.combo >= 2 and combo_label(preview.combo, 1) or nil,
         preview = true,
     }
     self._special_kill_banner = nil
@@ -3405,19 +3465,10 @@ function KH:DebugSimulate(n)
 end
 
 function KH:DebugClear()
-    self._debug_preview_active = false
-    self._buffs = {}
-    if self._equipped_perk_deck_buff then
-        self._equipped_perk_deck_buff.value_text = nil
-    end
-    self._kills = {}
-    self._killfeed_score_total = 0
-    self._killfeed_score_has_value = false
-    self._kill_combo = { count = 0, last_t = nil, updated_t = nil }
-    self._special_kill_banner = nil
-    self._banner_queue = {}
-    self:ResetWeaponStreaks()
-    self._special_enemy_combos = {}
+    -- Un aperçu se retire exactement comme une partie se termine ; seul le
+    -- panneau déjà dessiné doit être vidé en plus, car aucun nouveau HUD ne
+    -- vient le reconstruire ici.
+    self:ResetHeistCombatState()
     if self._panel and alive(self._panel) then
         self._panel:clear()
     end
@@ -3427,11 +3478,12 @@ end
 -- Hooks HUD : initialisation et mise à jour
 -- ═══════════════════════════════════════════════════
 Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
-    -- Un nouveau HUD correspond à une nouvelle partie : aucune série d'arme
-    -- de la partie précédente ne doit être conservée.
-    KH:ResetWeaponStreaks()
+    -- Un nouveau HUD correspond à une nouvelle partie : aucun buff, kill,
+    -- score, bandeau ni série d'arme de la partie précédente ne doit survivre.
+    KH:ResetHeistCombatState(true)
     KH:ensure_panel(true)
     KH:TryRegisterGameInfoBridge()
+    KH:RefreshDetectedBuffs()
     log("[KyoHUD] Panneau HUD initialisé.")
 end)
 
@@ -3442,7 +3494,7 @@ Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
             KH._bridge_retry_acc = 0
             KH:TryRegisterGameInfoBridge()
         end
-    elseif not KH._bridge_delayed_sync_done then
+    elseif not KH._debug_preview_active and not KH._bridge_delayed_sync_done then
         KH._bridge_delayed_sync_acc = (KH._bridge_delayed_sync_acc or 0) + dt
         if KH._bridge_delayed_sync_acc >= 2 then
             KH._bridge_delayed_sync_done = true
@@ -3467,4 +3519,4 @@ Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
     end
 end)
 
-log("[KyoHUD] ky_buffhud.lua v2.0 chargé.")
+log("[KyoHUD] ky_buffhud.lua chargé.")

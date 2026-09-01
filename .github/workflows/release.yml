@@ -39,6 +39,10 @@ jobs:
               throw "Release tag '$env:RELEASE_TAG' does not match mod.txt version '$($mod.version)'. Expected '$expectedTag'."
           }
 
+      - name: Test SuperBLT hashing implementation
+        shell: pwsh
+        run: python .\.github\test_superblt_hash.py -v
+
       - name: Stage the distributable mod
         shell: pwsh
         run: |
@@ -78,12 +82,15 @@ jobs:
           $modRoot = Join-Path $PWD "release-stage\Kyohud"
           $outputRoot = Join-Path $PWD "release-output"
 
-          $hashOutput = & .\.github\hash.exe $modRoot
-          $hashMatch = [regex]::Match(($hashOutput -join "`n"), "[0-9a-fA-F]{64}")
-          if (-not $hashMatch.Success) {
+          $hashOutput = & python .\.github\superblt_hash.py $modRoot
+          if ($LASTEXITCODE -ne 0) {
+              throw "SuperBLT hashing failed with exit code $LASTEXITCODE. Output: $hashOutput"
+          }
+
+          $hash = ($hashOutput -join "`n").Trim().ToLowerInvariant()
+          if ($hash -notmatch "^[0-9a-f]{64}$") {
               throw "Unable to read the SuperBLT directory hash. Output: $hashOutput"
           }
-          $hash = $hashMatch.Value.ToLowerInvariant()
 
           $metadata = @(
               [ordered]@{
