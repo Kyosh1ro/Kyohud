@@ -30,8 +30,6 @@ KyoHUD follows semantic versioning from **v1.0.0** onward. The version in `mod.t
 
 Releases are published on the [GitHub releases page](https://github.com/Kyosh1ro/kyohud/releases). Each one attaches a `latest.zip` archive and a SuperBLT `meta.json`, so an installed copy of KyoHUD updates itself through SuperBLT's mod-update check.
 
-The full publication procedure and checklist live in [docs/RELEASING.md](docs/RELEASING.md).
-
 ## Usage and redistribution
 
 Do not re-upload KyoHUD without permission or present it as your own work.

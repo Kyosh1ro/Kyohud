@@ -73,7 +73,7 @@ jobs:
 
           foreach ($file in (git ls-files)) {
               $normalized = $file.Replace("\", "/")
-              if ($normalized.StartsWith(".github/") -or $normalized.StartsWith("docs/") -or $excludedFiles -contains $normalized) {
+              if ($normalized.StartsWith(".github/") -or $excludedFiles -contains $normalized) {
                   continue
               }
 
