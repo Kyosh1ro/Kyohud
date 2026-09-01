@@ -45,6 +45,10 @@ local function add_fallbacks(loc)
         ky_opt_buff_position_x_desc = "Horizontal center of the buff row (0-100%). Default: 50%",
         ky_opt_buff_position_y      = "Buff Position Y (%)",
         ky_opt_buff_position_y_desc = "Vertical center of the buff row (0-100%). The default adapts to the active HUD.",
+        ky_opt_score_position_x      = "Score Position X (%)",
+        ky_opt_score_position_x_desc = "Horizontal center of the total score widget (0-100%). Default: 100%",
+        ky_opt_score_position_y      = "Score Position Y (%)",
+        ky_opt_score_position_y_desc = "Vertical center of the total score widget (0-100%). Default: 75%",
         ky_opt_opacity              = "Opacity",
         ky_opt_opacity_desc         = "HUD element opacity (10-100%). Default: 90%",
         ky_opt_icon_size            = "Icon Size",
@@ -55,6 +59,10 @@ local function add_fallbacks(loc)
         ky_opt_debug_sim_desc       = "Preview active buffs, special-enemy kill cards and priority-target banners",
         ky_opt_debug_clear          = "Clear Preview",
         ky_opt_debug_clear_desc     = "Remove preview buffs and kills; the equipped perk deck remains visible",
+
+        -- Widget de score de combat
+        ky_hud_score_total       = "TOTAL SCORE",
+        ky_hud_score_best_streak = "BEST STREAK",
 
         -- Bandeau des séries de kills
         ky_hud_combo_2     = "CLEAN PAIR",

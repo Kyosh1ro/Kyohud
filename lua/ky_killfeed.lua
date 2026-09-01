@@ -12,6 +12,11 @@ local KH = kyohud
 -- ═══════════════════════════════════════════════════
 -- Catalogue de scoring (garde d'initialisation séparée)
 -- ═══════════════════════════════════════════════════
+-- Le concept et les valeurs initiales sont inspirés de Joy's Score Counter
+-- par Offyerrocker, lui-même fondé sur les répliques de score de Joy en jeu.
+-- La détection, l'attribution et le rendu sont propres à KyoHUD ; voir
+-- CREDITS.md pour la filiation complète et le lien vers le projet source.
+--
 -- Le catalogue peut être chargé plusieurs fois (PlayerManager, CopDamage,
 -- CivilianDamage) ; la garde empêche une reconstruction inutile tout en
 -- permettant à chaque contexte d'installer ses propres hooks ensuite.

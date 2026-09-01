@@ -21,6 +21,10 @@
   "ky_opt_buff_position_x_desc": "Centre horizontal de la rangée (0-100 %). Par défaut : 50 %",
   "ky_opt_buff_position_y": "Position Y des buffs (%)",
   "ky_opt_buff_position_y_desc": "Centre vertical de la rangée (0-100 %). La valeur par défaut s'adapte au HUD actif.",
+  "ky_opt_score_position_x": "Position X du score (%)",
+  "ky_opt_score_position_x_desc": "Centre horizontal du compteur de score total (0-100 %). Par défaut : 100 %",
+  "ky_opt_score_position_y": "Position Y du score (%)",
+  "ky_opt_score_position_y_desc": "Centre vertical du compteur de score total (0-100 %). Par défaut : 75 %",
   "ky_opt_opacity": "Opacité",
   "ky_opt_opacity_desc": "Opacité des éléments du HUD (10 à 100 %). Par défaut : 90 %",
   "ky_opt_icon_size": "Taille des icônes (pixels)",
@@ -31,6 +35,9 @@
   "ky_opt_debug_sim_desc": "Prévisualise les buffs actifs, les cadres de kills spéciaux et les bandeaux de cibles prioritaires",
   "ky_opt_debug_clear": "Effacer l'aperçu",
   "ky_opt_debug_clear_desc": "Supprime les buffs et kills de l'aperçu ; le deck d'atouts équipé reste visible",
+
+  "ky_hud_score_total": "SCORE TOTAL",
+  "ky_hud_score_best_streak": "BEST STREAK",
 
   "ky_hud_combo_2": "TIR GROUPÉ",
   "ky_hud_combo_2_2": "DOUBLE IMPACT",
