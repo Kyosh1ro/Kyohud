@@ -43,7 +43,7 @@ KH._heist_score_best_streak = 0
 KH._heist_score_recorded = false
 KH._special_kill_banner = nil
 KH._banner_queue = {}          -- FIFO bornée : annonces en attente d'affichage
-KH._weapon_streaks = {}        -- { [family] = { count, tier_index } }
+KH._weapon_streaks = {}        -- { [family] = { count, tier_index, last_t } }
 KH._weapon_streak_card = nil   -- médaille de palier affichée dans le killfeed
 KH._weapon_streak_queue = {}   -- FIFO bornée, indépendante du bandeau supérieur
 KH._combo_label_variant_index = KH._combo_label_variant_index or 0
@@ -483,7 +483,8 @@ local SPECIAL_KILL_BANNER_DEFINITIONS = {
 -- ── Séries persistantes par famille de dégâts / d'arme ──
 -- Chaque famille possède son propre compteur, indépendant des autres : un kill
 -- au fusil à pompe n'interrompt pas une série au sniper. Les paliers sont
--- strictement croissants et ne sont franchis qu'une seule fois par série.
+-- strictement croissants et chaque palier n'est franchi qu'une seule fois par
+-- cycle ; après une pause temporelle, la famille repart de son premier palier.
 local WEAPON_STREAK_DEFINITIONS = {
     shotgun = {
         color = Color(1, 0.55, 0.12),               -- orange
@@ -2324,11 +2325,15 @@ function KH:_show_weapon_streak_card(t, family, tier_index, preview)
 end
 
 --- Compte un kill pour sa famille et renvoie l'indice du palier franchi.
---- Les compteurs sont persistants : ils survivent aux kills des autres
---- familles et ne repartent qu'à zéro sur chute du joueur ou Debug: Clear.
-function KH:_register_weapon_family_kill(family)
+--- `t` est le temps du kill, déjà calculé par `KH:add_kill` : chaque famille
+--- entretient son propre timer, calqué sur celui du multikill, et aucune
+--- horloge n'est relue ici.
+function KH:_register_weapon_family_kill(family, t)
     local definition = weapon_streak_definition(family)
     if not definition then return nil end
+
+    local tiers = definition.tiers
+    if not tiers[1] then return nil end
 
     local streaks = self._weapon_streaks
     if not streaks then
@@ -2341,15 +2346,31 @@ function KH:_register_weapon_family_kill(family)
         streak = { count = 0, tier_index = 0 }
         streaks[family] = streak
     end
+
+    -- Repli défensif : un appelant sans temps ne doit pas figer le timer de la
+    -- famille. `add_kill` passe toujours son `t` ; `now()` ne sert qu'à ce repli.
+    t = tonumber(t) or now()
+
+    -- Timer strictement propre à cette famille : les kills des autres familles
+    -- ne le rafraîchissent ni ne le réinitialisent. La borne reste inclusive,
+    -- exactement comme la fenêtre du multikill.
+    if streak.last_t and (t - streak.last_t) > KILL_COMBO_WINDOW then
+        streak.count = 0
+        streak.tier_index = 0
+    end
+    streak.last_t = t
     streak.count = streak.count + 1
 
-    -- Un seul palier peut tomber par kill, et jamais deux fois le même.
-    local next_tier = definition.tiers[streak.tier_index + 1]
-    if next_tier and streak.count >= next_tier.count then
-        streak.tier_index = streak.tier_index + 1
-        return streak.tier_index
+    -- Un seul palier peut tomber par kill : on ne compare qu'au palier suivant.
+    -- Une fois le maximum annoncé, `next_tier` est nil et la chaîne reste
+    -- silencieuse jusqu'à son expiration, qui réarme le premier palier.
+    local next_tier = tiers[streak.tier_index + 1]
+    if not next_tier or streak.count < next_tier.count then
+        return nil
     end
-    return nil
+
+    streak.tier_index = streak.tier_index + 1
+    return streak.tier_index
 end
 
 --- Remise à zéro des séries d'arme : les compteurs repartent de zéro et toute
@@ -2477,7 +2498,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     -- La médaille de palier vit dans le killfeed : elle ne dispute jamais le
     -- bandeau supérieur à une cible prioritaire, les deux peuvent coexister.
     local streak_tier_index = weapon_family
-        and self:_register_weapon_family_kill(weapon_family)
+        and self:_register_weapon_family_kill(weapon_family, t)
         or nil
     if streak_tier_index then
         self:_show_weapon_streak_card(t, weapon_family, streak_tier_index, false)
