@@ -123,19 +123,27 @@ end
 
 -- ── Familles de dégâts / d'armes ──
 -- La cause finale de la mort décide seule de la famille créditée. L'ordre est
--- exclusif : feu, puis explosion, puis mêlée, puis la catégorie de l'arme.
+-- exclusif : la variante de dégâts (feu, poison, explosion, mêlée) d'abord,
+-- puis seulement la catégorie de l'arme.
 -- Un kill différé par le feu ne crédite donc jamais le fusil à pompe qui a
 -- allumé la cible, et un souffle incendiaire qui tue directement reste explosif.
 local WEAPON_FAMILY_BY_VARIANT = {
     fire      = "incendiary",
+    poison    = "poison",
     explosion = "explosive",
     melee     = "melee",
 }
 
 local WEAPON_FAMILY_BY_CATEGORY = {
+    akimbo  = "akimbo",
     shotgun = "shotgun",
     snp     = "sniper",
 }
+
+-- `akimbo` est un qualificatif cumulé à la catégorie de base de l'arme
+-- (`{ "pistol", "akimbo" }`, `{ "shotgun", "akimbo" }`, …). Il prime donc sur
+-- toute autre correspondance, quelle que soit sa position dans la liste.
+local PRIORITY_WEAPON_FAMILY = "akimbo"
 
 local function family_from_categories(categories)
     if type(categories) == "string" then
@@ -143,12 +151,14 @@ local function family_from_categories(categories)
     end
     if type(categories) ~= "table" then return nil end
 
+    local first_family = nil
     for _, category in ipairs(categories) do
         local family = type(category) == "string"
             and WEAPON_FAMILY_BY_CATEGORY[category]
-        if family then return family end
+        if family == PRIORITY_WEAPON_FAMILY then return family end
+        if family and not first_family then first_family = family end
     end
-    return nil
+    return first_family
 end
 
 local function family_from_weapon_tweak(weapon_tweak)

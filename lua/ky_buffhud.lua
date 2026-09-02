@@ -501,12 +501,28 @@ local WEAPON_STREAK_DEFINITIONS = {
             { count = 15, id = "ky_hud_streak_sniper_15", fallback = "BE THE BULLET" },
         },
     },
+    akimbo = {
+        color = Color(0.24, 0.9, 0.96),             -- cyan
+        tiers = {
+            { count = 5,  id = "ky_hud_streak_akimbo_5",  fallback = "DOUBLE TROUBLE" },
+            { count = 10, id = "ky_hud_streak_akimbo_10", fallback = "GUNS BLAZING" },
+            { count = 15, id = "ky_hud_streak_akimbo_15", fallback = "TWICE THE FIREPOWER" },
+        },
+    },
     incendiary = {
         color = Color(1, 0.3, 0.06),                -- orange-rouge
         tiers = {
             { count = 3,  id = "ky_hud_streak_incendiary_3",  fallback = "BURN NOTICE" },
             { count = 6,  id = "ky_hud_streak_incendiary_6",  fallback = "INCINERATION" },
             { count = 10, id = "ky_hud_streak_incendiary_10", fallback = "HELLFIRE" },
+        },
+    },
+    poison = {
+        color = Color(0.36, 0.85, 0.29),            -- vert toxique
+        tiers = {
+            { count = 3,  id = "ky_hud_streak_poison_3",  fallback = "TOXIC" },
+            { count = 6,  id = "ky_hud_streak_poison_6",  fallback = "VENOMOUS" },
+            { count = 10, id = "ky_hud_streak_poison_10", fallback = "BIOHAZARD" },
         },
     },
     melee = {
