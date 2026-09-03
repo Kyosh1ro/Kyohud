@@ -227,13 +227,13 @@ r19 (16.08.2026):
 - Added persistent buff simulation to the debug tools.
 
 r18 (16.08.2026):
-- Adopted the `fix/` and `feature/` prefixes for branch names.
+- fix circular buff
 
 r17 (16.08.2026):
 - Fixed circular spacing for buffs and the killfeed.
 
 r16 (16.08.2026):
-- Added the Codex agent working guide.
+- fix
 
 r15 (12.07.2026):
 - Added option persistence and fixed French-language loading.
@@ -283,4 +283,4 @@ r2 (03.04.2026):
 - Added an initial complete buff map and individual buff selection.
 
 r1 (03.04.2026):
-- Created the SuperBLT mod and its primary hooks.
+- Mod created
