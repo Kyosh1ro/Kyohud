@@ -2664,8 +2664,8 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
     local best_streak_text = format_kill_score(best_streak)
     local font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
     local label_font_size = clamp(size * 0.34, 11, 14)
-    local value_font_size = clamp(size * 0.46, 14, 19)
-    local row_h = math.ceil(value_font_size + 6)
+    local value_font_size = 20
+    local row_h = math.ceil(value_font_size + 10)
     local row_count = show_best_streak and 2 or 1
     local pad_x = clamp(size * 0.3, 9, 14)
     local pad_y = 4
