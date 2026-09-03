@@ -996,98 +996,102 @@ end
 
 -- Cellule volontairement sobre pour laisser l'icône et son timer dominer.
 -- Le cadre tactique complet reste réservé aux annonces du killfeed.
--- `style.emphasis` (0..1) épaissit le cadre pour les états d'urgence sans
--- changer sa silhouette ni la place occupée par la cellule.
-local function draw_buff_cell_frame(panel, x, y, w, h, color, alpha, layer, style)
-    local inset = style and style.inset or 1
-    local emphasis = clamp(tonumber(style and style.emphasis) or 0, 0, 1)
+--
+-- Le fond est un dégradé noir vertical : dense en bas, effacé en haut, afin
+-- d'asseoir la cellule sans masquer la rangée. Le contour statique n'a que
+-- trois côtés — montant gauche, barre inférieure, montant droit — et jamais
+-- de bord supérieur. Sa teinte est fixée ici à `HUD_ACCENT_COLOR` et n'est
+-- donc volontairement pas paramétrable : aucun état de buff ne peut la
+-- modifier. Seule son opacité est modelée, afin que le contour périmétrique
+-- animé reste le seul élément du cadre coloré par l'état du buff.
+--
+-- Un seul pixel suffit : le trait reste net à toutes les tailles de buffs et
+-- laisse le contour animé, plus épais, se lire clairement au-dessus.
+local BUFF_CELL_LINE_WIDTH = 1
 
-    panel:rect({
-        x = x + inset,
-        y = y + inset,
-        w = w - inset * 2,
-        h = h - inset * 2,
-        color = Color.black,
-        alpha = alpha * 0.3,
+-- Les montants se renforcent doucement du haut vers le bas, dans le sens du
+-- dégradé de fond. La barre inférieure ne s'allège qu'à ses extrémités : le
+-- bas reste ancré et les deux jonctions avec les montants restent visibles.
+local BUFF_CELL_EDGE_ALPHA_TOP    = 0.34
+local BUFF_CELL_EDGE_ALPHA_MID    = 0.66
+local BUFF_CELL_EDGE_ALPHA_BOTTOM = 1
+local BUFF_CELL_FOOTER_ALPHA_END  = 0.8
+
+-- Les positions de rangée sont fractionnaires. Le cadre statique et le
+-- contour animé doivent être arrondis exactement de la même façon, sinon les
+-- deux tracés se décalent d'un demi-pixel et paraissent délavés.
+local function align_buff_cell_rect(x, y, w, h)
+    local left = math.floor(x + 0.5)
+    local top  = math.floor(y + 0.5)
+    local min_size = BUFF_CELL_LINE_WIDTH * 2
+    return left,
+        top,
+        math.max(min_size, math.floor(x + w + 0.5) - left),
+        math.max(min_size, math.floor(y + h + 0.5) - top)
+end
+
+local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
+    local left, top, width, height = align_buff_cell_rect(x, y, w, h)
+
+    panel:gradient({
+        x = left,
+        y = top,
+        w = width,
+        h = height,
+        orientation = "vertical",
+        gradient_points = {
+            0, Color.black:with_alpha(0),
+            0.45, Color.black:with_alpha(alpha * 0.3),
+            1, Color.black:with_alpha(alpha * 0.82),
+        },
         layer = layer,
     })
 
-    -- Reprendre en haut les trois segments fins du cadre multikill, sans les
-    -- quatre crochets afin de conserver une silhouette propre aux buffs.
-    local glow_alpha = alpha * (0.12 + 0.1 * emphasis)
-    local segment_alpha = alpha * (0.86 + 0.14 * emphasis)
-    for i = 1, 3 do
-        local segment = TACTICAL_FRAME_SEGMENTS[i]
-        local segment_x = x + w * segment[1]
-        local segment_w = w * segment[3]
-        panel:rect({
-            x = segment_x,
-            y = y - 1,
-            w = segment_w,
-            h = 3,
-            color = color,
-            alpha = glow_alpha,
-            layer = layer + 1,
-        })
-        panel:rect({
-            x = segment_x,
-            y = y,
-            w = segment_w,
-            h = 1,
-            color = color,
-            alpha = segment_alpha,
-            layer = layer + 2,
-        })
-    end
-
-    -- Une seule barre continue et plus épaisse ancre visuellement le bas.
-    local footer_margin = clamp(w * 0.08, 2, 5)
-    local footer_height = emphasis >= 0.5 and 2 or 1
-    local footer_x = x + footer_margin
-    local footer_width = w - footer_margin * 2
-    local footer_y = y + h - footer_height
-    local footer_alpha = math.min(1, alpha * 1.3)
-
-    panel:rect({
-        x = footer_x,
-        y = footer_y,
-        w = footer_width,
-        h = footer_height,
-        color = color,
-        alpha = footer_alpha,
-        layer = layer + 2,
+    -- Une seule table de points partagée par les deux montants : ils portent
+    -- exactement le même dégradé et `KH:draw` ne doit pas allouer deux fois.
+    local edge_points = {
+        0,    HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
+        0.55, HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
+        1,    HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+    }
+    panel:gradient({
+        x = left,
+        y = top,
+        w = BUFF_CELL_LINE_WIDTH,
+        h = height,
+        orientation = "vertical",
+        gradient_points = edge_points,
+        layer = layer + 1,
     })
-
-    -- Deux montants latéraux courts n'apparaissent qu'en alerte : ils ferment
-    -- visuellement la cellule sans ajouter de rendu aux buffs calmes.
-    if emphasis > 0 then
-        local post_h = h * 0.34
-        local post_y = y + (h - post_h) * 0.5
-        local post_alpha = math.min(1, alpha * (0.5 + 0.5 * emphasis))
-        panel:rect({
-            x = x,
-            y = post_y,
-            w = 1,
-            h = post_h,
-            color = color,
-            alpha = post_alpha,
-            layer = layer + 2,
-        })
-        panel:rect({
-            x = x + w - 1,
-            y = post_y,
-            w = 1,
-            h = post_h,
-            color = color,
-            alpha = post_alpha,
-            layer = layer + 2,
-        })
-    end
+    panel:gradient({
+        x = left + width - BUFF_CELL_LINE_WIDTH,
+        y = top,
+        w = BUFF_CELL_LINE_WIDTH,
+        h = height,
+        orientation = "vertical",
+        gradient_points = edge_points,
+        layer = layer + 1,
+    })
+    panel:gradient({
+        x = left,
+        y = top + height - BUFF_CELL_LINE_WIDTH,
+        w = width,
+        h = BUFF_CELL_LINE_WIDTH,
+        orientation = "horizontal",
+        gradient_points = {
+            0,   HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+            0.5, HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+            1,   HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+        },
+        layer = layer + 1,
+    })
 end
 
 -- Trace la partie encore active du contour d'un buff temporaire. Le parcours
 -- commence au milieu du bord supérieur et avance dans le sens horaire ; son
 -- extrémité recule donc continûment à mesure que le timer approche de zéro.
+-- Ce contour est le seul trait autorisé à franchir le haut de la cellule :
+-- le cadre statique, lui, reste à trois côtés.
 local function append_progress_segment(points, remaining_length, x1, y1, x2, y2, segment_length)
     if remaining_length <= 0 or segment_length <= 0 then return remaining_length end
 
@@ -1107,6 +1111,9 @@ end
 local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alpha, layer)
     progress = clamp(tonumber(progress) or 0, 0, 1)
     if progress <= 0 then return end
+
+    -- Même arrondi que le cadre statique : les deux contours se superposent.
+    x, y, w, h = align_buff_cell_rect(x, y, w, h)
 
     local line_width = clamp(math.min(w, h) * 0.055, 2, 3)
     local remaining_length = (w * 2 + h * 2) * progress
@@ -1154,9 +1161,14 @@ end
 --                simulée, aucune pulsation.
 --   normal     : buff temporaire loin de son expiration. Il conserve sa
 --                propre couleur de catalogue, y compris la teinte de debuff.
---   warning    : approche de l'expiration. Ambre et cadre renforcé.
---   critical   : expiration imminente. Rouge, cadre renforcé, pulsation
---                retenue et timer de la même couleur.
+--   warning    : approche de l'expiration. Ambre, opacité relevée.
+--   critical   : expiration imminente. Rouge, opacité relevée et pulsation
+--                retenue.
+--
+-- `accent_color` teinte le contour périmétrique animé et n'est renseigné que
+-- pour un buff temporaire : un indicateur permanent n'en reçoit jamais. Le
+-- cadre statique de la cellule, lui, ne fait pas partie de cet état — il
+-- garde toujours `HUD_ACCENT_COLOR` et sa silhouette à trois côtés.
 --
 -- Les seuils combinent une fraction de la durée et des bornes en secondes :
 -- un buff de 60 s ne devient donc pas ambre pendant vingt secondes, et un
@@ -1180,19 +1192,16 @@ local BUFF_CRITICAL_COLOR = Color(1, 0.26, 0.22)
 -- par seconde et ne doit pas allouer une table par buff affiché. Sa durée de
 -- vie se limite à une itération de la boucle de rendu.
 local buff_state = {
-    name        = "persistent",
-    remaining   = nil,
-    progress    = nil,
-    frame_color = nil,
+    remaining    = nil,
+    progress     = nil,
     accent_color = nil,
-    timer_color = nil,
-    emphasis    = 0,
-    alpha_scale = 1,
+    timer_color  = nil,
+    emphasis     = 0,
+    alpha_scale  = 1,
 }
 
 local function resolve_buff_state(buff, t)
     local state = buff_state
-    local color = buff.color or HUD_ACCENT_COLOR
     local duration = tonumber(buff.duration)
 
     -- L'aperçu de debug fige un temps restant afin de présenter chaque état
@@ -1202,22 +1211,23 @@ local function resolve_buff_state(buff, t)
         remaining = math.max(0, buff.t_end - t)
     end
 
-    state.remaining   = remaining
-    state.progress    = nil
-    state.timer_color = nil
-    state.emphasis    = 0
-    state.alpha_scale = 1
+    state.remaining    = remaining
+    state.progress     = nil
+    state.accent_color = nil
+    state.timer_color  = nil
+    state.emphasis     = 0
+    state.alpha_scale  = 1
 
     if not remaining or not duration or duration <= 0 then
-        -- Indicateur permanent : ni progression ni urgence inventées. Un
-        -- debuff garde sa teinte, les autres restent sur l'accent du HUD.
-        state.name        = "persistent"
-        state.frame_color = buff.is_debuff and color or HUD_ACCENT_COLOR
-        state.accent_color = color
+        -- Indicateur permanent : ni progression, ni contour périmétrique, ni
+        -- urgence inventées.
         return state
     end
 
     state.progress = clamp(remaining / duration, 0, 1)
+    -- Un debuff temporaire reste identifiable par sa propre couleur tant
+    -- qu'aucune urgence ne doit primer.
+    state.accent_color = buff.color or HUD_ACCENT_COLOR
 
     local critical_at = clamp(
         duration * BUFF_CRITICAL_RATIO,
@@ -1231,25 +1241,15 @@ local function resolve_buff_state(buff, t)
     )
 
     if remaining <= critical_at then
-        state.name         = "critical"
-        state.frame_color  = BUFF_CRITICAL_COLOR
         state.accent_color = BUFF_CRITICAL_COLOR
         state.timer_color  = BUFF_CRITICAL_COLOR
         state.emphasis     = 1
         local pulse = 0.5 + 0.5 * math.sin(t * math.pi * 2 * BUFF_CRITICAL_PULSE_HZ)
         state.alpha_scale = 1 - BUFF_CRITICAL_PULSE_DEPTH * (1 - pulse)
     elseif remaining <= warning_at then
-        state.name         = "warning"
-        state.frame_color  = BUFF_WARNING_COLOR
         state.accent_color = BUFF_WARNING_COLOR
         state.timer_color  = BUFF_WARNING_COLOR
         state.emphasis     = 0.55
-    else
-        -- Un debuff temporaire reste identifiable par sa propre couleur tant
-        -- qu'aucune urgence ne doit primer.
-        state.name         = "normal"
-        state.frame_color  = color
-        state.accent_color = color
     end
 
     return state
@@ -2994,15 +2994,13 @@ function KH:draw()
             frame_pad_y,
             top_label_height
         )
-        local buff_cell_style = {
-            inset = 1,
-        }
-
         for idx, buff in ipairs(buff_list) do
             local pos = positions[idx]
             if pos then
                 -- L'état visuel est résolu une seule fois par buff rendu : il
-                -- pilote le cadre, le contour, la visibilité et le timer.
+                -- pilote l'opacité de la cellule, le contour périmétrique et
+                -- la couleur du timer. Le cadre statique, lui, reste
+                -- identique pour tous les états.
                 local state = resolve_buff_state(buff, t)
 
                 -- Alpha dynamique : diminue quand le buff expire, mais un état
@@ -3018,20 +3016,19 @@ function KH:draw()
                 local frame_w = size + frame_pad_x * 2
                 local frame_h = size + frame_pad_y * 2
 
-                buff_cell_style.emphasis = state.emphasis
                 draw_buff_cell_frame(
                     self._panel,
                     frame_x,
                     frame_y,
                     frame_w,
                     frame_h,
-                    state.frame_color or HUD_ACCENT_COLOR,
                     buff_alpha * (0.72 + 0.28 * state.emphasis),
-                    98,
-                    buff_cell_style
+                    98
                 )
 
-                local remaining = state.remaining
+                -- Contour périmétrique horaire, réservé aux buffs temporaires :
+                -- un indicateur permanent n'a pas de `progress` et n'en reçoit
+                -- donc jamais.
                 if state.progress then
                     draw_timed_buff_progress(
                         self._panel,
@@ -3045,6 +3042,8 @@ function KH:draw()
                         99
                     )
                 end
+
+                local remaining = state.remaining
 
                 local params = {
                     layer = 101,
