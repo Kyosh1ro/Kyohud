@@ -1,3 +1,10 @@
+r85 (03.09.2026):
+- Akimbo weapons and poison kills now have dedicated weapon-family streak medals with localized tier announcements.
+- Weapon-family streaks now expire independently after the combo window, allowing their medal tiers to be earned again during the same heist.
+- The heist score values now use a consistent 20-pixel font with roomier row spacing for clearer readability.
+- The total-score widget now uses a dedicated compact tactical frame, with the best streak displayed inline.
+- Development-only hook and killfeed load messages have been removed from the SuperBLT log.
+
 r84 (01.09.2026):
 - A persistent heist score widget now tracks the total combat score, including civilian penalties, and the best continuous scoring streak after killfeed cards expire.
 - The score widget can be toggled, its Best Streak line can be hidden separately, and its horizontal and vertical positions are configurable.
@@ -220,13 +227,13 @@ r19 (16.08.2026):
 - Added persistent buff simulation to the debug tools.
 
 r18 (16.08.2026):
-- Adopted the `fix/` and `feature/` prefixes for branch names.
+- fix circular buff
 
 r17 (16.08.2026):
 - Fixed circular spacing for buffs and the killfeed.
 
 r16 (16.08.2026):
-- Added the Codex agent working guide.
+- fix
 
 r15 (12.07.2026):
 - Added option persistence and fixed French-language loading.
@@ -276,4 +283,4 @@ r2 (03.04.2026):
 - Added an initial complete buff map and individual buff selection.
 
 r1 (03.04.2026):
-- Created the SuperBLT mod and its primary hooks.
+- Mod created

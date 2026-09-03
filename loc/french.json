@@ -42,6 +42,7 @@
 
   "ky_hud_score_total": "SCORE TOTAL",
   "ky_hud_score_best_streak": "BEST STREAK",
+  "ky_hud_score_best_short": "RECORD",
 
   "ky_hud_combo_2": "TIR GROUPÉ",
   "ky_hud_combo_2_2": "DOUBLE IMPACT",
@@ -102,9 +103,15 @@
   "ky_hud_streak_sniper_5": "SNIPER SPREE",
   "ky_hud_streak_sniper_10": "SHARPSHOOTER",
   "ky_hud_streak_sniper_15": "BE THE BULLET",
+  "ky_hud_streak_akimbo_5": "DOUBLE TROUBLE",
+  "ky_hud_streak_akimbo_10": "GUNS BLAZING",
+  "ky_hud_streak_akimbo_15": "TWICE THE FIREPOWER",
   "ky_hud_streak_incendiary_3": "BURN NOTICE",
   "ky_hud_streak_incendiary_6": "INCINERATION",
   "ky_hud_streak_incendiary_10": "HELLFIRE",
+  "ky_hud_streak_poison_3": "TOXIC",
+  "ky_hud_streak_poison_6": "VENOMOUS",
+  "ky_hud_streak_poison_10": "BIOHAZARD",
   "ky_hud_streak_melee_2": "ONE-TWO",
   "ky_hud_streak_melee_3": "BONE CRACKER",
   "ky_hud_streak_melee_4": "PUMMEL",

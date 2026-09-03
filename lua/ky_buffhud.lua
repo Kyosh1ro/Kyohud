@@ -43,7 +43,7 @@ KH._heist_score_best_streak = 0
 KH._heist_score_recorded = false
 KH._special_kill_banner = nil
 KH._banner_queue = {}          -- FIFO bornée : annonces en attente d'affichage
-KH._weapon_streaks = {}        -- { [family] = { count, tier_index } }
+KH._weapon_streaks = {}        -- { [family] = { count, tier_index, last_t } }
 KH._weapon_streak_card = nil   -- médaille de palier affichée dans le killfeed
 KH._weapon_streak_queue = {}   -- FIFO bornée, indépendante du bandeau supérieur
 KH._combo_label_variant_index = KH._combo_label_variant_index or 0
@@ -403,6 +403,7 @@ local function heist_score_labels()
     local labels = {
         total = localized_text("ky_hud_score_total", "TOTAL SCORE"),
         best_streak = localized_text("ky_hud_score_best_streak", "BEST STREAK"),
+        best_short = localized_text("ky_hud_score_best_short", "BEST"),
     }
     if managers and managers.localization then
         heist_score_labels_cache = labels
@@ -483,7 +484,8 @@ local SPECIAL_KILL_BANNER_DEFINITIONS = {
 -- ── Séries persistantes par famille de dégâts / d'arme ──
 -- Chaque famille possède son propre compteur, indépendant des autres : un kill
 -- au fusil à pompe n'interrompt pas une série au sniper. Les paliers sont
--- strictement croissants et ne sont franchis qu'une seule fois par série.
+-- strictement croissants et chaque palier n'est franchi qu'une seule fois par
+-- cycle ; après une pause temporelle, la famille repart de son premier palier.
 local WEAPON_STREAK_DEFINITIONS = {
     shotgun = {
         color = Color(1, 0.55, 0.12),               -- orange
@@ -501,12 +503,28 @@ local WEAPON_STREAK_DEFINITIONS = {
             { count = 15, id = "ky_hud_streak_sniper_15", fallback = "BE THE BULLET" },
         },
     },
+    akimbo = {
+        color = Color(0.24, 0.9, 0.96),             -- cyan
+        tiers = {
+            { count = 5,  id = "ky_hud_streak_akimbo_5",  fallback = "DOUBLE TROUBLE" },
+            { count = 10, id = "ky_hud_streak_akimbo_10", fallback = "GUNS BLAZING" },
+            { count = 15, id = "ky_hud_streak_akimbo_15", fallback = "TWICE THE FIREPOWER" },
+        },
+    },
     incendiary = {
         color = Color(1, 0.3, 0.06),                -- orange-rouge
         tiers = {
             { count = 3,  id = "ky_hud_streak_incendiary_3",  fallback = "BURN NOTICE" },
             { count = 6,  id = "ky_hud_streak_incendiary_6",  fallback = "INCINERATION" },
             { count = 10, id = "ky_hud_streak_incendiary_10", fallback = "HELLFIRE" },
+        },
+    },
+    poison = {
+        color = Color(0.36, 0.85, 0.29),            -- vert toxique
+        tiers = {
+            { count = 3,  id = "ky_hud_streak_poison_3",  fallback = "TOXIC" },
+            { count = 6,  id = "ky_hud_streak_poison_6",  fallback = "VENOMOUS" },
+            { count = 10, id = "ky_hud_streak_poison_10", fallback = "BIOHAZARD" },
         },
     },
     melee = {
@@ -2308,11 +2326,15 @@ function KH:_show_weapon_streak_card(t, family, tier_index, preview)
 end
 
 --- Compte un kill pour sa famille et renvoie l'indice du palier franchi.
---- Les compteurs sont persistants : ils survivent aux kills des autres
---- familles et ne repartent qu'à zéro sur chute du joueur ou Debug: Clear.
-function KH:_register_weapon_family_kill(family)
+--- `t` est le temps du kill, déjà calculé par `KH:add_kill` : chaque famille
+--- entretient son propre timer, calqué sur celui du multikill, et aucune
+--- horloge n'est relue ici.
+function KH:_register_weapon_family_kill(family, t)
     local definition = weapon_streak_definition(family)
     if not definition then return nil end
+
+    local tiers = definition.tiers
+    if not tiers[1] then return nil end
 
     local streaks = self._weapon_streaks
     if not streaks then
@@ -2325,15 +2347,31 @@ function KH:_register_weapon_family_kill(family)
         streak = { count = 0, tier_index = 0 }
         streaks[family] = streak
     end
+
+    -- Repli défensif : un appelant sans temps ne doit pas figer le timer de la
+    -- famille. `add_kill` passe toujours son `t` ; `now()` ne sert qu'à ce repli.
+    t = tonumber(t) or now()
+
+    -- Timer strictement propre à cette famille : les kills des autres familles
+    -- ne le rafraîchissent ni ne le réinitialisent. La borne reste inclusive,
+    -- exactement comme la fenêtre du multikill.
+    if streak.last_t and (t - streak.last_t) > KILL_COMBO_WINDOW then
+        streak.count = 0
+        streak.tier_index = 0
+    end
+    streak.last_t = t
     streak.count = streak.count + 1
 
-    -- Un seul palier peut tomber par kill, et jamais deux fois le même.
-    local next_tier = definition.tiers[streak.tier_index + 1]
-    if next_tier and streak.count >= next_tier.count then
-        streak.tier_index = streak.tier_index + 1
-        return streak.tier_index
+    -- Un seul palier peut tomber par kill : on ne compare qu'au palier suivant.
+    -- Une fois le maximum annoncé, `next_tier` est nil et la chaîne reste
+    -- silencieuse jusqu'à son expiration, qui réarme le premier palier.
+    local next_tier = tiers[streak.tier_index + 1]
+    if not next_tier or streak.count < next_tier.count then
+        return nil
     end
-    return nil
+
+    streak.tier_index = streak.tier_index + 1
+    return streak.tier_index
 end
 
 --- Remise à zéro des séries d'arme : les compteurs repartent de zéro et toute
@@ -2461,7 +2499,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     -- La médaille de palier vit dans le killfeed : elle ne dispute jamais le
     -- bandeau supérieur à une cible prioritaire, les deux peuvent coexister.
     local streak_tier_index = weapon_family
-        and self:_register_weapon_family_kill(weapon_family)
+        and self:_register_weapon_family_kill(weapon_family, t)
         or nil
     if streak_tier_index then
         self:_show_weapon_streak_card(t, weapon_family, streak_tier_index, false)
@@ -2615,8 +2653,54 @@ local function compare_buff_arrival(a, b)
 end
 
 local HEIST_SCORE_LABEL_COLOR = Color(0.86, 0.96, 1)
+local HEIST_SCORE_BEST_VALUE_COLOR = Color(1, 1, 1)
 local HEIST_SCORE_EDGE_MARGIN = 6
-local HEIST_SCORE_ROW_GAP = 2
+
+local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
+    panel:gradient({
+        x = x,
+        y = y + 1,
+        w = w,
+        h = h - 2,
+        orientation = "horizontal",
+        gradient_points = {
+            0, Color.black:with_alpha(alpha * 0.7),
+            0.58, Color.black:with_alpha(alpha * 0.46),
+            1, Color.black:with_alpha(0),
+        },
+        layer = layer,
+    })
+    panel:rect({
+        x = x, y = y + 2, w = 2, h = h - 4,
+        color = color, alpha = alpha * 0.9, layer = layer + 1,
+    })
+    panel:gradient({
+        x = x + 2,
+        y = y + 1,
+        w = w - 2,
+        h = 1,
+        orientation = "horizontal",
+        gradient_points = {
+            0, color:with_alpha(alpha * 0.5),
+            0.72, color:with_alpha(alpha * 0.2),
+            1, color:with_alpha(0),
+        },
+        layer = layer + 1,
+    })
+    panel:gradient({
+        x = x + 2,
+        y = y + h - 2,
+        w = w - 2,
+        h = 1,
+        orientation = "horizontal",
+        gradient_points = {
+            0, color:with_alpha(alpha * 0.5),
+            0.72, color:with_alpha(alpha * 0.2),
+            1, color:with_alpha(0),
+        },
+        layer = layer + 1,
+    })
+end
 
 local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha, settings)
     local labels = heist_score_labels()
@@ -2627,27 +2711,36 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
     local best_streak_text = format_kill_score(best_streak)
     local font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
     local label_font_size = clamp(size * 0.34, 11, 14)
-    local value_font_size = clamp(size * 0.46, 14, 19)
+    local value_font_size = 20
+    local best_label_font_size = math.max(9, label_font_size - 1)
+    local best_value_font_size = label_font_size
     local row_h = math.ceil(value_font_size + 6)
-    local row_count = show_best_streak and 2 or 1
     local pad_x = clamp(size * 0.3, 9, 14)
-    local pad_y = 4
-    local column_gap = clamp(size * 0.4, 10, 18)
+    local pad_y = 2
+    local label_gap = clamp(size * 0.3, 8, 12)
+    local best_group_gap = 3
+    local value_gap = clamp(size * 0.16, 5, 7)
     local label_w = approximate_text_width(labels.total, label_font_size)
     local value_w = approximate_text_width(total_text, value_font_size)
-
-    if show_best_streak then
-        label_w = math.max(label_w, approximate_text_width(labels.best_streak, label_font_size))
-        value_w = math.max(value_w, approximate_text_width(best_streak_text, value_font_size))
-    end
+    local best_label_w = show_best_streak
+        and approximate_text_width(labels.best_short, best_label_font_size)
+        or 0
+    local best_value_w = show_best_streak
+        and approximate_text_width(best_streak_text, best_value_font_size)
+        or 0
+    local best_group_w = best_label_w
+        + (show_best_streak and best_group_gap or 0)
+        + best_value_w
 
     local block_w = math.min(
-        math.ceil(label_w + column_gap + value_w + pad_x * 2),
+        math.ceil(
+            label_w + label_gap + best_group_w
+                + (show_best_streak and value_gap or 0)
+                + value_w + pad_x * 2
+        ),
         math.max(1, panel_w - HEIST_SCORE_EDGE_MARGIN * 2)
     )
-    local block_h = math.ceil(
-        row_h * row_count + HEIST_SCORE_ROW_GAP * (row_count - 1) + pad_y * 2
-    )
+    local block_h = math.ceil(row_h + pad_y * 2)
     local anchor_x = panel_w * clamp(tonumber(settings.score_position_x) or 100, 0, 100) / 100
     local anchor_y = panel_h * clamp(tonumber(settings.score_position_y) or 75, 0, 100) / 100
     local x = clamp(
@@ -2664,11 +2757,36 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
         and KILLFEED_SCORE_PENALTY_COLOR
         or KILLFEED_SCORE_COLOR
 
-    draw_killfeed_card_frame(panel, x, y, block_w, block_h, total_color, alpha, 101)
+    draw_heist_score_frame(panel, x, y, block_w, block_h, total_color, alpha, 101)
 
-    local label_x = x + pad_x
-    local value_x = math.max(label_x + label_w, x + block_w - pad_x - value_w)
-    local total_row_y = y + pad_y
+    -- Quand le panneau est plus étroit que la largeur naturelle du bloc,
+    -- réduire les zones de texte de droite à gauche plutôt que de les laisser
+    -- se chevaucher ou sortir du cadre.
+    local content_left = math.min(x + pad_x, x + block_w)
+    local content_right = math.max(content_left, x + block_w - pad_x)
+    local label_x = content_left
+
+    value_w = math.min(value_w, math.max(0, content_right - content_left))
+    local value_x = content_right - value_w
+    local cursor_x = value_x
+    local best_value_x = cursor_x
+    local best_label_x = cursor_x
+
+    if show_best_streak then
+        cursor_x = cursor_x - math.min(value_gap, math.max(0, cursor_x - content_left))
+        best_value_w = math.min(best_value_w, math.max(0, cursor_x - content_left))
+        best_value_x = cursor_x - best_value_w
+        cursor_x = best_value_x
+
+        cursor_x = cursor_x - math.min(best_group_gap, math.max(0, cursor_x - content_left))
+        best_label_w = math.min(best_label_w, math.max(0, cursor_x - content_left))
+        best_label_x = cursor_x - best_label_w
+        cursor_x = best_label_x
+    end
+
+    cursor_x = cursor_x - math.min(label_gap, math.max(0, cursor_x - content_left))
+    label_w = math.min(label_w, math.max(0, cursor_x - label_x))
+    local row_y = y + pad_y
 
     panel:text({
         text = labels.total,
@@ -2678,7 +2796,7 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
         align = "left",
         vertical = "center",
         x = label_x,
-        y = total_row_y,
+        y = row_y,
         w = label_w,
         h = row_h,
         layer = 103,
@@ -2692,7 +2810,7 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
         align = "right",
         vertical = "center",
         x = value_x,
-        y = total_row_y,
+        y = row_y,
         w = value_w,
         h = row_h,
         layer = 103,
@@ -2700,31 +2818,30 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
     })
 
     if show_best_streak then
-        local best_row_y = total_row_y + row_h + HEIST_SCORE_ROW_GAP
         panel:text({
-            text = labels.best_streak,
+            text = labels.best_short,
             font = font,
-            font_size = label_font_size,
+            font_size = best_label_font_size,
             color = HEIST_SCORE_LABEL_COLOR,
-            align = "left",
+            align = "right",
             vertical = "center",
-            x = label_x,
-            y = best_row_y,
-            w = label_w,
+            x = best_label_x,
+            y = row_y,
+            w = best_label_w,
             h = row_h,
             layer = 103,
-            alpha = alpha * 0.7,
+            alpha = alpha * 0.6,
         })
         panel:text({
             text = best_streak_text,
             font = font,
-            font_size = value_font_size,
-            color = KILLFEED_SCORE_COLOR,
+            font_size = best_value_font_size,
+            color = HEIST_SCORE_BEST_VALUE_COLOR,
             align = "right",
             vertical = "center",
-            x = value_x,
-            y = best_row_y,
-            w = value_w,
+            x = best_value_x,
+            y = row_y,
+            w = best_value_w,
             h = row_h,
             layer = 103,
             alpha = alpha * 0.85,
@@ -3681,5 +3798,3 @@ Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
         KH:draw()
     end
 end)
-
-log("[KyoHUD] ky_buffhud.lua chargé.")

@@ -16,8 +16,6 @@ local function logi(msg)
     pcall(function() log("[" .. MOD_NAME .. "][Loc] " .. tostring(msg)) end)
 end
 
-logi("ModPath capturé: " .. tostring(MY_MOD_PATH))
-
 -- Fallbacks intégrés pour garantir aucun "ERROR:" dans les menus
 local function add_fallbacks(loc)
     loc:add_localized_strings({
@@ -66,6 +64,7 @@ local function add_fallbacks(loc)
 
         ky_hud_score_total       = "TOTAL SCORE",
         ky_hud_score_best_streak = "BEST STREAK",
+        ky_hud_score_best_short  = "BEST",
 
         -- Bandeau des séries de kills
         ky_hud_combo_2     = "CLEAN PAIR",
@@ -129,9 +128,15 @@ local function add_fallbacks(loc)
         ky_hud_streak_sniper_5       = "SNIPER SPREE",
         ky_hud_streak_sniper_10      = "SHARPSHOOTER",
         ky_hud_streak_sniper_15      = "BE THE BULLET",
+        ky_hud_streak_akimbo_5       = "DOUBLE TROUBLE",
+        ky_hud_streak_akimbo_10      = "GUNS BLAZING",
+        ky_hud_streak_akimbo_15      = "TWICE THE FIREPOWER",
         ky_hud_streak_incendiary_3   = "BURN NOTICE",
         ky_hud_streak_incendiary_6   = "INCINERATION",
         ky_hud_streak_incendiary_10  = "HELLFIRE",
+        ky_hud_streak_poison_3       = "TOXIC",
+        ky_hud_streak_poison_6       = "VENOMOUS",
+        ky_hud_streak_poison_10      = "BIOHAZARD",
         ky_hud_streak_melee_2        = "ONE-TWO",
         ky_hud_streak_melee_3        = "BONE CRACKER",
         ky_hud_streak_melee_4        = "PUMMEL",
