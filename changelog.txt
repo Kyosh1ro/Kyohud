@@ -2,6 +2,7 @@ r85 (03.09.2026):
 - Akimbo weapons and poison kills now have dedicated weapon-family streak medals with localized tier announcements.
 - Weapon-family streaks now expire independently after the combo window, allowing their medal tiers to be earned again during the same heist.
 - The heist score values now use a consistent 20-pixel font with roomier row spacing for clearer readability.
+- The total-score widget now uses a dedicated compact tactical frame, with the best streak displayed inline.
 - Development-only hook and killfeed load messages have been removed from the SuperBLT log.
 
 r84 (01.09.2026):

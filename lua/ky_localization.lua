@@ -64,6 +64,7 @@ local function add_fallbacks(loc)
 
         ky_hud_score_total       = "TOTAL SCORE",
         ky_hud_score_best_streak = "BEST STREAK",
+        ky_hud_score_best_short  = "BEST",
 
         -- Bandeau des séries de kills
         ky_hud_combo_2     = "CLEAN PAIR",

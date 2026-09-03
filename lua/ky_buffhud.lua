@@ -403,6 +403,7 @@ local function heist_score_labels()
     local labels = {
         total = localized_text("ky_hud_score_total", "TOTAL SCORE"),
         best_streak = localized_text("ky_hud_score_best_streak", "BEST STREAK"),
+        best_short = localized_text("ky_hud_score_best_short", "BEST"),
     }
     if managers and managers.localization then
         heist_score_labels_cache = labels
@@ -2652,8 +2653,54 @@ local function compare_buff_arrival(a, b)
 end
 
 local HEIST_SCORE_LABEL_COLOR = Color(0.86, 0.96, 1)
+local HEIST_SCORE_BEST_VALUE_COLOR = Color(1, 1, 1)
 local HEIST_SCORE_EDGE_MARGIN = 6
-local HEIST_SCORE_ROW_GAP = 2
+
+local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
+    panel:gradient({
+        x = x,
+        y = y + 1,
+        w = w,
+        h = h - 2,
+        orientation = "horizontal",
+        gradient_points = {
+            0, Color.black:with_alpha(alpha * 0.7),
+            0.58, Color.black:with_alpha(alpha * 0.46),
+            1, Color.black:with_alpha(0),
+        },
+        layer = layer,
+    })
+    panel:rect({
+        x = x, y = y + 2, w = 2, h = h - 4,
+        color = color, alpha = alpha * 0.9, layer = layer + 1,
+    })
+    panel:gradient({
+        x = x + 2,
+        y = y + 1,
+        w = w - 2,
+        h = 1,
+        orientation = "horizontal",
+        gradient_points = {
+            0, color:with_alpha(alpha * 0.5),
+            0.72, color:with_alpha(alpha * 0.2),
+            1, color:with_alpha(0),
+        },
+        layer = layer + 1,
+    })
+    panel:gradient({
+        x = x + 2,
+        y = y + h - 2,
+        w = w - 2,
+        h = 1,
+        orientation = "horizontal",
+        gradient_points = {
+            0, color:with_alpha(alpha * 0.5),
+            0.72, color:with_alpha(alpha * 0.2),
+            1, color:with_alpha(0),
+        },
+        layer = layer + 1,
+    })
+end
 
 local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha, settings)
     local labels = heist_score_labels()
@@ -2665,26 +2712,35 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
     local font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
     local label_font_size = clamp(size * 0.34, 11, 14)
     local value_font_size = 20
-    local row_h = math.ceil(value_font_size + 10)
-    local row_count = show_best_streak and 2 or 1
+    local best_label_font_size = math.max(9, label_font_size - 1)
+    local best_value_font_size = label_font_size
+    local row_h = math.ceil(value_font_size + 6)
     local pad_x = clamp(size * 0.3, 9, 14)
-    local pad_y = 4
-    local column_gap = clamp(size * 0.4, 10, 18)
+    local pad_y = 2
+    local label_gap = clamp(size * 0.3, 8, 12)
+    local best_group_gap = 3
+    local value_gap = clamp(size * 0.16, 5, 7)
     local label_w = approximate_text_width(labels.total, label_font_size)
     local value_w = approximate_text_width(total_text, value_font_size)
-
-    if show_best_streak then
-        label_w = math.max(label_w, approximate_text_width(labels.best_streak, label_font_size))
-        value_w = math.max(value_w, approximate_text_width(best_streak_text, value_font_size))
-    end
+    local best_label_w = show_best_streak
+        and approximate_text_width(labels.best_short, best_label_font_size)
+        or 0
+    local best_value_w = show_best_streak
+        and approximate_text_width(best_streak_text, best_value_font_size)
+        or 0
+    local best_group_w = best_label_w
+        + (show_best_streak and best_group_gap or 0)
+        + best_value_w
 
     local block_w = math.min(
-        math.ceil(label_w + column_gap + value_w + pad_x * 2),
+        math.ceil(
+            label_w + label_gap + best_group_w
+                + (show_best_streak and value_gap or 0)
+                + value_w + pad_x * 2
+        ),
         math.max(1, panel_w - HEIST_SCORE_EDGE_MARGIN * 2)
     )
-    local block_h = math.ceil(
-        row_h * row_count + HEIST_SCORE_ROW_GAP * (row_count - 1) + pad_y * 2
-    )
+    local block_h = math.ceil(row_h + pad_y * 2)
     local anchor_x = panel_w * clamp(tonumber(settings.score_position_x) or 100, 0, 100) / 100
     local anchor_y = panel_h * clamp(tonumber(settings.score_position_y) or 75, 0, 100) / 100
     local x = clamp(
@@ -2701,11 +2757,36 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
         and KILLFEED_SCORE_PENALTY_COLOR
         or KILLFEED_SCORE_COLOR
 
-    draw_killfeed_card_frame(panel, x, y, block_w, block_h, total_color, alpha, 101)
+    draw_heist_score_frame(panel, x, y, block_w, block_h, total_color, alpha, 101)
 
-    local label_x = x + pad_x
-    local value_x = math.max(label_x + label_w, x + block_w - pad_x - value_w)
-    local total_row_y = y + pad_y
+    -- Quand le panneau est plus étroit que la largeur naturelle du bloc,
+    -- réduire les zones de texte de droite à gauche plutôt que de les laisser
+    -- se chevaucher ou sortir du cadre.
+    local content_left = math.min(x + pad_x, x + block_w)
+    local content_right = math.max(content_left, x + block_w - pad_x)
+    local label_x = content_left
+
+    value_w = math.min(value_w, math.max(0, content_right - content_left))
+    local value_x = content_right - value_w
+    local cursor_x = value_x
+    local best_value_x = cursor_x
+    local best_label_x = cursor_x
+
+    if show_best_streak then
+        cursor_x = cursor_x - math.min(value_gap, math.max(0, cursor_x - content_left))
+        best_value_w = math.min(best_value_w, math.max(0, cursor_x - content_left))
+        best_value_x = cursor_x - best_value_w
+        cursor_x = best_value_x
+
+        cursor_x = cursor_x - math.min(best_group_gap, math.max(0, cursor_x - content_left))
+        best_label_w = math.min(best_label_w, math.max(0, cursor_x - content_left))
+        best_label_x = cursor_x - best_label_w
+        cursor_x = best_label_x
+    end
+
+    cursor_x = cursor_x - math.min(label_gap, math.max(0, cursor_x - content_left))
+    label_w = math.min(label_w, math.max(0, cursor_x - label_x))
+    local row_y = y + pad_y
 
     panel:text({
         text = labels.total,
@@ -2715,7 +2796,7 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
         align = "left",
         vertical = "center",
         x = label_x,
-        y = total_row_y,
+        y = row_y,
         w = label_w,
         h = row_h,
         layer = 103,
@@ -2729,7 +2810,7 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
         align = "right",
         vertical = "center",
         x = value_x,
-        y = total_row_y,
+        y = row_y,
         w = value_w,
         h = row_h,
         layer = 103,
@@ -2737,31 +2818,30 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
     })
 
     if show_best_streak then
-        local best_row_y = total_row_y + row_h + HEIST_SCORE_ROW_GAP
         panel:text({
-            text = labels.best_streak,
+            text = labels.best_short,
             font = font,
-            font_size = label_font_size,
+            font_size = best_label_font_size,
             color = HEIST_SCORE_LABEL_COLOR,
-            align = "left",
+            align = "right",
             vertical = "center",
-            x = label_x,
-            y = best_row_y,
-            w = label_w,
+            x = best_label_x,
+            y = row_y,
+            w = best_label_w,
             h = row_h,
             layer = 103,
-            alpha = alpha * 0.7,
+            alpha = alpha * 0.6,
         })
         panel:text({
             text = best_streak_text,
             font = font,
-            font_size = value_font_size,
-            color = KILLFEED_SCORE_COLOR,
+            font_size = best_value_font_size,
+            color = HEIST_SCORE_BEST_VALUE_COLOR,
             align = "right",
             vertical = "center",
-            x = value_x,
-            y = best_row_y,
-            w = value_w,
+            x = best_value_x,
+            y = row_y,
+            w = best_value_w,
             h = row_h,
             layer = 103,
             alpha = alpha * 0.85,
