@@ -2,7 +2,7 @@
   "name": "KyoHUD - Killfeed & Combat Score",
   "description": "Customizable buffs, killfeed, kill streaks and combat score.",
   "author": "Kyosh1ro",
-  "version": "84",
+  "version": "85",
   "blt_version": 2,
   "superblt_version": 1,
   "image": "mod.png",
