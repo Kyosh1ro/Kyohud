@@ -154,6 +154,10 @@ local function add_fallbacks(loc)
         ky_hud_streak_explosive_5    = "DEMOLITION",
         ky_hud_streak_explosive_8    = "BLAST ZONE",
 
+        -- Médaille des kills cumulés du braquage. Une seule clé : l'icône du
+        -- buff de dégâts tient lieu de nom et le palier atteint la précède.
+        ky_hud_kill_medal_kills      = "KILLS",
+
         -- Catégories
         ky_opt_cat_mastermind           = "Mastermind",
         ky_opt_cat_mastermind_desc      = "Show/hide all Mastermind buffs",
