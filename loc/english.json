@@ -128,6 +128,8 @@
   "ky_hud_streak_explosive_5": "DEMOLITION",
   "ky_hud_streak_explosive_8": "BLAST ZONE",
 
+  "ky_hud_kill_medal_kills": "KILLS",
+
 
   "ky_opt_cat_mastermind": "Mastermind",
   "ky_opt_cat_mastermind_desc": "Show/hide all Mastermind skill buffs",
