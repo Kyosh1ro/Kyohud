@@ -44,6 +44,14 @@
   "ky_hud_score_best_streak": "BEST STREAK",
   "ky_hud_score_best_short": "RECORD",
 
+  "ky_hud_buff_label_inspire_cooldown": "Boost+",
+  "ky_hud_buff_label_inspire_revive": "Revive",
+  "ky_hud_buff_label_damage_increase": "Dgts+",
+  "ky_hud_buff_label_damage_reduction": "Dgts-",
+  "ky_hud_buff_label_melee_damage": "M.Dgts+",
+  "ky_hud_buff_label_health_regen": "PV+",
+  "ky_hud_buff_label_dodge_chance": "Esquive",
+
   "ky_hud_combo_2": "TIR GROUPÉ",
   "ky_hud_combo_2_2": "DOUBLE IMPACT",
   "ky_hud_combo_2_3": "DEUX D'UN COUP",

@@ -396,6 +396,30 @@ local function localized_text(id, fallback)
     return value
 end
 
+-- Libellé optionnel dessiné au-dessus de l'icône, sans passer par value_text.
+-- Les buffs d'IA conservent leur marqueur historique ; les autres n'en ont un
+-- que si le catalogue déclare `top_label`. La traduction est résolue une seule
+-- fois par identifiant afin que KH:draw ne relocalise rien à chaque image.
+local buff_top_label_cache = {}
+local function buff_top_label(buff)
+    if buff.category == "ai" then
+        return AI_BUFF_LABEL
+    end
+
+    local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff.id]
+    local label = definition and definition.top_label
+    if not label then return nil end
+
+    local cached = buff_top_label_cache[buff.id]
+    if cached then return cached end
+
+    local text = localized_text(label.id, label.fallback)
+    if managers and managers.localization then
+        buff_top_label_cache[buff.id] = text
+    end
+    return text
+end
+
 local heist_score_labels_cache = nil
 local function heist_score_labels()
     if heist_score_labels_cache then return heist_score_labels_cache end
@@ -2976,9 +3000,11 @@ function KH:draw()
 
         local frame_pad_x = clamp(size * 0.16, 4, 9)
         local frame_pad_y = clamp(size * 0.08, 2, 4)
+        -- Une seule rangée suffit tant que libellé et valeur ne coexistent pas ;
+        -- dès qu'une cellule porte les deux, la marge haute passe à deux lignes.
         local top_label_height = 18
         for _, buff in ipairs(buff_list) do
-            if buff.category == "ai" and buff.value_text then
+            if buff.value_text and buff_top_label(buff) then
                 top_label_height = 35
                 break
             end
@@ -3065,7 +3091,10 @@ function KH:draw()
                 bmp:set_color(buff.color or Color.white)
                 bmp:set_alpha(buff_alpha)
 
-                local is_ai_buff = buff.category == "ai"
+                -- Le libellé occupe toujours la ligne juste au-dessus du cadre ;
+                -- la valeur se décale d'une ligne supplémentaire quand les deux
+                -- sont présents.
+                local top_label = buff_top_label(buff)
                 if buff.value_text then
                     self._panel:text({
                         text      = buff.value_text,
@@ -3075,7 +3104,7 @@ function KH:draw()
                         align     = "center",
                         vertical  = "center",
                         x         = frame_x,
-                        y         = frame_y - (is_ai_buff and 34 or 17),
+                        y         = frame_y - (top_label and 34 or 17),
                         w         = frame_w,
                         h         = 16,
                         layer     = 102,
@@ -3083,9 +3112,9 @@ function KH:draw()
                     })
                 end
 
-                if is_ai_buff then
+                if top_label then
                     self._panel:text({
-                        text      = AI_BUFF_LABEL,
+                        text      = top_label,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
                         font_size = clamp(size * 0.3, 9, 12),
                         color     = HUD_ACCENT_COLOR,

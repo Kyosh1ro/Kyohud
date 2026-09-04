@@ -48,11 +48,27 @@ KH.BUFF_COLORS = {
 -- ky_buffhud.lua. show_stack_count ajoute un badge sans remplacer la valeur.
 -- persistent_counter conserve l'icône d'une compétence équipée et décrit la
 -- valeur dynamique que le HUD doit afficher même lorsque son buff est inactif.
+-- top_label décrit un libellé ciblé dessiné au-dessus de l'icône : il porte sa
+-- clé de localisation et son repli, et n'emprunte jamais value_text.
 KH.BUFF_MAP = {
     aggressive_reload_aced = { skill_id = "speedy_reload", skills_new = { 1, 1 }, category = "mastermind", value_format = "multiplier_percent", default_show = true },
     inspire = { skill_id = "inspire", skills_new = { 0, 9 }, category = "mastermind", default_show = true },
-    inspire_debuff = { skill_id = "inspire", skills_new = { 0, 9 }, category = "debuff", color = "debuff", default_show = true },
-    inspire_revive_debuff = { skill_id = "inspire", skills_new = { 0, 9 }, category = "debuff", color = "debuff", default_show = true },
+    inspire_debuff = {
+        skill_id = "inspire",
+        skills_new = { 0, 9 },
+        category = "debuff",
+        color = "debuff",
+        top_label = { id = "ky_hud_buff_label_inspire_cooldown", fallback = "Boost+" },
+        default_show = true,
+    },
+    inspire_revive_debuff = {
+        skill_id = "inspire",
+        skills_new = { 0, 9 },
+        category = "debuff",
+        color = "debuff",
+        top_label = { id = "ky_hud_buff_label_inspire_revive", fallback = "Revive" },
+        default_show = true,
+    },
     combat_medic = { skill_id = "combat_medic", skills_new = { 0, 0 }, category = "mastermind", default_show = true },
     combat_medic_passive = { skill_id = "combat_medic", skills_new = { 0, 0 }, category = "mastermind", default_show = false },
     quick_fix = { skill_id = "tea_time", skills_new = { 1, 3 }, category = "mastermind", default_show = false },
@@ -148,11 +164,49 @@ KH.BUFF_MAP = {
     crew_throwable_regen = { hud_tweak = "skill_7", category = "ai", show_stack_count = true, default_show = true },
     crew_health_regen = { hud_tweak = "skill_5", category = "ai", default_show = true },
 
-    damage_increase = { skill_id = "prison_wife", skills_new = { 2, 8 }, category = "fugitive", color = "damage_increase", value_format = "damage_increase", default_show = true },
-    damage_reduction = { skill_id = "disguise", skills_new = { 5, 2 }, category = "fugitive", color = "damage_reduction", value_format = "damage_reduction", default_show = true },
-    melee_damage_increase = { skill_id = "hidden_blade", skills_new = { 4, 3 }, category = "fugitive", color = "melee_damage_increase", value_format = "melee_damage_increase", default_show = true },
-    passive_health_regen = { skills_new = { 1, 11 }, category = "mastermind", color = "passive_health_regen", value_format = "passive_health_regen", default_show = true },
-    total_dodge_chance = { skills_new = { 1, 12 }, category = "ghost", color = "total_dodge_chance", value_format = "total_dodge_chance", default_show = true },
+    damage_increase = {
+        skill_id = "prison_wife",
+        skills_new = { 2, 8 },
+        category = "fugitive",
+        color = "damage_increase",
+        value_format = "damage_increase",
+        top_label = { id = "ky_hud_buff_label_damage_increase", fallback = "Dmg+" },
+        default_show = true,
+    },
+    damage_reduction = {
+        skill_id = "disguise",
+        skills_new = { 5, 2 },
+        category = "fugitive",
+        color = "damage_reduction",
+        value_format = "damage_reduction",
+        top_label = { id = "ky_hud_buff_label_damage_reduction", fallback = "Dmg-" },
+        default_show = true,
+    },
+    melee_damage_increase = {
+        skill_id = "hidden_blade",
+        skills_new = { 4, 3 },
+        category = "fugitive",
+        color = "melee_damage_increase",
+        value_format = "melee_damage_increase",
+        top_label = { id = "ky_hud_buff_label_melee_damage", fallback = "M.Dmg+" },
+        default_show = true,
+    },
+    passive_health_regen = {
+        skills_new = { 1, 11 },
+        category = "mastermind",
+        color = "passive_health_regen",
+        value_format = "passive_health_regen",
+        top_label = { id = "ky_hud_buff_label_health_regen", fallback = "HP+" },
+        default_show = true,
+    },
+    total_dodge_chance = {
+        skills_new = { 1, 12 },
+        category = "ghost",
+        color = "total_dodge_chance",
+        value_format = "total_dodge_chance",
+        top_label = { id = "ky_hud_buff_label_dodge_chance", fallback = "Dodge" },
+        default_show = true,
+    },
 }
 
 -- Buffs du menu « Perk Decks » pouvant remplacer l'icône du deck équipé en
