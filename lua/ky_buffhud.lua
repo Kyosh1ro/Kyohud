@@ -396,28 +396,34 @@ local function localized_text(id, fallback)
     return value
 end
 
--- Libellé optionnel dessiné au-dessus de l'icône, sans passer par value_text.
--- Les buffs d'IA conservent leur marqueur historique ; les autres n'en ont un
--- que si le catalogue déclare `top_label`. La traduction est résolue une seule
--- fois par identifiant afin que KH:draw ne relocalise rien à chaque image.
-local buff_top_label_cache = {}
-local function buff_top_label(buff)
+-- Libellé optionnel d'une cellule, sans passer par value_text. Les buffs d'IA
+-- conservent leur marqueur historique au-dessus de l'icône ; les autres n'en ont
+-- un que si le catalogue déclare `label`, dont le champ `placement` choisit
+-- entre BUFF_LABEL_TOP et BUFF_LABEL_TIMER. Le texte et le placement sont
+-- renvoyés séparément : KH:draw n'alloue aucune table et la traduction est
+-- résolue une seule fois par identifiant, pas à chaque image.
+local BUFF_LABEL_TOP = "top"
+local BUFF_LABEL_TIMER = "timer"
+local buff_label_cache = {}
+local function buff_label(buff)
     if buff.category == "ai" then
-        return AI_BUFF_LABEL
+        return AI_BUFF_LABEL, BUFF_LABEL_TOP
     end
 
     local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff.id]
-    local label = definition and definition.top_label
+    local label = definition and definition.label
     if not label then return nil end
 
-    local cached = buff_top_label_cache[buff.id]
-    if cached then return cached end
+    local placement = label.placement == BUFF_LABEL_TIMER and BUFF_LABEL_TIMER or BUFF_LABEL_TOP
+
+    local cached = buff_label_cache[buff.id]
+    if cached then return cached, placement end
 
     local text = localized_text(label.id, label.fallback)
     if managers and managers.localization then
-        buff_top_label_cache[buff.id] = text
+        buff_label_cache[buff.id] = text
     end
-    return text
+    return text, placement
 end
 
 local heist_score_labels_cache = nil
@@ -3000,13 +3006,18 @@ function KH:draw()
 
         local frame_pad_x = clamp(size * 0.16, 4, 9)
         local frame_pad_y = clamp(size * 0.08, 2, 4)
-        -- Une seule rangée suffit tant que libellé et valeur ne coexistent pas ;
-        -- dès qu'une cellule porte les deux, la marge haute passe à deux lignes.
+        -- Une seule rangée suffit tant qu'un libellé haut et une valeur ne
+        -- coexistent pas ; dès qu'une cellule porte les deux, la marge haute
+        -- passe à deux lignes. Un libellé placé dans le timer reste sous
+        -- l'icône et ne consomme jamais cette marge.
         local top_label_height = 18
         for _, buff in ipairs(buff_list) do
-            if buff.value_text and buff_top_label(buff) then
-                top_label_height = 35
-                break
+            if buff.value_text then
+                local label_text, label_placement = buff_label(buff)
+                if label_text and label_placement == BUFF_LABEL_TOP then
+                    top_label_height = 35
+                    break
+                end
             end
         end
         local positions = compute_horizontal_positions(
@@ -3090,10 +3101,13 @@ function KH:draw()
                 bmp:set_color(buff.color or Color.white)
                 bmp:set_alpha(buff_alpha)
 
-                -- Le libellé occupe toujours la ligne juste au-dessus du cadre ;
-                -- la valeur se décale d'une ligne supplémentaire quand les deux
-                -- sont présents.
-                local top_label = buff_top_label(buff)
+                -- Un libellé haut occupe la ligne juste au-dessus du cadre et
+                -- décale la valeur d'une ligne supplémentaire. Un libellé de
+                -- placement « timer » descend sous l'icône : la valeur garde
+                -- alors sa ligne unique au-dessus du cadre.
+                local label_text, label_placement = buff_label(buff)
+                local top_label = label_text and label_placement == BUFF_LABEL_TOP and label_text or nil
+                local timer_label = label_text and label_placement == BUFF_LABEL_TIMER and label_text or nil
                 if buff.value_text then
                     self._panel:text({
                         text      = buff.value_text,
@@ -3158,8 +3172,26 @@ function KH:draw()
                     })
                 end
 
-                -- Timer texte sous l'icône, teinté par l'état d'urgence.
-                if remaining and remaining > 0 then
+                -- Sous l'icône : un libellé de placement « timer » occupe seul
+                -- l'emplacement et remplace le compte à rebours, dont la durée
+                -- n'apporte rien sur ces indicateurs composites. Sinon, timer
+                -- texte teinté par l'état d'urgence.
+                if timer_label then
+                    self._panel:text({
+                        text      = timer_label,
+                        font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
+                        font_size = clamp(size * 0.3, 9, 12),
+                        color     = HUD_ACCENT_COLOR,
+                        align     = "center",
+                        vertical  = "center",
+                        x         = frame_x,
+                        y         = pos.y + size / 2 + 2,
+                        w         = frame_w,
+                        h         = 16,
+                        layer     = 102,
+                        alpha     = buff_alpha,
+                    })
+                elseif remaining and remaining > 0 then
                     self._panel:text({
                         text      = string.format("%.1f", remaining),
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",

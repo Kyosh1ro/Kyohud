@@ -48,8 +48,11 @@ KH.BUFF_COLORS = {
 -- ky_buffhud.lua. show_stack_count ajoute un badge sans remplacer la valeur.
 -- persistent_counter conserve l'icône d'une compétence équipée et décrit la
 -- valeur dynamique que le HUD doit afficher même lorsque son buff est inactif.
--- top_label décrit un libellé ciblé dessiné au-dessus de l'icône : il porte sa
--- clé de localisation et son repli, et n'emprunte jamais value_text.
+-- label décrit un libellé ciblé qui n'emprunte jamais value_text : il porte sa
+-- clé de localisation, son repli et son placement. `placement = "top"` (valeur
+-- par défaut) le dessine au-dessus de l'icône ; `placement = "timer"` l'installe
+-- sous l'icône, dans l'emplacement du timer, dont il remplace le compte à
+-- rebours.
 KH.BUFF_MAP = {
     aggressive_reload_aced = { skill_id = "speedy_reload", skills_new = { 1, 1 }, category = "mastermind", value_format = "multiplier_percent", default_show = true },
     inspire = { skill_id = "inspire", skills_new = { 0, 9 }, category = "mastermind", default_show = true },
@@ -58,7 +61,7 @@ KH.BUFF_MAP = {
         skills_new = { 0, 9 },
         category = "debuff",
         color = "debuff",
-        top_label = { id = "ky_hud_buff_label_inspire_cooldown", fallback = "Boost+" },
+        label = { id = "ky_hud_buff_label_inspire_cooldown", fallback = "Boost+", placement = "top" },
         default_show = true,
     },
     inspire_revive_debuff = {
@@ -66,7 +69,7 @@ KH.BUFF_MAP = {
         skills_new = { 0, 9 },
         category = "debuff",
         color = "debuff",
-        top_label = { id = "ky_hud_buff_label_inspire_revive", fallback = "Revive" },
+        label = { id = "ky_hud_buff_label_inspire_revive", fallback = "Revive", placement = "top" },
         default_show = true,
     },
     combat_medic = { skill_id = "combat_medic", skills_new = { 0, 0 }, category = "mastermind", default_show = true },
@@ -170,7 +173,7 @@ KH.BUFF_MAP = {
         category = "fugitive",
         color = "damage_increase",
         value_format = "damage_increase",
-        top_label = { id = "ky_hud_buff_label_damage_increase", fallback = "Dmg+" },
+        label = { id = "ky_hud_buff_label_damage_increase", fallback = "Dmg+", placement = "timer" },
         default_show = true,
     },
     damage_reduction = {
@@ -179,7 +182,7 @@ KH.BUFF_MAP = {
         category = "fugitive",
         color = "damage_reduction",
         value_format = "damage_reduction",
-        top_label = { id = "ky_hud_buff_label_damage_reduction", fallback = "Dmg-" },
+        label = { id = "ky_hud_buff_label_damage_reduction", fallback = "Dmg-", placement = "timer" },
         default_show = true,
     },
     melee_damage_increase = {
@@ -188,7 +191,7 @@ KH.BUFF_MAP = {
         category = "fugitive",
         color = "melee_damage_increase",
         value_format = "melee_damage_increase",
-        top_label = { id = "ky_hud_buff_label_melee_damage", fallback = "M.Dmg+" },
+        label = { id = "ky_hud_buff_label_melee_damage", fallback = "M.Dmg+", placement = "timer" },
         default_show = true,
     },
     passive_health_regen = {
@@ -196,7 +199,7 @@ KH.BUFF_MAP = {
         category = "mastermind",
         color = "passive_health_regen",
         value_format = "passive_health_regen",
-        top_label = { id = "ky_hud_buff_label_health_regen", fallback = "HP+" },
+        label = { id = "ky_hud_buff_label_health_regen", fallback = "HP+", placement = "timer" },
         default_show = true,
     },
     total_dodge_chance = {
@@ -204,7 +207,7 @@ KH.BUFF_MAP = {
         category = "ghost",
         color = "total_dodge_chance",
         value_format = "total_dodge_chance",
-        top_label = { id = "ky_hud_buff_label_dodge_chance", fallback = "Dodge" },
+        label = { id = "ky_hud_buff_label_dodge_chance", fallback = "Dodge", placement = "timer" },
         default_show = true,
     },
 }
