@@ -1,3 +1,8 @@
+r86 (04.09.2026):
+- Selected buffs now use localized compact labels, with Inspire states identified above their icons and composite stat labels placed below instead of redundant timers.
+- Buff cells now use open-top cyan tactical frames, bottom-weighted shading and color-coded timed perimeter progress with clearer warning and critical states.
+- Cumulative enemy kills now award per-heist medals at 50, 75, 100, 150, 200, 300, 400 and 500 kills in the shared killfeed medal row.
+
 r85 (03.09.2026):
 - Akimbo weapons and poison kills now have dedicated weapon-family streak medals with localized tier announcements.
 - Weapon-family streaks now expire independently after the combo window, allowing their medal tiers to be earned again during the same heist.

@@ -66,6 +66,15 @@ local function add_fallbacks(loc)
         ky_hud_score_best_streak = "BEST STREAK",
         ky_hud_score_best_short  = "BEST",
 
+        -- Libellés dessinés au-dessus de l'icône d'un buff
+        ky_hud_buff_label_inspire_cooldown = "Boost+",
+        ky_hud_buff_label_inspire_revive   = "Revive",
+        ky_hud_buff_label_damage_increase  = "Dmg+",
+        ky_hud_buff_label_damage_reduction = "Dmg-",
+        ky_hud_buff_label_melee_damage     = "M.Dmg+",
+        ky_hud_buff_label_health_regen     = "HP+",
+        ky_hud_buff_label_dodge_chance     = "Dodge",
+
         -- Bandeau des séries de kills
         ky_hud_combo_2     = "CLEAN PAIR",
         ky_hud_combo_2_2   = "DOUBLE TAP",
@@ -144,6 +153,10 @@ local function add_fallbacks(loc)
         ky_hud_streak_explosive_3    = "BOOM",
         ky_hud_streak_explosive_5    = "DEMOLITION",
         ky_hud_streak_explosive_8    = "BLAST ZONE",
+
+        -- Médaille des kills cumulés du braquage. Une seule clé : l'icône du
+        -- buff de dégâts tient lieu de nom et le palier atteint la précède.
+        ky_hud_kill_medal_kills      = "KILLS",
 
         -- Catégories
         ky_opt_cat_mastermind           = "Mastermind",
