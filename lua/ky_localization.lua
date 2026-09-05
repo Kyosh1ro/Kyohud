@@ -158,6 +158,16 @@ local function add_fallbacks(loc)
         -- buff de dégâts tient lieu de nom et le palier atteint la précède.
         ky_hud_kill_medal_kills      = "KILLS",
 
+        -- Médailles d'évènement, décernées sur les conditions du kill lui-même.
+        ky_hud_event_medal_first_strike = "First Strike",
+        ky_hud_event_medal_grave     = "Grave",
+        ky_hud_event_medal_low_hp    = "Last Breath",
+        ky_hud_event_medal_reload    = "Reload This",
+        ky_hud_event_medal_run       = "Headcase",
+        ky_hud_event_medal_rope      = "Pull!",
+        ky_hud_event_medal_rope_3    = "Free Fall",
+        ky_hud_event_medal_rope_5    = "Air Sweep",
+
         -- Catégories
         ky_opt_cat_mastermind           = "Mastermind",
         ky_opt_cat_mastermind_desc      = "Show/hide all Mastermind buffs",
