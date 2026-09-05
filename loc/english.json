@@ -130,6 +130,14 @@
 
   "ky_hud_kill_medal_kills": "KILLS",
 
+  "ky_hud_event_medal_first_strike": "First Strike",
+  "ky_hud_event_medal_grave": "Grave",
+  "ky_hud_event_medal_low_hp": "Last Breath",
+  "ky_hud_event_medal_reload": "Reload This",
+  "ky_hud_event_medal_rope": "Pull!",
+  "ky_hud_event_medal_rope_3": "Free Fall",
+  "ky_hud_event_medal_rope_5": "Air Sweep",
+
 
   "ky_opt_cat_mastermind": "Mastermind",
   "ky_opt_cat_mastermind_desc": "Show/hide all Mastermind skill buffs",
