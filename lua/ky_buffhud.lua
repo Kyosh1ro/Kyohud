@@ -2581,7 +2581,8 @@ end
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
 function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family)
-    if not self.settings or not self.settings.enable_killfeed then return end
+    -- enable_killfeed contrôle le rendu, pas la comptabilité du braquage.
+    if not self.settings then return end
 
     local dur = KILLFEED_ENTRY_DURATION
     local t = now()
@@ -3774,7 +3775,16 @@ local DEBUG_BANNER_PREVIEWS = {
 }
 
 function KH:DebugSimulate(n)
-    self:DebugClear()
+    -- L'aperçu utilise les tables du HUD : il n'est sûr qu'au menu principal,
+    -- jamais pendant un braquage (y compris briefing, garde à vue et pause).
+    local ok, in_menu = pcall(function()
+        return game_state_machine:last_queued_state_name() == "menu_main"
+    end)
+    if not ok or not in_menu then
+        log("[KyoHUD] Preview is only available from the main menu.")
+        return
+    end
+    self:ResetHeistCombatState()
     self._debug_preview_active = true
     n = n or 8
 
@@ -3953,9 +3963,8 @@ function KH:DebugSimulate(n)
 end
 
 function KH:DebugClear()
-    -- Un aperçu se retire exactement comme une partie se termine ; seul le
-    -- panneau déjà dessiné doit être vidé en plus, car aucun nouveau HUD ne
-    -- vient le reconstruire ici.
+    -- Sans aperçu, ne toucher ni aux compteurs réels ni au panneau courant.
+    if not self._debug_preview_active then return end
     self:ResetHeistCombatState()
     if self._panel and alive(self._panel) then
         self._panel:clear()
