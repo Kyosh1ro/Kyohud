@@ -283,6 +283,8 @@ function KH:ReadEnemyKillState(unit, out)
     out.reload = false
     out.run = false
     out.rope = false
+    out.bulltrue = false
+    out.showstopper = false
     if not unit then return out end
 
     local alive_ok, is_alive = pcall(alive, unit)
@@ -304,6 +306,24 @@ function KH:ReadEnemyKillState(unit, out)
         return movement:rope_unit()
     end)
     out.rope = rope_ok and rope and true or false
+
+    -- Le jeu lit lui-même l'ActionSpooc dans `_active_actions[1]` pour ses
+    -- succès Cloaker. Sur un husk ou une implémentation moddée qui ne l'expose
+    -- pas, une lecture impossible reste volontairement un évènement absent.
+    local spooc_ok, attacking, flying = pcall(function()
+        local movement = unit:movement()
+        local action = movement and movement._active_actions
+            and movement._active_actions[1]
+        if not action or not action.type or action:type() ~= "spooc"
+                or not action.is_flying_strike then
+            return false, false
+        end
+        return true, action:is_flying_strike() == true
+    end)
+    if spooc_ok and attacking then
+        out.bulltrue = flying == true
+        out.showstopper = flying ~= true
+    end
 
     return out
 end
@@ -470,6 +490,9 @@ local EVENT_INFO = {
     rope     = false,
     grave    = false,
     low_hp   = false,
+    revenge  = false,
+    bulltrue = false,
+    showstopper = false,
 }
 
 -- Le PreHook et le PostHook de `CopDamage:die` appartiennent au même chargement
@@ -485,6 +508,8 @@ local function consume_enemy_kill_state(unit, out)
         out.reload = state.reload
         out.run = state.run
         out.rope = state.rope
+        out.bulltrue = state.bulltrue
+        out.showstopper = state.showstopper
         return out
     end
 
@@ -509,6 +534,9 @@ local function event_info(unit, headshot, is_civilian)
     EVENT_INFO.rope     = false
     EVENT_INFO.grave    = false
     EVENT_INFO.low_hp   = false
+    EVENT_INFO.revenge  = false
+    EVENT_INFO.bulltrue = false
+    EVENT_INFO.showstopper = false
 
     consume_enemy_kill_state(unit, EVENT_INFO)
     if is_civilian then return nil end
@@ -520,6 +548,9 @@ local function event_info(unit, headshot, is_civilian)
     EVENT_INFO.low_hp = KH.IsLocalPlayerLowHealth
         and KH:IsLocalPlayerLowHealth()
         or false
+    local revenge_targets = KH._revenge_targets
+    EVENT_INFO.revenge = revenge_targets and revenge_targets[unit] == true or false
+    if EVENT_INFO.revenge then revenge_targets[unit] = nil end
     return EVENT_INFO
 end
 
@@ -580,10 +611,17 @@ elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
     Hooks:PostHook(CopDamage, "die", "KH_OnEnemyDie", function(self, attack_data)
         if not attack_data then return end
 
-        local attacker = attack_data.attacker_unit
-        if not KH.IsLocalKillAttacker or not KH:IsLocalKillAttacker(attacker) then return end
-
         local unit = self._unit
+        local attacker = attack_data.attacker_unit
+        if not KH.IsLocalKillAttacker or not KH:IsLocalKillAttacker(attacker) then
+            -- Une cible de vengeance tuée par quelqu'un d'autre ne doit pas
+            -- rester dans le set jusqu'au ramassage par le GC.
+            if unit and KH._revenge_targets then
+                KH._revenge_targets[unit] = nil
+            end
+            return
+        end
+
         local unit_id = KH.GetKillUnitId and KH:GetKillUnitId(unit)
         local civilian_ok, is_civilian = pcall(function()
             return unit_id and CopDamage.is_civilian(unit_id) or false

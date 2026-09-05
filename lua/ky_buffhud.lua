@@ -612,6 +612,36 @@ local EVENT_MEDAL_DEFINITIONS = {
         color    = Color(0.98, 0.78, 0.22),          -- ambre
         icon     = { hud_tweak = "csb_reload" },
     },
+    through_shield = {
+        id       = "ky_hud_event_medal_through_shield",
+        fallback = "Through the Shield",
+        color    = Color(1, 0.72, 0.16),             -- orange bouclier
+        icon     = { hud_tweak = "csb_armor" },
+    },
+    one_shot_two_kills = {
+        id       = "ky_hud_event_medal_one_shot_two_kills",
+        fallback = "One Shot Two Kills",
+        color    = Color(1, 0.48, 0.12),             -- rouge-or
+        icon     = { hud_tweak = "pd2_kill" },
+    },
+    revenge = {
+        id       = "ky_hud_event_medal_revenge",
+        fallback = "Revenge",
+        color    = Color(0.82, 0.28, 1),             -- violet électrique
+        icon     = { hud_tweak = "csb_absorb" },
+    },
+    bulltrue = {
+        id       = "ky_hud_event_medal_bulltrue",
+        fallback = "Bulltrue",
+        color    = Color(0.35, 1, 0.18),             -- vert Cloaker
+        icon     = { hud_tweak = "crime_spree_cloaker_smoke" },
+    },
+    showstopper = {
+        id       = "ky_hud_event_medal_showstopper",
+        fallback = "Showstopper",
+        color    = Color(0.35, 1, 0.18),             -- vert Cloaker
+        icon     = { hud_tweak = "crime_spree_cloaker_smoke" },
+    },
     rope = {
         id       = "ky_hud_event_medal_rope",
         fallback = "Pull!",
@@ -629,7 +659,8 @@ local EVENT_MEDAL_DEFINITIONS = {
 -- fige donc l'ordre d'émission : deux kills portant les mêmes évènements
 -- produisent toujours exactement la même suite de médailles.
 local EVENT_MEDAL_ORDER = {
-    "first_strike", "grave", "low_hp", "reload", "rope",
+    "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
+    "showstopper", "rope",
 }
 
 -- ── Paliers de kills cumulés du braquage ──
@@ -821,6 +852,12 @@ local function make_event_medal_card(id, tier_index)
         label      = localized_text(label.id, label.fallback),
         color      = color,
     }
+end
+
+--- Émet directement une carte d'évènement sans enregistrer de kill ni de score.
+--- Réservé aux hooks moteur qui agrègent déjà les victimes d'un même tir.
+function KH:ShowEventMedal(id)
+    self:_show_medal_card(now(), make_event_medal_card(id), false)
 end
 
 local function special_enemy_definition(kind)
@@ -2624,6 +2661,7 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._event_assault_active = false
     self._event_assault_number = nil
     self._event_first_strike_awarded = false
+    self._revenge_targets = setmetatable({}, { __mode = "k" })
 
     self._buffs = {}
     self._buff_sources = {}
@@ -3915,6 +3953,11 @@ local DEBUG_BANNER_PREVIEWS = {
     { combo = 0, medal = "event", event = "grave" },
     { combo = 0, medal = "event", event = "low_hp" },
     { combo = 0, medal = "event", event = "reload" },
+    { combo = 0, medal = "event", event = "through_shield" },
+    { combo = 0, medal = "event", event = "one_shot_two_kills" },
+    { combo = 0, medal = "event", event = "revenge" },
+    { combo = 0, medal = "event", event = "bulltrue" },
+    { combo = 0, medal = "event", event = "showstopper" },
     { combo = 0, medal = "event", event = "rope", tier_index = 1 },
     { combo = 0, medal = "event", event = "rope", tier_index = 2 },
     { combo = 0, medal = "event", event = "rope", tier_index = 3 },

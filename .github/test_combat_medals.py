@@ -18,6 +18,15 @@ class CombatMedalTests(unittest.TestCase):
             function Hooks:Add(...) end
             HUDManager = {sync_start_assault = function() end, sync_end_assault = function() end}
             PlayerManager = {}; CopDamage = {is_civilian = function(id) return id == 'civilian' end}
+            PlayerDamage = {
+                damage_tase=function() end, damage_bullet=function() end,
+                damage_melee=function() end, damage_explosion=function() end,
+                damage_fire=function() end, on_downed=function() end,
+                on_incapacitated=function() end, on_arrested=function() end,
+                set_health=function() end, _upd_health_regen=function() end
+            }
+            PlayerMovement = {on_SPOOCed=function() end}
+            RaycastWeaponBase = {_check_kill_achievements=function() end}
             managers = {}; tweak_data = {hud_icons = {get_icon_data = function(self, name) return name, {0,0,1,1} end}}
             function Vector3(...) return {...} end
             function log(...) end
@@ -30,10 +39,13 @@ class CombatMedalTests(unittest.TestCase):
             local_player = {}
             managers.player = {player_unit = function() return local_player end,
                 current_state = function() return 'standard' end}
-            function enemy(id, animation, rope)
+            function enemy(id, animation, rope, action)
                 return {base = function() return {_tweak_table = id or 'cop'} end,
                     anim_data = function() return animation or {} end,
-                    movement = function() return {rope_unit = function() return rope end} end}
+                    movement = function() return {
+                        _active_actions = {action},
+                        rope_unit = function() return rope end
+                    } end}
             end
         ''')
         self.load('ky_buffhud.lua', 'lib/managers/hudmanagerpd2')
@@ -131,17 +143,20 @@ class CombatMedalTests(unittest.TestCase):
             assert(count_event('rope') == 6 and cards[#cards].tier_index == 1, 'heist reset')
         ''')
 
-    def test_preview_covers_five_events_and_three_rope_tiers(self):
+    def test_preview_covers_event_medals_and_rope_tiers(self):
         self.lua.execute('''
             local seen = {}
-            for i = 1, 12 do
+            for i = 1, 18 do
                 kyohud:DebugSimulate(0)
                 local card = kyohud._medal_card
                 if card and card.event then
                     seen[card.event .. ':' .. tostring(card.tier_index or 0)] = true
                 end
             end
-            for _, id in ipairs({'first_strike','grave','low_hp','reload'}) do
+            for _, id in ipairs({
+                'first_strike','grave','low_hp','reload','through_shield',
+                'one_shot_two_kills','revenge','bulltrue','showstopper'
+            }) do
                 assert(seen[id .. ':0'], 'preview missing ' .. id)
             end
             for i = 1, 3 do assert(seen['rope:' .. i], 'preview missing rope tier ' .. i) end
@@ -151,7 +166,11 @@ class CombatMedalTests(unittest.TestCase):
 
     def test_event_localizations(self):
         import json
-        ids = ['first_strike', 'grave', 'low_hp', 'reload', 'rope', 'rope_3', 'rope_5']
+        ids = [
+            'first_strike', 'grave', 'low_hp', 'reload', 'rope', 'rope_3',
+            'rope_5', 'through_shield', 'one_shot_two_kills', 'revenge',
+            'bulltrue', 'showstopper'
+        ]
         fallback = (ROOT / 'lua/ky_localization.lua').read_text(encoding='utf-8-sig')
         for language in ('english', 'french'):
             data = json.loads((ROOT / 'loc' / (language + '.json')).read_text(encoding='utf-8-sig'))
@@ -199,6 +218,81 @@ class CombatMedalTests(unittest.TestCase):
             broken.movement = function() error('engine') end
             Hooks.callbacks.KH_OnLocalPlayerKillshot({}, broken, 'bullet', false)
             assert(#cards == before, 'failed engine read leaked prior events')
+        ''')
+
+    def test_cloaker_attack_state_and_revenge_events(self):
+        self.lua.execute('''
+            local flying = {
+                type=function() return 'spooc' end,
+                is_flying_strike=function() return true end
+            }
+            local ground = {
+                type=function() return 'spooc' end,
+                is_flying_strike=function() return false end
+            }
+            local flying_victim = enemy('spooc', {}, nil, flying)
+            local ground_victim = enemy('spooc', {}, nil, ground)
+            local attack = {attacker_unit=local_player, variant='bullet'}
+
+            Hooks.callbacks.KH_OnEnemyDiePre({_unit=flying_victim}, attack)
+            Hooks.callbacks.KH_OnEnemyDie({_unit=flying_victim}, attack)
+            assert(count_event('bulltrue') == 1 and count_event('showstopper') == 0)
+
+            Hooks.callbacks.KH_OnEnemyDiePre({_unit=ground_victim}, attack)
+            Hooks.callbacks.KH_OnEnemyDie({_unit=ground_victim}, attack)
+            assert(count_event('bulltrue') == 1 and count_event('showstopper') == 1)
+
+            local revenge_victim = enemy('cop')
+            kyohud._revenge_targets[revenge_victim] = true
+            Hooks.callbacks.KH_OnEnemyDiePre({_unit=revenge_victim}, attack)
+            Hooks.callbacks.KH_OnEnemyDie({_unit=revenge_victim}, attack)
+            assert(count_event('revenge') == 1, 'revenge medal missing')
+            assert(not kyohud._revenge_targets[revenge_victim], 'revenge target not consumed')
+        ''')
+
+    def test_weapon_hook_emits_cards_without_scoring(self):
+        self.load('ky_raycastweaponbase.lua', 'lib/units/weapons/raycastweaponbase')
+        self.lua.execute('''
+            local before = kyohud._heist_kill_count
+            local hook = Hooks.callbacks.KH_RaycastKillMedals
+            assert(hook, 'raycast hook missing')
+            hook({}, 1, {}, 'cop', false, false, false)
+            hook({}, 2, {}, 'cop', false, false, false)
+            hook({}, 3, {}, 'cop', false, false, false)
+            assert(count_event('one_shot_two_kills') == 1, 'multi-kill emitted more than once')
+            hook({}, 1, {}, 'shield', false, false, true)
+            assert(count_event('through_shield') == 1, 'shield penetration missing')
+            hook({}, 1, {}, 'cop', false, false, true)
+            hook({}, 1, {}, 'shield', true, false, true)
+            assert(count_event('through_shield') == 1, 'invalid shield medal')
+            assert(kyohud._heist_kill_count == before, 'weapon hook changed kill scoring')
+        ''')
+
+    def test_revenge_target_capture_and_heist_reset(self):
+        self.load('ky_playerdamage.lua', 'lib/units/beings/player/playerdamage')
+        self.load('ky_playermovement.lua', 'lib/units/beings/player/playermovement')
+        self.lua.execute('''
+            local downer = enemy('cop')
+            local damage = {}
+            Hooks.callbacks.KH_RevengeRemember_damage_bullet(damage, {attacker_unit=downer})
+            Hooks.callbacks.KH_ResetWeaponStreaks_on_downed(damage)
+            Hooks.callbacks.KH_RevengeForget_damage_bullet(damage)
+            assert(kyohud._revenge_targets[downer], 'down attacker not captured')
+
+            local taser = enemy('taser')
+            local tase_damage = {tase_data=function() return {attacker_unit=taser} end}
+            Hooks.callbacks.KH_RevengeRememberTase(tase_damage)
+            assert(kyohud._revenge_targets[taser], 'tase attacker not captured')
+
+            local cloaker = enemy('spooc')
+            local movement = {current_state_name=function() return 'incapacitated' end}
+            Hooks.callbacks.KH_RevengeRememberSpooc(movement, cloaker)
+            assert(kyohud._revenge_targets[cloaker], 'cloaker attacker not captured')
+
+            kyohud:ResetHeistCombatState()
+            assert(not kyohud._revenge_targets[downer]
+                and not kyohud._revenge_targets[taser]
+                and not kyohud._revenge_targets[cloaker], 'revenge reset failed')
         ''')
 
     def test_hidden_hud_preserves_medal_and_heist_accounting(self):
