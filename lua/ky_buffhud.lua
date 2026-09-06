@@ -1486,8 +1486,15 @@ local MEDAL_ROW_GAP = 6
 -- Séparer d'un demi-pixel la médaille du prolongement inférieur du bandeau :
 -- les deux accents ne se confondent plus lorsque les deux niveaux sont actifs.
 local MEDAL_TOP_GAP = 0.5
--- Marge intérieure du contenu. Les anciennes banques de trois chevrons ont été
--- retirées : elles dépassaient du cadre lorsque la médaille s'animait.
+-- Les séries d'arme conservent leurs trois flèches de chaque côté. Les autres
+-- familles de médailles utilisent seulement une marge intérieure afin que leur
+-- contenu ne dépasse pas du cadre pendant l'animation.
+local MEDAL_CHEVRON_STYLE = { arrow_w = 6, arrow_h = 9, gap = 3 }
+local MEDAL_CHEVRON_GROUP_W = SPECIAL_CHEVRON_SLOTS
+    * MEDAL_CHEVRON_STYLE.arrow_w
+    + (SPECIAL_CHEVRON_SLOTS - 1) * MEDAL_CHEVRON_STYLE.gap
+local MEDAL_CHEVRON_MARGIN = 13
+local MEDAL_CHEVRON_TEXT_GAP = 6
 local MEDAL_CONTENT_PADDING = 13
 -- Icône optionnelle précédant le texte, dimensionnée sur la hauteur réelle de la
 -- carte pour rester à l'intérieur du ruban quelle que soit la taille du HUD.
@@ -3736,9 +3743,37 @@ function KH:draw()
                     self._panel, mx, my, mw, mh, medal_color, medal_alpha, 101
                 )
 
+                local content_padding = MEDAL_CONTENT_PADDING
+                if medal_card.kind == MEDAL_KIND_WEAPON_STREAK then
+                    content_padding = MEDAL_CHEVRON_MARGIN
+                        + MEDAL_CHEVRON_GROUP_W
+                        + MEDAL_CHEVRON_TEXT_GAP
+                    local arrow_y = my + mh * 0.5
+                    draw_chevrons(
+                        self._panel,
+                        mx + MEDAL_CHEVRON_MARGIN,
+                        arrow_y,
+                        1,
+                        medal_color,
+                        medal_alpha,
+                        104,
+                        MEDAL_CHEVRON_STYLE
+                    )
+                    draw_chevrons(
+                        self._panel,
+                        mx + mw - MEDAL_CHEVRON_MARGIN - MEDAL_CHEVRON_GROUP_W,
+                        arrow_y,
+                        -1,
+                        medal_color,
+                        medal_alpha,
+                        104,
+                        MEDAL_CHEVRON_STYLE
+                    )
+                end
+
                 local font_size = clamp(size * 0.48, 15, 21)
-                local text_x = mx + MEDAL_CONTENT_PADDING
-                local text_w = math.max(1, mw - MEDAL_CONTENT_PADDING * 2)
+                local text_x = mx + content_padding
+                local text_w = math.max(1, mw - content_padding * 2)
 
                 -- Médaille à icône : le pictogramme remplace le nom écrit et
                 -- précède le palier, les deux restant centrés ensemble dans la
