@@ -48,6 +48,9 @@ KH._heist_kill_count = 0       -- kills ennemis cumulés depuis le début du bra
 KH._heist_kill_medal_index = 0 -- dernier palier de kills cumulés déjà annoncé
 KH._medal_card = nil           -- médaille affichée dans la rangée du killfeed
 KH._medal_queue = {}           -- FIFO bornée, indépendante du bandeau supérieur
+KH._spray_down_kills = 0       -- kills par balle depuis le dernier rechargement
+KH._spray_down_awarded = false -- palier de quatre déjà annoncé pour ce chargeur
+KH._spray_down_started_t = nil -- début de la fenêtre courante de quatre kills
 KH._combo_label_variant_index = KH._combo_label_variant_index or 0
 KH._dozer_banner_index = KH._dozer_banner_index or 0
 KH._debug_banner_preview_index = KH._debug_banner_preview_index or 0
@@ -694,6 +697,12 @@ local EVENT_MEDAL_DEFINITIONS = {
         color    = Color(0.45, 0.84, 1),
         icon     = { hud_tweak = "csb_ammo" },
     },
+    spray_down = {
+        id       = "ky_hud_event_medal_spray_down",
+        fallback = "Spray Down",
+        color    = Color(1, 0.48, 0.16),
+        icon     = { hud_tweak = "csb_switch" },
+    },
 }
 
 -- Une table Lua indexée par clé n'a pas d'ordre de parcours stable. Cette liste
@@ -702,8 +711,14 @@ local EVENT_MEDAL_DEFINITIONS = {
 local EVENT_MEDAL_ORDER = {
     "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
     "showstopper", "rope", "blindfire", "first_blood", "hotswap",
-    "overwatch", "long_shot",
+    "overwatch", "long_shot", "spray_down",
 }
+
+-- Dernier souffle reste un signal critique, mais ne doit pas remplir la file
+-- pendant une rafale de kills à basse santé. La première carte est immédiate et
+-- la borne est inclusive : une nouvelle carte est permise exactement à 30 s.
+local LAST_BREATH_MEDAL_COOLDOWN = 30
+local SPRAY_DOWN_WINDOW = 4
 
 -- ── Paliers de kills cumulés du braquage ──
 -- Compteur unique, indépendant de l'arme, du score et des fenêtres de temps :
@@ -900,6 +915,14 @@ end
 --- Réservé aux hooks moteur qui agrègent déjà les victimes d'un même tir.
 function KH:ShowEventMedal(id)
     self:_show_medal_card(now(), make_event_medal_card(id), false)
+end
+
+--- Un rechargement ouvre un nouveau chargeur pour Spray Down. L'appelant
+--- garantit qu'il s'agit de l'arme du joueur local.
+function KH:ResetSprayDownMagazine()
+    self._spray_down_kills = 0
+    self._spray_down_awarded = false
+    self._spray_down_started_t = nil
 end
 
 local function special_enemy_definition(kind)
@@ -2707,6 +2730,7 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._event_first_strike_awarded = false
     self._first_blood_done = false
     self._last_weapon_switch_t = nil
+    self._last_breath_medal_t = nil
     self._revenge_targets = setmetatable({}, { __mode = "k" })
 
     self._buffs = {}
@@ -2730,6 +2754,7 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     -- partie : ils survivent aux chutes, mais jamais à un nouveau braquage.
     self._heist_kill_count = 0
     self._heist_kill_medal_index = 0
+    self:ResetSprayDownMagazine()
     self:_clear_medal_cards()
     self._special_enemy_combos = {}
     clear_recorded_kill_units(self)
@@ -2834,6 +2859,20 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     -- carte active et des `MAX_MEDAL_QUEUE` places de la file, les médailles
     -- suivantes sont abandonnées : elles n'ouvrent aucun palier à rattraper.
     if contributes_to_combo ~= false then
+        if event_info then event_info.spray_down = false end
+        if event_info and event_info.magazine_kill and not self._spray_down_awarded then
+            local started_t = tonumber(self._spray_down_started_t)
+            if started_t == nil or t < started_t or t - started_t > SPRAY_DOWN_WINDOW then
+                self._spray_down_started_t = t
+                self._spray_down_kills = 1
+            else
+                self._spray_down_kills = (self._spray_down_kills or 0) + 1
+            end
+            if self._spray_down_kills >= 4 then
+                self._spray_down_awarded = true
+                event_info.spray_down = true
+            end
+        end
         for _, event_id in ipairs(EVENT_MEDAL_ORDER) do
             local triggered
             if event_id == "first_strike" then
@@ -2844,6 +2883,13 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
                 triggered = rope_tier ~= nil
             else
                 triggered = event_info and event_info[event_id]
+            end
+            if triggered and event_id == "low_hp" then
+                local previous_t = tonumber(self._last_breath_medal_t)
+                triggered = previous_t == nil
+                    or t < previous_t
+                    or t - previous_t >= LAST_BREATH_MEDAL_COOLDOWN
+                if triggered then self._last_breath_medal_t = t end
             end
             if triggered then
                 self:_show_medal_card(t, make_event_medal_card(event_id, rope_tier), false)
@@ -4041,7 +4087,7 @@ end
 --   médaille de série d'arme dans le killfeed, avec les noms sous celle-ci ;
 --   médaille de kills cumulés « icône Dmg+ + 100 KILLS », dans cette même
 --   rangée partagée ;
---   les dix-sept cartes de médailles d'évènement, paliers de rappel compris,
+--   les dix-huit cartes de médailles d'évènement, paliers de rappel compris,
 --   une par appel, avec leur icône `hud_tweak`.
 -- Le premier appel montre directement l'exemple demandé, partiellement rempli.
 -- `combo` reste à 0 pour les cas d'annonce afin que seul le bandeau spécial soit
@@ -4070,6 +4116,7 @@ local DEBUG_BANNER_PREVIEWS = {
     { combo = 0, medal = "event", event = "hotswap" },
     { combo = 0, medal = "event", event = "overwatch" },
     { combo = 0, medal = "event", event = "long_shot" },
+    { combo = 0, medal = "event", event = "spray_down" },
 }
 
 function KH:DebugSimulate(n)
