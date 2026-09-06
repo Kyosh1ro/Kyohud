@@ -225,6 +225,17 @@ local function get_icon_data(icon)
     return texture, texture_rect
 end
 
+-- Descripteur partagé par toutes les cartes Headshot. La résolution du nom HUD
+-- et de sa découpe d'atlas se fait au premier kill concerné, jamais dans draw.
+local HEADSHOT_ICON_DESCRIPTOR
+local function headshot_icon_descriptor()
+    if not HEADSHOT_ICON_DESCRIPTOR then
+        local texture, rect = get_icon_data({ hud_tweak = "pd2_kill" })
+        HEADSHOT_ICON_DESCRIPTOR = { texture = texture, rect = rect }
+    end
+    return HEADSHOT_ICON_DESCRIPTOR
+end
+
 -- Le catalogue partagé des buffs est chargé depuis ky_buff_catalog.lua.
 
 -- ═══════════════════════════════════════════════════
@@ -773,7 +784,7 @@ local function combo_color(count)
     if count == 2 then return Color(1, 0.85, 0.2) end
     if count == 3 then return Color(1, 0.55, 0.1) end
     if count == 4 then return Color(1, 0.2, 0.1) end
-    return Color(0.9, 0.15, 1)
+    return Color(0.208, 0.906, 1) -- cyan électrique #35E7FF dès 5 kills
 end
 
 -- Un bandeau porte directement son libellé et sa couleur. `KH:draw` n'a donc
@@ -2853,6 +2864,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         name       = enemy_name or "Enemy",
         score      = score,
         score_text = format_kill_score(score),
+        headshot   = event_info ~= nil and event_info.headshot == true,
         special_kind = special_definition and special_enemy_kind or nil,
         display_text = special_enemy_label(
             special_enemy_kind,
@@ -2862,6 +2874,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         start_t    = t,
         t_end      = t + dur,
     }
+    if entry.headshot then
+        entry.headshot_icon = headshot_icon_descriptor()
+    end
     table.insert(self._kills, entry)
 
     while #self._kills > killfeed_size(self.settings) do
@@ -3504,6 +3519,8 @@ function KH:draw()
         local kill_font_size = clamp(size * 0.42, 13, 18)
         local text_padding = clamp(size * 0.34, 10, 16)
         local text_gap = clamp(size * 0.14, 4, 7)
+        local headshot_icon_size = clamp(item_h * 0.52, 15, 20)
+        local headshot_icon_gap = clamp(size * 0.1, 3, 5)
         local score_total_text = visible_count > 0
             and self._killfeed_score_has_value
             and format_kill_score(self._killfeed_score_total)
@@ -3541,7 +3558,12 @@ function KH:draw()
                 and (kill._measured_score_w or approximate_text_width(kill.score_text, kill_font_size))
                 or 0
             local content_gap = kill.score_text and text_gap or 0
-            local item_w = math.ceil(name_w + score_w + content_gap + text_padding * 2)
+            local icon_reserved = kill.headshot and kill.headshot_icon
+                and (headshot_icon_size + headshot_icon_gap)
+                or 0
+            local item_w = math.ceil(
+                icon_reserved + name_w + score_w + content_gap + text_padding * 2
+            )
             item_w = math.max(item_h, item_w)
             item_widths[slot] = item_w
             desired_row_w = desired_row_w + item_w
@@ -3869,15 +3891,53 @@ function KH:draw()
 
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
+            local headshot_icon = kill.headshot and kill.headshot_icon or nil
+            local minimum_text_w = 1 + (score_text and (text_gap + 1) or 0)
+            local icon_available_w = math.max(0, inner_w - minimum_text_w)
+            local icon_size = headshot_icon
+                and math.min(
+                    headshot_icon_size,
+                    math.max(0, icon_available_w - headshot_icon_gap)
+                )
+                or 0
+            local icon_gap = icon_size > 0
+                and math.min(headshot_icon_gap, math.max(0, icon_available_w - icon_size))
+                or 0
+            local icon_reserved = icon_size + icon_gap
             local score_w = score_text
-                and math.min(kill._measured_score_w or 0, math.max(1, inner_w - text_gap - 1))
+                and math.min(
+                    kill._measured_score_w or 0,
+                    math.max(1, inner_w - icon_reserved - text_gap - 1)
+                )
                 or 0
             local name_w = math.min(
                 kill._measured_name_w or inner_w,
-                math.max(1, inner_w - score_w - (score_text and text_gap or 0))
+                math.max(
+                    1,
+                    inner_w - icon_reserved - score_w - (score_text and text_gap or 0)
+                )
             )
-            local content_w = name_w + score_w + (score_text and text_gap or 0)
-            local text_x = item_x + (item_w - content_w) * 0.5
+            local content_w = icon_reserved + name_w + score_w
+                + (score_text and text_gap or 0)
+            local content_x = item_x + (item_w - content_w) * 0.5
+            local text_x = content_x + icon_reserved
+
+            if icon_size > 0 then
+                local params = {
+                    layer = 102,
+                    w = icon_size,
+                    h = icon_size,
+                    x = content_x,
+                    y = feed_y + (item_h - icon_size) * 0.5,
+                    texture = headshot_icon.texture,
+                }
+                if headshot_icon.rect then
+                    params.texture_rect = headshot_icon.rect
+                end
+                local bitmap = self._panel:bitmap(params)
+                bitmap:set_color(item_color)
+                bitmap:set_alpha(item_alpha)
+            end
 
             self._panel:text({
                 text = kill.display_text or kill.name,
@@ -4093,7 +4153,7 @@ function KH:DebugSimulate(n)
 
     -- Simuler quelques kills
     local demo_kills = {
-        { name = "Medic", score = 6, special_kind = "medic", special_count = 2, label_index = 1 },
+        { name = "Medic", score = 6, headshot = true, special_kind = "medic", special_count = 2, label_index = 1 },
         { name = "Captain Winters", score = 100, special_kind = "boss", special_count = 1, label_index = 1 },
         { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
         { name = "Cloaker", score = 8, special_kind = "cloaker", special_count = 2, label_index = 1 },
@@ -4111,6 +4171,8 @@ function KH:DebugSimulate(n)
             name       = demo.name,
             score      = demo.score,
             score_text = format_kill_score(demo.score),
+            headshot   = demo.headshot == true,
+            headshot_icon = demo.headshot and headshot_icon_descriptor() or nil,
             special_kind = demo.special_kind,
             display_text = special_enemy_label(
                 demo.special_kind,
