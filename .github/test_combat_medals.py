@@ -181,6 +181,84 @@ class CombatMedalTests(unittest.TestCase):
             assert(count_event('first_blood') == 2, 'heist reset did not rearm first blood')
         ''')
 
+    def test_last_breath_has_thirty_second_cooldown_and_heist_reset(self):
+        self.lua.execute('''
+            game_t = 100
+            kill({low_hp=true})
+            assert(count_event('low_hp') == 1, 'first Last Breath medal missing')
+            game_t = 129.999
+            kill({low_hp=true})
+            assert(count_event('low_hp') == 1, 'Last Breath repeated before 30 seconds')
+            game_t = 130
+            kill({low_hp=true})
+            assert(count_event('low_hp') == 2, 'Last Breath missing at cooldown boundary')
+            game_t = 90
+            kill({low_hp=true})
+            assert(count_event('low_hp') == 3, 'clock rollback must rearm Last Breath')
+            kyohud:ResetHeistCombatState()
+            game_t = 91
+            kill({low_hp=true})
+            assert(count_event('low_hp') == 4, 'heist reset did not rearm Last Breath')
+        ''')
+
+    def test_spray_down_fourth_bullet_kill_per_magazine(self):
+        self.lua.execute('''
+            NewRaycastWeaponBase = {on_reload = function() end}
+            local_player_weapon = {_setup = {user_unit = local_player}}
+        ''')
+        self.load('ky_combat_medals.lua', 'lib/units/weapons/newraycastweaponbase')
+        self.lua.execute('''
+            local events = {magazine_kill=true}
+            game_t = 100
+            kill(events)
+            game_t = 101
+            kill(events)
+            game_t = 102
+            kill(events)
+            assert(count_event('spray_down') == 0, 'Spray Down emitted before four kills')
+            game_t = 104
+            kill(events)
+            assert(count_event('spray_down') == 1, 'fourth kill inside four seconds did not emit Spray Down')
+            game_t = 104.1
+            kill(events)
+            assert(count_event('spray_down') == 1, 'same achievement emitted more than once')
+
+            Hooks.callbacks.KH_ResetSprayDownOnReload(local_player_weapon)
+            game_t = 200
+            kill(events)
+            game_t = 201
+            kill(events)
+            game_t = 202
+            kill(events)
+            game_t = 204.001
+            kill(events)
+            assert(count_event('spray_down') == 1,
+                'four kills taking more than four seconds emitted Spray Down')
+            assert(kyohud._spray_down_kills == 1,
+                'expired window did not restart from the latest kill')
+
+            game_t = 205
+            kill(events)
+            game_t = 206
+            kill(events)
+            game_t = 207
+            kill(events)
+            assert(count_event('spray_down') == 2,
+                'new four-kill window in the same magazine was not accepted')
+
+            Hooks.callbacks.KH_ResetSprayDownOnReload({_setup={user_unit={}}})
+            game_t = 208
+            kill(events)
+            assert(count_event('spray_down') == 2,
+                'another unit rearmed the local Spray Down medal')
+            kill({magazine_kill=false})
+            assert(count_event('spray_down') == 2, 'non-bullet kill emitted Spray Down')
+            kyohud:ResetHeistCombatState()
+            assert(kyohud._spray_down_kills == 0 and not kyohud._spray_down_awarded
+                and kyohud._spray_down_started_t == nil,
+                'heist reset kept Spray Down state')
+        ''')
+
     def test_flashbang_state_and_hotswap_window(self):
         self.lua.execute('''
             managers.environment_controller = {_current_flashbang = 0.05}
@@ -192,7 +270,7 @@ class CombatMedalTests(unittest.TestCase):
             })
             assert(not kyohud:IsLocalPlayerFlashbanged(), 'fragile access was not protected')
 
-            local inventory = {_equipped_selection = 1}
+            local inventory = {_unit = local_player, _equipped_selection = 1}
             Hooks.callbacks.KH_OnWeaponSwap(inventory, 1, false)
             assert(kyohud._last_weapon_switch_t == nil, 'spawn equip started hotswap window')
             game_t = 101
@@ -200,14 +278,28 @@ class CombatMedalTests(unittest.TestCase):
             Hooks.callbacks.KH_OnWeaponSwap(inventory, 2, false)
             assert(kyohud._last_weapon_switch_t == 101, 'real switch was not timestamped')
 
+            kyohud._last_weapon_switch_t = nil
+            local remote_player = {}
+            local remote_inventory = {_unit = remote_player, _equipped_selection = 1}
+            Hooks.callbacks.KH_OnWeaponSwap(remote_inventory, 1, false)
+            game_t = 102
+            remote_inventory._equipped_selection = 2
+            Hooks.callbacks.KH_OnWeaponSwap(remote_inventory, 2, false)
+            assert(kyohud._last_weapon_switch_t == nil,
+                'another unit weapon switch opened the local Hot Swap window')
+
+            inventory._equipped_selection = 1
+            Hooks.callbacks.KH_OnWeaponSwap(inventory, 1, false)
+            assert(kyohud._last_weapon_switch_t == 102, 'second local switch was not timestamped')
+
             managers.environment_controller = {_current_flashbang = 0.2}
             is_client = true
-            game_t = 103.499
+            game_t = 104.499
             Hooks.callbacks.KH_OnLocalPlayerKillshot({}, enemy(), 'bullet', false)
             assert(count_event('blindfire') == 1, 'blindfire medal missing')
             assert(count_event('hotswap') == 1, 'hotswap medal missing inside window')
 
-            game_t = 103.5
+            game_t = 104.5
             Hooks.callbacks.KH_OnLocalPlayerKillshot({}, enemy(), 'bullet', false)
             assert(count_event('hotswap') == 1, 'hotswap window must be strictly below 2.5s')
             kyohud:ResetHeistCombatState()
@@ -288,7 +380,7 @@ class CombatMedalTests(unittest.TestCase):
     def test_preview_covers_event_medals_and_rope_tiers(self):
         self.lua.execute('''
             local seen = {}
-            for i = 1, 22 do
+            for i = 1, 23 do
                 kyohud:DebugSimulate(0)
                 local card = kyohud._medal_card
                 if card and card.event then
@@ -298,7 +390,7 @@ class CombatMedalTests(unittest.TestCase):
             for _, id in ipairs({
                 'first_strike','grave','low_hp','reload','through_shield',
                 'one_shot_two_kills','revenge','bulltrue','showstopper',
-                'blindfire','first_blood','hotswap','overwatch','long_shot'
+                'blindfire','first_blood','hotswap','overwatch','long_shot','spray_down'
             }) do
                 assert(seen[id .. ':0'], 'preview missing ' .. id)
             end
@@ -313,7 +405,7 @@ class CombatMedalTests(unittest.TestCase):
             'first_strike', 'grave', 'low_hp', 'reload', 'rope', 'rope_3',
             'rope_5', 'through_shield', 'one_shot_two_kills', 'revenge',
             'bulltrue', 'showstopper', 'blindfire', 'first_blood', 'hotswap',
-            'overwatch', 'long_shot'
+            'overwatch', 'long_shot', 'spray_down'
         ]
         fallback = (ROOT / 'lua/ky_localization.lua').read_text(encoding='utf-8-sig')
         for language in ('english', 'french'):
@@ -485,6 +577,24 @@ class CombatMedalTests(unittest.TestCase):
             self.lua.execute('Hooks.callbacks = {}')
             self.load('ky_killfeed.lua', context)
             self.assertEqual(set(self.lua.globals().Hooks.callbacks.keys()), expected)
+
+    def test_spray_down_hook_and_mod_context(self):
+        import json
+        self.lua.execute('''
+            Hooks.callbacks = {}
+            NewRaycastWeaponBase = {on_reload = function() end}
+        ''')
+        self.load('ky_combat_medals.lua', 'lib/units/weapons/newraycastweaponbase')
+        self.assertEqual(
+            set(self.lua.globals().Hooks.callbacks.keys()),
+            {'KH_ResetSprayDownOnReload'},
+        )
+        mod = json.loads((ROOT / 'mod.txt').read_text(encoding='utf-8-sig'))
+        hooks = {(hook['hook_id'], hook['script_path']) for hook in mod['hooks']}
+        self.assertIn(
+            ('lib/units/weapons/newraycastweaponbase', 'lua/ky_combat_medals.lua'),
+            hooks,
+        )
 
 if __name__ == '__main__':
     unittest.main()

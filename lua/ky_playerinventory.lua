@@ -11,6 +11,12 @@ local equipped_selections = setmetatable({}, { __mode = "k" })
 if RequiredScript == "lib/units/beings/player/playerinventory"
         and PlayerInventory and PlayerInventory.equip_selection then
     Hooks:PostHook(PlayerInventory, "equip_selection", "KH_OnWeaponSwap", function(inventory, selection_index)
+        local owner_ok, owner, local_player = pcall(function()
+            return inventory and inventory._unit,
+                managers and managers.player and managers.player:player_unit()
+        end)
+        if not owner_ok or not owner or owner ~= local_player then return end
+
         local ok, equipped = pcall(function()
             return inventory and inventory._equipped_selection
         end)
