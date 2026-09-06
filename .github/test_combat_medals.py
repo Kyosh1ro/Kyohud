@@ -27,7 +27,13 @@ class CombatMedalTests(unittest.TestCase):
             }
             PlayerMovement = {on_SPOOCed=function() end}
             RaycastWeaponBase = {_check_kill_achievements=function() end}
-            managers = {}; tweak_data = {hud_icons = {get_icon_data = function(self, name) return name, {0,0,1,1} end}}
+            hud_icon_calls = 0
+            managers = {}; tweak_data = {hud_icons = {get_icon_data = function(self, name)
+                hud_icon_calls = hud_icon_calls + 1
+                return 'resolved/' .. name, {0,0,1,1}
+            end}}
+            DB = {has = function() return true end}
+            function Idstring(value) return value end
             function Vector3(...) return {...} end
             function log(...) end
             function alive(x) return x ~= nil and x ~= false end
@@ -75,8 +81,36 @@ class CombatMedalTests(unittest.TestCase):
         self.lua.globals().RequiredScript = context
         self.lua.execute((ROOT / 'lua' / name).read_text(encoding='utf-8-sig'))
 
-    def test_headshot_is_not_an_event_medal(self):
-        self.lua.execute("kill({headshot = true}); assert(count_event('headshot') == 0, 'obsolete headshot medal emitted')")
+    def test_headshot_is_killfeed_icon_not_event_medal(self):
+        self.lua.execute('''
+            kill({headshot = true})
+            local headshot = kyohud._kills[#kyohud._kills]
+            assert(headshot.headshot == true, 'headshot flag missing from kill entry')
+            assert(headshot.headshot_icon and headshot.headshot_icon.texture == 'resolved/pd2_kill',
+                'pd2_kill was not resolved before draw')
+            assert(headshot.headshot_icon.rect[3] == 1, 'resolved atlas rect missing')
+            assert(count_event('headshot') == 0, 'obsolete headshot medal emitted')
+
+            local calls = hud_icon_calls
+            kill(nil)
+            local normal = kyohud._kills[#kyohud._kills]
+            assert(normal.headshot == false, 'normal kill marked as headshot')
+            assert(normal.headshot_icon == nil, 'normal kill reserved a headshot icon')
+            assert(hud_icon_calls == calls, 'normal kill resolved the headshot texture')
+        ''')
+
+    def test_headshot_preview_uses_normal_kill_card(self):
+        self.lua.execute('''
+            kyohud:DebugSimulate(0)
+            local found
+            for _, entry in ipairs(kyohud._kills) do
+                if entry.headshot then found = entry break end
+            end
+            assert(found, 'preview has no headshot kill')
+            assert(found.name and found.score_text, 'preview headshot is not a normal kill card')
+            assert(found.headshot_icon and found.headshot_icon.texture == 'resolved/pd2_kill',
+                'preview headshot icon unresolved')
+        ''')
 
     def test_first_strike_once_per_assault_after_dedup(self):
         self.lua.execute('''
@@ -195,6 +229,8 @@ class CombatMedalTests(unittest.TestCase):
             Hooks.callbacks.KH_OnEnemyDiePre(damage, attack)
             anim.reload = nil; anim.run = nil
             Hooks.callbacks.KH_OnEnemyDie(damage, attack)
+            assert(#kyohud._kills == 1 and kyohud._kills[1].headshot == true,
+                'host headshot missing from killfeed')
             for _, id in ipairs({'first_strike','grave','low_hp','reload','rope'}) do
                 assert(count_event(id) == 1, 'host missing ' .. id)
             end
@@ -202,10 +238,13 @@ class CombatMedalTests(unittest.TestCase):
             assert(count_event('run') == 0, 'removed run medal emitted')
             is_client = true
             Hooks.callbacks.KH_OnLocalPlayerKillshot({}, victim, 'bullet', true)
+            assert(#kyohud._kills == 1, 'host/client duplicate kill card')
             assert(count_event('first_strike') == 1 and count_event('grave') == 1, 'host/client duplicate')
             Hooks.callbacks.KH_EventAssaultEnd({})
             Hooks.callbacks.KH_EventAssaultStart({}, 2)
             Hooks.callbacks.KH_OnLocalPlayerKillshot({}, enemy('cop', {reload=true,run=true}, {}), 'bullet', true)
+            assert(kyohud._kills[#kyohud._kills].headshot == true,
+                'client headshot missing from killfeed')
             assert(count_event('first_strike') == 2 and count_event('reload') == 2)
             assert(count_event('run') == 0, 'client emitted removed run medal')
             local before = #cards
