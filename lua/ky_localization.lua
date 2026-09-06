@@ -171,6 +171,9 @@ local function add_fallbacks(loc)
         ky_hud_event_medal_rope      = "Pull!",
         ky_hud_event_medal_rope_3    = "Free Fall",
         ky_hud_event_medal_rope_5    = "Air Sweep",
+        ky_hud_event_medal_blindfire = "BlindFire",
+        ky_hud_event_medal_first_blood = "First Blood",
+        ky_hud_event_medal_hotswap   = "Hot Swap",
 
         -- Catégories
         ky_opt_cat_mastermind           = "Mastermind",

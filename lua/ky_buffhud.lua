@@ -664,6 +664,24 @@ local EVENT_MEDAL_DEFINITIONS = {
             { count = 5, id = "ky_hud_event_medal_rope_5", fallback = "Air Sweep" },
         },
     },
+    blindfire = {
+        id       = "ky_hud_event_medal_blindfire",
+        fallback = "BlindFire",
+        color    = Color(1, 0.95, 0.6),              -- flash jaune-blanc
+        icon     = { hud_tweak = "csb_panic" },
+    },
+    first_blood = {
+        id       = "ky_hud_event_medal_first_blood",
+        fallback = "First Blood",
+        color    = Color(0.85, 0.1, 0.12),           -- rouge sang
+        icon     = { hud_tweak = "pd2_kill" },
+    },
+    hotswap = {
+        id       = "ky_hud_event_medal_hotswap",
+        fallback = "Hot Swap",
+        color    = Color(0.3, 0.85, 0.8),            -- bleu-vert
+        icon     = { hud_tweak = "csb_switch" },
+    },
 }
 
 -- Une table Lua indexée par clé n'a pas d'ordre de parcours stable. Cette liste
@@ -671,7 +689,7 @@ local EVENT_MEDAL_DEFINITIONS = {
 -- produisent toujours exactement la même suite de médailles.
 local EVENT_MEDAL_ORDER = {
     "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
-    "showstopper", "rope",
+    "showstopper", "rope", "blindfire", "first_blood", "hotswap",
 }
 
 -- ── Paliers de kills cumulés du braquage ──
@@ -2674,6 +2692,8 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._event_assault_active = false
     self._event_assault_number = nil
     self._event_first_strike_awarded = false
+    self._first_blood_done = false
+    self._last_weapon_switch_t = nil
     self._revenge_targets = setmetatable({}, { __mode = "k" })
 
     self._buffs = {}
@@ -2746,6 +2766,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     local first_strike = contributes_to_combo ~= false
         and self._event_assault_active and not self._event_first_strike_awarded
     if first_strike then self._event_first_strike_awarded = true end
+    local first_blood = contributes_to_combo ~= false
+        and not self._first_blood_done and (self._heist_kill_count or 0) == 0
+    if first_blood then self._first_blood_done = true end
     local t = now()
     local rope_tier = contributes_to_combo ~= false and event_info and event_info.rope
         and self:_register_rope_kill(t) or nil
@@ -2802,6 +2825,8 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
             local triggered
             if event_id == "first_strike" then
                 triggered = first_strike
+            elseif event_id == "first_blood" then
+                triggered = first_blood
             elseif event_id == "rope" then
                 triggered = rope_tier ~= nil
             else
@@ -4003,7 +4028,8 @@ end
 --   médaille de série d'arme dans le killfeed, avec les noms sous celle-ci ;
 --   médaille de kills cumulés « icône Dmg+ + 100 KILLS », dans cette même
 --   rangée partagée ;
---   les six médailles d'évènement, une par appel, avec leur icône `hud_tweak`.
+--   les quinze cartes de médailles d'évènement, paliers de rappel compris,
+--   une par appel, avec leur icône `hud_tweak`.
 -- Le premier appel montre directement l'exemple demandé, partiellement rempli.
 -- `combo` reste à 0 pour les cas d'annonce afin que seul le bandeau spécial soit
 -- visible ; l'aperçu ne compte aucun kill, ni dans les séries d'arme ni dans le
@@ -4026,6 +4052,9 @@ local DEBUG_BANNER_PREVIEWS = {
     { combo = 0, medal = "event", event = "rope", tier_index = 1 },
     { combo = 0, medal = "event", event = "rope", tier_index = 2 },
     { combo = 0, medal = "event", event = "rope", tier_index = 3 },
+    { combo = 0, medal = "event", event = "blindfire" },
+    { combo = 0, medal = "event", event = "first_blood" },
+    { combo = 0, medal = "event", event = "hotswap" },
 }
 
 function KH:DebugSimulate(n)

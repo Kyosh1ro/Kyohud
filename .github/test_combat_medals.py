@@ -17,7 +17,8 @@ class CombatMedalTests(unittest.TestCase):
             function Hooks:PreHook(class, method, id, fn) self.callbacks[id] = fn end
             function Hooks:Add(...) end
             HUDManager = {sync_start_assault = function() end, sync_end_assault = function() end}
-            PlayerManager = {}; CopDamage = {is_civilian = function(id) return id == 'civilian' end}
+            PlayerManager = {}; PlayerInventory = {equip_selection = function() end}
+            CopDamage = {is_civilian = function(id) return id == 'civilian' end}
             PlayerDamage = {
                 damage_tase=function() end, damage_bullet=function() end,
                 damage_melee=function() end, damage_explosion=function() end,
@@ -57,6 +58,7 @@ class CombatMedalTests(unittest.TestCase):
         self.load('ky_buffhud.lua', 'lib/managers/hudmanagerpd2')
         self.load('ky_killfeed.lua', 'lib/managers/playermanager')
         self.load('ky_killfeed.lua', 'lib/units/enemies/cop/copdamage')
+        self.load('ky_playerinventory.lua', 'lib/units/beings/player/playerinventory')
         self.lua.execute('''
             kyohud.settings = {enable_killfeed = true, killfeed_size = 3}
             kyohud:ResetHeistCombatState()
@@ -74,6 +76,11 @@ class CombatMedalTests(unittest.TestCase):
                 local n = 0
                 for _, card in ipairs(cards) do if card.event == id then n = n + 1 end end
                 return n
+            end
+            function last_event(id)
+                for i = #cards, 1, -1 do
+                    if cards[i].event == id then return cards[i] end
+                end
             end
         ''')
 
@@ -142,6 +149,58 @@ class CombatMedalTests(unittest.TestCase):
             assert(count_event('first_strike') == 2, 'heist reset kept assault active')
         ''')
 
+    def test_first_blood_once_per_heist_after_dedup(self):
+        self.lua.execute('''
+            local duplicate = enemy()
+            kill(nil, nil, true)
+            assert(count_event('first_blood') == 0, 'civilian consumed first blood')
+            kill(nil, duplicate)
+            kill(nil, duplicate)
+            kill(nil)
+            assert(count_event('first_blood') == 1, 'first blood must be once per heist')
+            assert(kyohud._first_blood_done == true)
+            kyohud:ResetWeaponStreaks()
+            kill(nil)
+            assert(count_event('first_blood') == 1, 'down reset first blood')
+            kyohud:ResetHeistCombatState()
+            assert(kyohud._first_blood_done == false)
+            kill(nil)
+            assert(count_event('first_blood') == 2, 'heist reset did not rearm first blood')
+        ''')
+
+    def test_flashbang_state_and_hotswap_window(self):
+        self.lua.execute('''
+            managers.environment_controller = {_current_flashbang = 0.05}
+            assert(not kyohud:IsLocalPlayerFlashbanged(), 'threshold must be strict')
+            managers.environment_controller._current_flashbang = 0.051
+            assert(kyohud:IsLocalPlayerFlashbanged(), 'active flashbang not detected')
+            managers.environment_controller = setmetatable({}, {
+                __index = function() error('engine') end
+            })
+            assert(not kyohud:IsLocalPlayerFlashbanged(), 'fragile access was not protected')
+
+            local inventory = {_equipped_selection = 1}
+            Hooks.callbacks.KH_OnWeaponSwap(inventory, 1, false)
+            assert(kyohud._last_weapon_switch_t == nil, 'spawn equip started hotswap window')
+            game_t = 101
+            inventory._equipped_selection = 2
+            Hooks.callbacks.KH_OnWeaponSwap(inventory, 2, false)
+            assert(kyohud._last_weapon_switch_t == 101, 'real switch was not timestamped')
+
+            managers.environment_controller = {_current_flashbang = 0.2}
+            is_client = true
+            game_t = 103.499
+            Hooks.callbacks.KH_OnLocalPlayerKillshot({}, enemy(), 'bullet', false)
+            assert(count_event('blindfire') == 1, 'blindfire medal missing')
+            assert(count_event('hotswap') == 1, 'hotswap medal missing inside window')
+
+            game_t = 103.5
+            Hooks.callbacks.KH_OnLocalPlayerKillshot({}, enemy(), 'bullet', false)
+            assert(count_event('hotswap') == 1, 'hotswap window must be strictly below 2.5s')
+            kyohud:ResetHeistCombatState()
+            assert(kyohud._last_weapon_switch_t == nil, 'heist reset kept weapon timestamp')
+        ''')
+
     def test_rope_tiers_window_and_resets(self):
         self.lua.execute('''
             local same = enemy()
@@ -153,7 +212,7 @@ class CombatMedalTests(unittest.TestCase):
             assert(count_event('rope') == 1, 'second rope kill must be silent')
             game_t = 105
             kill({rope=true})
-            assert(count_event('rope') == 2 and cards[#cards].tier_index == 2, 'third kill tier')
+            assert(count_event('rope') == 2 and last_event('rope').tier_index == 2, 'third kill tier')
             game_t = 106
             kill({rope=true}, nil, true)
             kill({run=true})
@@ -162,7 +221,7 @@ class CombatMedalTests(unittest.TestCase):
             assert(count_event('rope') == 2, 'civilian/nonrope advanced counter')
             game_t = 111
             kill({rope=true})
-            assert(count_event('rope') == 3 and cards[#cards].tier_index == 3, 'fifth kill tier')
+            assert(count_event('rope') == 3 and last_event('rope').tier_index == 3, 'fifth kill tier')
             local labels = {}
             for _, card in ipairs(cards) do if card.event == 'rope' then labels[card.label] = true end end
             local n = 0; for _ in pairs(labels) do n = n + 1 end
@@ -170,17 +229,17 @@ class CombatMedalTests(unittest.TestCase):
             game_t = 112; kill({rope=true})
             assert(count_event('rope') == 3, 'must stay silent after max')
             game_t = 115.001; kill({rope=true})
-            assert(count_event('rope') == 4 and cards[#cards].tier_index == 1, 'gap >3 must reset')
+            assert(count_event('rope') == 4 and last_event('rope').tier_index == 1, 'gap >3 must reset')
             kyohud:ResetWeaponStreaks(); kill({rope=true})
-            assert(count_event('rope') == 5 and cards[#cards].tier_index == 1, 'down reset')
+            assert(count_event('rope') == 5 and last_event('rope').tier_index == 1, 'down reset')
             kyohud:ResetHeistCombatState(); kill({rope=true})
-            assert(count_event('rope') == 6 and cards[#cards].tier_index == 1, 'heist reset')
+            assert(count_event('rope') == 6 and last_event('rope').tier_index == 1, 'heist reset')
         ''')
 
     def test_preview_covers_event_medals_and_rope_tiers(self):
         self.lua.execute('''
             local seen = {}
-            for i = 1, 18 do
+            for i = 1, 20 do
                 kyohud:DebugSimulate(0)
                 local card = kyohud._medal_card
                 if card and card.event then
@@ -189,7 +248,8 @@ class CombatMedalTests(unittest.TestCase):
             end
             for _, id in ipairs({
                 'first_strike','grave','low_hp','reload','through_shield',
-                'one_shot_two_kills','revenge','bulltrue','showstopper'
+                'one_shot_two_kills','revenge','bulltrue','showstopper',
+                'blindfire','first_blood','hotswap'
             }) do
                 assert(seen[id .. ':0'], 'preview missing ' .. id)
             end
@@ -203,7 +263,7 @@ class CombatMedalTests(unittest.TestCase):
         ids = [
             'first_strike', 'grave', 'low_hp', 'reload', 'rope', 'rope_3',
             'rope_5', 'through_shield', 'one_shot_two_kills', 'revenge',
-            'bulltrue', 'showstopper'
+            'bulltrue', 'showstopper', 'blindfire', 'first_blood', 'hotswap'
         ]
         fallback = (ROOT / 'lua/ky_localization.lua').read_text(encoding='utf-8-sig')
         for language in ('english', 'french'):
@@ -346,7 +406,7 @@ class CombatMedalTests(unittest.TestCase):
             kill({rope=true}); kill({rope=true})
             assert(kyohud._heist_kill_count == 5)
             assert(count_event('first_strike') == 1, 'first strike replayed')
-            assert(count_event('rope') == 3 and cards[#cards].tier_index == 3)
+            assert(count_event('rope') == 3 and last_event('rope').tier_index == 3)
         ''')
 
     def test_health_threshold_and_player_state_fallback(self):
@@ -360,6 +420,11 @@ class CombatMedalTests(unittest.TestCase):
             local_player.movement = function() return {current_state_name = function() return 'bleed_out' end} end
             assert(kyohud:IsLocalPlayerDowned())
         ''')
+
+    def test_exact_playerinventory_context_registration(self):
+        self.lua.execute('Hooks.callbacks = {}')
+        self.load('ky_playerinventory.lua', 'lib/units/beings/player/playerinventory')
+        self.assertEqual(set(self.lua.globals().Hooks.callbacks.keys()), {'KH_OnWeaponSwap'})
 
     def test_exact_killfeed_context_registrations(self):
         for context, expected in (

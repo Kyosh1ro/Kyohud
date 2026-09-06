@@ -8,6 +8,7 @@
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
 local KH = kyohud
+local HOTSWAP_WINDOW = 2.5
 
 -- ═══════════════════════════════════════════════════
 -- Catalogue de scoring (garde d'initialisation séparée)
@@ -227,6 +228,7 @@ end
 
 -- « Dernier souffle » : sous ce ratio de santé, le kill est décoré.
 local LOW_HEALTH_RATIO = 0.1
+local FLASHBANG_INTENSITY_THRESHOLD = 0.05
 
 local function local_player_unit()
     local ok, unit = pcall(function()
@@ -273,6 +275,19 @@ function KH:IsLocalPlayerLowHealth()
     -- `ratio ~= ratio` écarte un NaN issu d'une santé maximale nulle.
     if not ratio or ratio ~= ratio or ratio < 0 then return false end
     return ratio < LOW_HEALTH_RATIO
+end
+
+--- `true` si l'intensité d'aveuglement courante dépasse la fin de décroissance
+--- visuellement négligeable. Le contrôleur et son champ sont privés : toute
+--- absence ou erreur moteur vaut donc simplement « pas aveuglé ».
+function KH:IsLocalPlayerFlashbanged()
+    local ok, intensity = pcall(function()
+        local controller = managers and managers.environment_controller
+        return controller and controller._current_flashbang
+    end)
+    intensity = ok and tonumber(intensity) or nil
+    return intensity ~= nil and intensity == intensity
+        and intensity > FLASHBANG_INTENSITY_THRESHOLD
 end
 
 --- Renseigne dans `out` l'état d'animation de l'ennemi : rechargement, course
@@ -493,6 +508,8 @@ local EVENT_INFO = {
     revenge  = false,
     bulltrue = false,
     showstopper = false,
+    blindfire = false,
+    hotswap = false,
 }
 
 -- Le PreHook et le PostHook de `CopDamage:die` appartiennent au même chargement
@@ -537,6 +554,8 @@ local function event_info(unit, headshot, is_civilian)
     EVENT_INFO.revenge  = false
     EVENT_INFO.bulltrue = false
     EVENT_INFO.showstopper = false
+    EVENT_INFO.blindfire = false
+    EVENT_INFO.hotswap = false
 
     consume_enemy_kill_state(unit, EVENT_INFO)
     if is_civilian then return nil end
@@ -548,6 +567,16 @@ local function event_info(unit, headshot, is_civilian)
     EVENT_INFO.low_hp = KH.IsLocalPlayerLowHealth
         and KH:IsLocalPlayerLowHealth()
         or false
+    EVENT_INFO.blindfire = KH.IsLocalPlayerFlashbanged
+        and KH:IsLocalPlayerFlashbanged()
+        or false
+    local time_ok, kill_t = pcall(function()
+        return TimerManager:game():time()
+    end)
+    kill_t = time_ok and tonumber(kill_t) or nil
+    local switch_t = tonumber(KH._last_weapon_switch_t)
+    local elapsed = kill_t and switch_t and (kill_t - switch_t) or nil
+    EVENT_INFO.hotswap = elapsed ~= nil and elapsed >= 0 and elapsed < HOTSWAP_WINDOW
     local revenge_targets = KH._revenge_targets
     EVENT_INFO.revenge = revenge_targets and revenge_targets[unit] == true or false
     if EVENT_INFO.revenge then revenge_targets[unit] = nil end
