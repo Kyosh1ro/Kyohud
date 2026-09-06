@@ -5,6 +5,46 @@ Kyosh1roHUD = kyohud
 local KH = kyohud
 local MY_MOD_PATH = ModPath
 
+KH._revenge_targets = KH._revenge_targets
+    or setmetatable({}, { __mode = "k" })
+
+local function remember_revenge_target(unit)
+    if not unit then return end
+    local ok, is_alive = pcall(alive, unit)
+    if ok and is_alive then
+        KH._revenge_targets[unit] = true
+    end
+end
+
+local function remember_pending_attacker(player_damage)
+    remember_revenge_target(player_damage and player_damage._kh_revenge_attacker)
+end
+
+-- Les dégâts qui font tomber le joueur appellent `on_downed` pendant leur
+-- exécution. Le candidat est posé avant l'appel moteur puis retiré après afin
+-- qu'un dégât non fatal ne puisse contaminer une chute ultérieure.
+for _, method in ipairs({
+    "damage_bullet", "damage_melee", "damage_explosion", "damage_fire",
+    "damage_fire_hit", "damage_simple", "damage_killzone",
+}) do
+    if type(PlayerDamage[method]) == "function" then
+        Hooks:PreHook(PlayerDamage, method, "KH_RevengeRemember_" .. method, function(player_damage, attack_data)
+            player_damage._kh_revenge_attacker = attack_data and attack_data.attacker_unit
+        end)
+        Hooks:PostHook(PlayerDamage, method, "KH_RevengeForget_" .. method, function(player_damage)
+            player_damage._kh_revenge_attacker = nil
+        end)
+    end
+end
+
+-- `damage_tase` conserve officiellement l'attaque dans `tase_data()`.
+if type(PlayerDamage.damage_tase) == "function" then
+    Hooks:PostHook(PlayerDamage, "damage_tase", "KH_RevengeRememberTase", function(player_damage)
+        local ok, data = pcall(function() return player_damage:tase_data() end)
+        if ok then remember_revenge_target(data and data.attacker_unit) end
+    end)
+end
+
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
     pcall(function()
@@ -133,7 +173,8 @@ end
 -- `lib/units/beings/player/playerdamage`).
 local PLAYER_DOWN_EVENTS = { "on_downed", "on_incapacitated", "on_arrested" }
 
-local function reset_weapon_streaks()
+local function reset_weapon_streaks(player_damage)
+    remember_pending_attacker(player_damage)
     if not KH.ResetWeaponStreaks then return end
     KH:ResetWeaponStreaks()
 end

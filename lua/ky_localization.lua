@@ -30,7 +30,7 @@ local function add_fallbacks(loc)
         ky_opt_language_english   = "English",
         ky_opt_language_french    = "Français",
         ky_opt_enable_killfeed      = "Enable KillFeed",
-        ky_opt_enable_killfeed_desc = "Show kill streaks and a horizontal tactical killfeed below the crosshair",
+        ky_opt_enable_killfeed_desc = "Show eliminated enemies beneath the crosshair; scores and counters continue while the killfeed is hidden",
         ky_opt_killfeed_size        = "Killfeed Size",
         ky_opt_killfeed_size_desc   = "Number of kills shown in the killfeed (1-5). Default: 3",
         ky_opt_enable_buffs         = "Enable Buffs",
@@ -58,7 +58,7 @@ local function add_fallbacks(loc)
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
         ky_opt_debug_sim            = "Preview Buffs & Kills",
-        ky_opt_debug_sim_desc       = "Preview active buffs, special-enemy kill cards and priority-target banners",
+        ky_opt_debug_sim_desc       = "Main menu only: preview buffs, special-enemy kill cards and priority-target banners; unavailable during a heist",
         ky_opt_debug_clear          = "Clear Preview",
         ky_opt_debug_clear_desc     = "Remove preview buffs and kills; the equipped perk deck remains visible",
 
@@ -157,6 +157,25 @@ local function add_fallbacks(loc)
         -- Médaille des kills cumulés du braquage. Une seule clé : l'icône du
         -- buff de dégâts tient lieu de nom et le palier atteint la précède.
         ky_hud_kill_medal_kills      = "KILLS",
+
+        -- Médailles d'évènement, décernées sur les conditions du kill lui-même.
+        ky_hud_event_medal_first_strike = "First Strike",
+        ky_hud_event_medal_grave     = "Grave",
+        ky_hud_event_medal_low_hp    = "Last Breath",
+        ky_hud_event_medal_reload    = "Reload This",
+        ky_hud_event_medal_through_shield = "Through the Shield",
+        ky_hud_event_medal_one_shot_two_kills = "One Shot Two Kills",
+        ky_hud_event_medal_revenge   = "Revenge",
+        ky_hud_event_medal_bulltrue  = "Bulltrue",
+        ky_hud_event_medal_showstopper = "Showstopper",
+        ky_hud_event_medal_rope      = "Pull!",
+        ky_hud_event_medal_rope_3    = "Free Fall",
+        ky_hud_event_medal_rope_5    = "Air Sweep",
+        ky_hud_event_medal_blindfire = "BlindFire",
+        ky_hud_event_medal_first_blood = "First Blood",
+        ky_hud_event_medal_hotswap   = "Hot Swap",
+        ky_hud_event_medal_overwatch = "Overwatch",
+        ky_hud_event_medal_long_shot = "Long Shot",
 
         -- Catégories
         ky_opt_cat_mastermind           = "Mastermind",

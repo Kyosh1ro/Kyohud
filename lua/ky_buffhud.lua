@@ -225,6 +225,17 @@ local function get_icon_data(icon)
     return texture, texture_rect
 end
 
+-- Descripteur partagé par toutes les cartes Headshot. La résolution du nom HUD
+-- et de sa découpe d'atlas se fait au premier kill concerné, jamais dans draw.
+local HEADSHOT_ICON_DESCRIPTOR
+local function headshot_icon_descriptor()
+    if not HEADSHOT_ICON_DESCRIPTOR then
+        local texture, rect = get_icon_data({ hud_tweak = "pd2_kill" })
+        HEADSHOT_ICON_DESCRIPTOR = { texture = texture, rect = rect }
+    end
+    return HEADSHOT_ICON_DESCRIPTOR
+end
+
 -- Le catalogue partagé des buffs est chargé depuis ky_buff_catalog.lua.
 
 -- ═══════════════════════════════════════════════════
@@ -578,6 +589,122 @@ local WEAPON_STREAK_DEFINITIONS = {
     },
 }
 
+-- ── Médailles d'évènement ──
+-- Les conditions sont lues au kill. Seules Première frappe (verrou par
+-- assaut) et les paliers de rappel (fenêtre de 3 s) gardent un état temporaire.
+-- Aucun de ces états n'est sauvegardé. Plusieurs médailles peuvent tomber
+-- sur le même kill.
+--
+-- Le descripteur d'icône ne porte qu'un nom `hud_tweak` : `get_icon_data`
+-- demande au jeu la texture et la découpe d'atlas correspondantes, exactement
+-- comme pour un buff du catalogue. Aucune coordonnée n'est écrite à la main.
+local EVENT_MEDAL_DEFINITIONS = {
+    first_strike = {
+        id       = "ky_hud_event_medal_first_strike",
+        fallback = "First Strike",
+        color    = Color(1, 0.32, 0.26),             -- rouge orangé
+        icon     = { hud_tweak = "pd2_kill" },
+    },
+    grave = {
+        id       = "ky_hud_event_medal_grave",
+        fallback = "Grave",
+        color    = Color(0.68, 0.44, 0.92),          -- violet
+        icon     = { hud_tweak = "mugshot_downed" },
+    },
+    low_hp = {
+        id       = "ky_hud_event_medal_low_hp",
+        fallback = "Last Breath",
+        color    = Color(1, 0.18, 0.34),             -- rouge sang
+        icon     = { hud_tweak = "csb_health" },
+    },
+    reload = {
+        id       = "ky_hud_event_medal_reload",
+        fallback = "Reload This",
+        color    = Color(0.98, 0.78, 0.22),          -- ambre
+        icon     = { hud_tweak = "csb_reload" },
+    },
+    through_shield = {
+        id       = "ky_hud_event_medal_through_shield",
+        fallback = "Through the Shield",
+        color    = Color(1, 0.72, 0.16),             -- orange bouclier
+        icon     = { hud_tweak = "csb_armor" },
+    },
+    one_shot_two_kills = {
+        id       = "ky_hud_event_medal_one_shot_two_kills",
+        fallback = "One Shot Two Kills",
+        color    = Color(1, 0.48, 0.12),             -- rouge-or
+        icon     = { hud_tweak = "pd2_kill" },
+    },
+    revenge = {
+        id       = "ky_hud_event_medal_revenge",
+        fallback = "Revenge",
+        color    = Color(0.82, 0.28, 1),             -- violet électrique
+        icon     = { hud_tweak = "csb_absorb" },
+    },
+    bulltrue = {
+        id       = "ky_hud_event_medal_bulltrue",
+        fallback = "Bulltrue",
+        color    = Color(0.35, 1, 0.18),             -- vert Cloaker
+        icon     = { hud_tweak = "crime_spree_cloaker_smoke" },
+    },
+    showstopper = {
+        id       = "ky_hud_event_medal_showstopper",
+        fallback = "Showstopper",
+        color    = Color(0.35, 1, 0.18),             -- vert Cloaker
+        icon     = { hud_tweak = "crime_spree_cloaker_smoke" },
+    },
+    rope = {
+        id       = "ky_hud_event_medal_rope",
+        fallback = "Pull!",
+        color    = Color(0.36, 0.72, 1),             -- bleu
+        icon     = { hud_tweak = "csb_lives" },
+        tiers = {
+            { count = 1, id = "ky_hud_event_medal_rope", fallback = "Pull!" },
+            { count = 3, id = "ky_hud_event_medal_rope_3", fallback = "Free Fall" },
+            { count = 5, id = "ky_hud_event_medal_rope_5", fallback = "Air Sweep" },
+        },
+    },
+    blindfire = {
+        id       = "ky_hud_event_medal_blindfire",
+        fallback = "BlindFire",
+        color    = Color(1, 0.95, 0.6),              -- flash jaune-blanc
+        icon     = { hud_tweak = "csb_panic" },
+    },
+    first_blood = {
+        id       = "ky_hud_event_medal_first_blood",
+        fallback = "First Blood",
+        color    = Color(0.85, 0.1, 0.12),           -- rouge sang
+        icon     = { hud_tweak = "pd2_kill" },
+    },
+    hotswap = {
+        id       = "ky_hud_event_medal_hotswap",
+        fallback = "Hot Swap",
+        color    = Color(0.3, 0.85, 0.8),            -- bleu-vert
+        icon     = { hud_tweak = "csb_switch" },
+    },
+    overwatch = {
+        id       = "ky_hud_event_medal_overwatch",
+        fallback = "Overwatch",
+        color    = Color(0.4, 0.72, 1),
+        icon     = { hud_tweak = "crime_spree_heavy_sniper" },
+    },
+    long_shot = {
+        id       = "ky_hud_event_medal_long_shot",
+        fallback = "Long Shot",
+        color    = Color(0.45, 0.84, 1),
+        icon     = { hud_tweak = "csb_ammo" },
+    },
+}
+
+-- Une table Lua indexée par clé n'a pas d'ordre de parcours stable. Cette liste
+-- fige donc l'ordre d'émission : deux kills portant les mêmes évènements
+-- produisent toujours exactement la même suite de médailles.
+local EVENT_MEDAL_ORDER = {
+    "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
+    "showstopper", "rope", "blindfire", "first_blood", "hotswap",
+    "overwatch", "long_shot",
+}
+
 -- ── Paliers de kills cumulés du braquage ──
 -- Compteur unique, indépendant de l'arme, du score et des fenêtres de temps :
 -- tout kill ennemi non civil le fait avancer, il survit à une chute et ne
@@ -597,6 +724,7 @@ local KILL_MEDAL_ICON_BUFF = "damage_increase"
 -- identiques pour toutes.
 local MEDAL_KIND_WEAPON_STREAK = "weapon_streak"
 local MEDAL_KIND_KILL_TOTAL = "kill_total"
+local MEDAL_KIND_EVENT = "event"
 
 -- Le bandeau supérieur est exclusivement réservé au multikill, au boss et au
 -- Dozer. Priorité d'affichage : boss > dozer. Le multikill n'entre pas dans la
@@ -687,7 +815,7 @@ local function combo_color(count)
     if count == 2 then return Color(1, 0.85, 0.2) end
     if count == 3 then return Color(1, 0.55, 0.1) end
     if count == 4 then return Color(1, 0.2, 0.1) end
-    return Color(0.9, 0.15, 1)
+    return Color(0.208, 0.906, 1) -- cyan électrique #35E7FF dès 5 kills
 end
 
 -- Un bandeau porte directement son libellé et sa couleur. `KH:draw` n'a donc
@@ -743,6 +871,35 @@ local function make_kill_medal_card(kill_count)
             .. localized_text("ky_hud_kill_medal_kills", "KILLS"),
         color = KILL_MEDAL_COLOR,
     }
+end
+
+--- Médaille d'évènement. `id` est la clé d'`EVENT_MEDAL_DEFINITIONS`, jamais un
+--- libellé. Comme la médaille cumulée, la carte porte un pictogramme : texture,
+--- découpe d'atlas, libellé traduit et teinte sont résolus ici, une seule fois
+--- par médaille, afin que `KH:draw` n'ait plus qu'à poser la bitmap.
+local function make_event_medal_card(id, tier_index)
+    local definition = id and EVENT_MEDAL_DEFINITIONS[id]
+    if not definition then return nil end
+    local label = definition.tiers and definition.tiers[tier_index or 1] or definition
+    if not label then return nil end
+
+    local color = definition.color or HUD_ACCENT_COLOR
+    local texture, rect = get_icon_data(definition.icon)
+    return {
+        kind       = MEDAL_KIND_EVENT,
+        event      = id,
+        tier_index = definition.tiers and (tier_index or 1) or nil,
+        icon       = { texture = texture, rect = rect },
+        icon_color = color,
+        label      = localized_text(label.id, label.fallback),
+        color      = color,
+    }
+end
+
+--- Émet directement une carte d'évènement sans enregistrer de kill ni de score.
+--- Réservé aux hooks moteur qui agrègent déjà les victimes d'un même tir.
+function KH:ShowEventMedal(id)
+    self:_show_medal_card(now(), make_event_medal_card(id), false)
 end
 
 local function special_enemy_definition(kind)
@@ -1371,14 +1528,16 @@ local MEDAL_ROW_GAP = 6
 -- Séparer d'un demi-pixel la médaille du prolongement inférieur du bandeau :
 -- les deux accents ne se confondent plus lorsque les deux niveaux sont actifs.
 local MEDAL_TOP_GAP = 0.5
--- Trois flèches décoratives réduites : elles rappellent les annonces sans
--- reprendre les banques de progression du multikill.
+-- Les séries d'arme conservent leurs trois flèches de chaque côté. Les autres
+-- familles de médailles utilisent seulement une marge intérieure afin que leur
+-- contenu ne dépasse pas du cadre pendant l'animation.
 local MEDAL_CHEVRON_STYLE = { arrow_w = 6, arrow_h = 9, gap = 3 }
 local MEDAL_CHEVRON_GROUP_W = SPECIAL_CHEVRON_SLOTS
     * MEDAL_CHEVRON_STYLE.arrow_w
     + (SPECIAL_CHEVRON_SLOTS - 1) * MEDAL_CHEVRON_STYLE.gap
 local MEDAL_CHEVRON_MARGIN = 13
 local MEDAL_CHEVRON_TEXT_GAP = 6
+local MEDAL_CONTENT_PADDING = 13
 -- Icône optionnelle précédant le texte, dimensionnée sur la hauteur réelle de la
 -- carte pour rester à l'intérieur du ruban quelle que soit la taille du HUD.
 local MEDAL_ICON_TEXT_GAP = 6
@@ -2364,9 +2523,10 @@ end
 -- concurrence avec un boss ou un Dozer, et les deux peuvent être visibles en
 -- même temps sur deux niveaux distincts.
 --
--- Toutes les familles de médailles — séries d'arme et paliers de kills cumulés —
--- partagent ce même niveau, ce même rendu, cette même durée et cette même file
--- FIFO bornée. Seule la construction de la carte diffère.
+-- Toutes les familles de médailles — séries d'arme, médailles d'évènement et
+-- paliers de kills cumulés — partagent ce même niveau, ce même rendu, cette même
+-- durée et cette même file FIFO bornée. Seule la construction de la carte
+-- diffère.
 function KH:_start_medal_card(t, card, preview)
     card.preview = preview == true
     card.started_t = t
@@ -2378,6 +2538,12 @@ end
 --- affichée garde sa place et les suivantes s'enchaînent dans l'ordre d'arrivée.
 --- Une médaille de trop est abandonnée plutôt que d'allonger la file : le palier
 --- reste acquis, seule son annonce est perdue.
+---
+--- Un seul kill peut en produire plusieurs — jusqu'à une série d'arme, quelques
+--- évènements et un palier cumulé. La borne reste volontairement basse : carte
+--- active plus `MAX_MEDAL_QUEUE` places, soit au plus quatre annonces enchaînées
+--- d'environ 1,75 s. Allonger la file ferait défiler la rangée bien après le
+--- kill qui l'a déclenchée.
 function KH:_show_medal_card(t, card, preview)
     if not card then return end
 
@@ -2500,6 +2666,7 @@ end
 --- médailles de kills cumulés aussi : leur palier est définitivement acquis pour
 --- le braquage et seul `KH:ResetHeistCombatState` les efface.
 function KH:ResetWeaponStreaks()
+    self._rope_streak = nil
     self._weapon_streaks = {}
     self:_clear_medal_cards(MEDAL_KIND_WEAPON_STREAK)
 end
@@ -2535,6 +2702,12 @@ end
 --- courant pour ne pas injecter des buffs réels dans les cellules de démo.
 function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._debug_preview_active = false
+    self._event_assault_active = false
+    self._event_assault_number = nil
+    self._event_first_strike_awarded = false
+    self._first_blood_done = false
+    self._last_weapon_switch_t = nil
+    self._revenge_targets = setmetatable({}, { __mode = "k" })
 
     self._buffs = {}
     self._buff_sources = {}
@@ -2580,11 +2753,40 @@ end
 -- ═══════════════════════════════════════════════════
 -- API publique : ajouter un kill au killfeed
 -- ═══════════════════════════════════════════════════
-function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family)
-    if not self.settings or not self.settings.enable_killfeed then return end
+-- Série de rappel indépendante des familles d'armes. Seuls ses propres kills
+-- rafraîchissent la fenêtre ; un palier ne s'annonce qu'une fois par série.
+function KH:_register_rope_kill(t)
+    local streak = self._rope_streak
+    if not streak or t < streak.last_t or t - streak.last_t > KILL_COMBO_WINDOW then
+        streak = { count = 0, tier_index = 0, last_t = t }
+        self._rope_streak = streak
+    end
+    streak.count = streak.count + 1
+    streak.last_t = t
+    local next_index = streak.tier_index + 1
+    local tier = EVENT_MEDAL_DEFINITIONS.rope.tiers[next_index]
+    if tier and streak.count >= tier.count then
+        streak.tier_index = next_index
+        return next_index
+    end
+end
+
+function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family, event_info)
+    -- enable_killfeed contrôle uniquement le rendu : scores, séries et états de
+    -- médailles continuent d'avancer pendant qu'il est masqué, comme sur dev.
+    if not self.settings then return end
+
+    local first_strike = contributes_to_combo ~= false
+        and self._event_assault_active and not self._event_first_strike_awarded
+    if first_strike then self._event_first_strike_awarded = true end
+    local first_blood = contributes_to_combo ~= false
+        and not self._first_blood_done and (self._heist_kill_count or 0) == 0
+    if first_blood then self._first_blood_done = true end
+    local t = now()
+    local rope_tier = contributes_to_combo ~= false and event_info and event_info.rope
+        and self:_register_rope_kill(t) or nil
 
     local dur = KILLFEED_ENTRY_DURATION
-    local t = now()
     if contributes_to_combo ~= false then
         local combo = self._kill_combo or { count = 0 }
         if combo.preview then
@@ -2613,9 +2815,10 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
 
     -- Les médailles vivent dans le killfeed : elles ne disputent jamais le
     -- bandeau supérieur à une cible prioritaire, les deux peuvent coexister.
-    -- La série d'arme est évaluée en premier : si les deux paliers tombent sur
-    -- le même kill, la médaille d'arme prend la rangée et la médaille cumulée
-    -- attend derrière elle dans la file FIFO commune.
+    -- Un même kill peut en produire plusieurs ; l'ordre d'émission ci-dessous
+    -- est donc figé, et c'est lui qui décide de la carte affichée en premier et
+    -- de l'ordre de la file FIFO commune :
+    --   série d'arme -> médailles d'évènement -> palier de kills cumulés.
     local streak_tier_index = weapon_family
         and self:_register_weapon_family_kill(weapon_family, t)
         or nil
@@ -2625,10 +2828,35 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         )
     end
 
+    -- `event_info` porte les états moteur déjà lus par `ky_killfeed.lua`.
+    -- Première frappe et le palier de rappel sont résolus plus haut, même HUD
+    -- masqué. Les cartes suivent l'ordre figé d'`EVENT_MEDAL_ORDER`. Au-delà de la
+    -- carte active et des `MAX_MEDAL_QUEUE` places de la file, les médailles
+    -- suivantes sont abandonnées : elles n'ouvrent aucun palier à rattraper.
+    if contributes_to_combo ~= false then
+        for _, event_id in ipairs(EVENT_MEDAL_ORDER) do
+            local triggered
+            if event_id == "first_strike" then
+                triggered = first_strike
+            elseif event_id == "first_blood" then
+                triggered = first_blood
+            elseif event_id == "rope" then
+                triggered = rope_tier ~= nil
+            else
+                triggered = event_info and event_info[event_id]
+            end
+            if triggered then
+                self:_show_medal_card(t, make_event_medal_card(event_id, rope_tier), false)
+            end
+        end
+    end
+
     -- Kills cumulés du braquage : ils ne dépendent ni de l'arme, ni du score, ni
     -- d'une fenêtre de temps. Seul un kill ennemi compte ; `RecordScoredKill`
     -- marque les civils avec `contributes_to_combo == false`, et sa
     -- déduplication par unité garantit qu'un kill n'est compté qu'une fois.
+    -- Le palier passe en dernier : il est rare, et le compteur l'acquiert même
+    -- si la file déborde et que son annonce est perdue.
     if contributes_to_combo ~= false then
         local kill_medal_count = self:_register_heist_kill()
         if kill_medal_count then
@@ -2674,6 +2902,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         name       = enemy_name or "Enemy",
         score      = score,
         score_text = format_kill_score(score),
+        headshot   = event_info ~= nil and event_info.headshot == true,
         special_kind = special_definition and special_enemy_kind or nil,
         display_text = special_enemy_label(
             special_enemy_kind,
@@ -2683,6 +2912,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         start_t    = t,
         t_end      = t + dur,
     }
+    if entry.headshot then
+        entry.headshot_icon = headshot_icon_descriptor()
+    end
     table.insert(self._kills, entry)
 
     while #self._kills > killfeed_size(self.settings) do
@@ -3325,6 +3557,8 @@ function KH:draw()
         local kill_font_size = clamp(size * 0.42, 13, 18)
         local text_padding = clamp(size * 0.34, 10, 16)
         local text_gap = clamp(size * 0.14, 4, 7)
+        local headshot_icon_size = clamp(item_h * 0.52, 15, 20)
+        local headshot_icon_gap = clamp(size * 0.1, 3, 5)
         local score_total_text = visible_count > 0
             and self._killfeed_score_has_value
             and format_kill_score(self._killfeed_score_total)
@@ -3362,7 +3596,12 @@ function KH:draw()
                 and (kill._measured_score_w or approximate_text_width(kill.score_text, kill_font_size))
                 or 0
             local content_gap = kill.score_text and text_gap or 0
-            local item_w = math.ceil(name_w + score_w + content_gap + text_padding * 2)
+            local icon_reserved = kill.headshot and kill.headshot_icon
+                and (headshot_icon_size + headshot_icon_gap)
+                or 0
+            local item_w = math.ceil(
+                icon_reserved + name_w + score_w + content_gap + text_padding * 2
+            )
             item_w = math.max(item_h, item_w)
             item_widths[slot] = item_w
             desired_row_w = desired_row_w + item_w
@@ -3564,34 +3803,37 @@ function KH:draw()
                     self._panel, mx, my, mw, mh, medal_color, medal_alpha, 101
                 )
 
-                local arrow_reserved = MEDAL_CHEVRON_MARGIN
-                    + MEDAL_CHEVRON_GROUP_W
-                    + MEDAL_CHEVRON_TEXT_GAP
-                local arrow_y = my + mh * 0.5
-                draw_chevrons(
-                    self._panel,
-                    mx + MEDAL_CHEVRON_MARGIN,
-                    arrow_y,
-                    1,
-                    medal_color,
-                    medal_alpha,
-                    104,
-                    MEDAL_CHEVRON_STYLE
-                )
-                draw_chevrons(
-                    self._panel,
-                    mx + mw - MEDAL_CHEVRON_MARGIN - MEDAL_CHEVRON_GROUP_W,
-                    arrow_y,
-                    -1,
-                    medal_color,
-                    medal_alpha,
-                    104,
-                    MEDAL_CHEVRON_STYLE
-                )
+                local content_padding = MEDAL_CONTENT_PADDING
+                if medal_card.kind == MEDAL_KIND_WEAPON_STREAK then
+                    content_padding = MEDAL_CHEVRON_MARGIN
+                        + MEDAL_CHEVRON_GROUP_W
+                        + MEDAL_CHEVRON_TEXT_GAP
+                    local arrow_y = my + mh * 0.5
+                    draw_chevrons(
+                        self._panel,
+                        mx + MEDAL_CHEVRON_MARGIN,
+                        arrow_y,
+                        1,
+                        medal_color,
+                        medal_alpha,
+                        104,
+                        MEDAL_CHEVRON_STYLE
+                    )
+                    draw_chevrons(
+                        self._panel,
+                        mx + mw - MEDAL_CHEVRON_MARGIN - MEDAL_CHEVRON_GROUP_W,
+                        arrow_y,
+                        -1,
+                        medal_color,
+                        medal_alpha,
+                        104,
+                        MEDAL_CHEVRON_STYLE
+                    )
+                end
 
                 local font_size = clamp(size * 0.48, 15, 21)
-                local text_x = mx + arrow_reserved
-                local text_w = math.max(1, mw - arrow_reserved * 2)
+                local text_x = mx + content_padding
+                local text_w = math.max(1, mw - content_padding * 2)
 
                 -- Médaille à icône : le pictogramme remplace le nom écrit et
                 -- précède le palier, les deux restant centrés ensemble dans la
@@ -3687,15 +3929,53 @@ function KH:draw()
 
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
+            local headshot_icon = kill.headshot and kill.headshot_icon or nil
+            local minimum_text_w = 1 + (score_text and (text_gap + 1) or 0)
+            local icon_available_w = math.max(0, inner_w - minimum_text_w)
+            local icon_size = headshot_icon
+                and math.min(
+                    headshot_icon_size,
+                    math.max(0, icon_available_w - headshot_icon_gap)
+                )
+                or 0
+            local icon_gap = icon_size > 0
+                and math.min(headshot_icon_gap, math.max(0, icon_available_w - icon_size))
+                or 0
+            local icon_reserved = icon_size + icon_gap
             local score_w = score_text
-                and math.min(kill._measured_score_w or 0, math.max(1, inner_w - text_gap - 1))
+                and math.min(
+                    kill._measured_score_w or 0,
+                    math.max(1, inner_w - icon_reserved - text_gap - 1)
+                )
                 or 0
             local name_w = math.min(
                 kill._measured_name_w or inner_w,
-                math.max(1, inner_w - score_w - (score_text and text_gap or 0))
+                math.max(
+                    1,
+                    inner_w - icon_reserved - score_w - (score_text and text_gap or 0)
+                )
             )
-            local content_w = name_w + score_w + (score_text and text_gap or 0)
-            local text_x = item_x + (item_w - content_w) * 0.5
+            local content_w = icon_reserved + name_w + score_w
+                + (score_text and text_gap or 0)
+            local content_x = item_x + (item_w - content_w) * 0.5
+            local text_x = content_x + icon_reserved
+
+            if icon_size > 0 then
+                local params = {
+                    layer = 102,
+                    w = icon_size,
+                    h = icon_size,
+                    x = content_x,
+                    y = feed_y + (item_h - icon_size) * 0.5,
+                    texture = headshot_icon.texture,
+                }
+                if headshot_icon.rect then
+                    params.texture_rect = headshot_icon.rect
+                end
+                local bitmap = self._panel:bitmap(params)
+                bitmap:set_color(item_color)
+                bitmap:set_alpha(item_alpha)
+            end
 
             self._panel:text({
                 text = kill.display_text or kill.name,
@@ -3760,7 +4040,9 @@ end
 --   annonce de cible prioritaire (chevrons décoratifs pleins) ;
 --   médaille de série d'arme dans le killfeed, avec les noms sous celle-ci ;
 --   médaille de kills cumulés « icône Dmg+ + 100 KILLS », dans cette même
---   rangée partagée.
+--   rangée partagée ;
+--   les dix-sept cartes de médailles d'évènement, paliers de rappel compris,
+--   une par appel, avec leur icône `hud_tweak`.
 -- Le premier appel montre directement l'exemple demandé, partiellement rempli.
 -- `combo` reste à 0 pour les cas d'annonce afin que seul le bandeau spécial soit
 -- visible ; l'aperçu ne compte aucun kill, ni dans les séries d'arme ni dans le
@@ -3771,10 +4053,36 @@ local DEBUG_BANNER_PREVIEWS = {
     { combo = 0, banner = "boss" },
     { combo = 0, medal = "weapon_streak", family = "shotgun", tier_index = 2 },
     { combo = 0, medal = "kill_total", kills = 100 },
+    { combo = 0, medal = "event", event = "first_strike" },
+    { combo = 0, medal = "event", event = "grave" },
+    { combo = 0, medal = "event", event = "low_hp" },
+    { combo = 0, medal = "event", event = "reload" },
+    { combo = 0, medal = "event", event = "through_shield" },
+    { combo = 0, medal = "event", event = "one_shot_two_kills" },
+    { combo = 0, medal = "event", event = "revenge" },
+    { combo = 0, medal = "event", event = "bulltrue" },
+    { combo = 0, medal = "event", event = "showstopper" },
+    { combo = 0, medal = "event", event = "rope", tier_index = 1 },
+    { combo = 0, medal = "event", event = "rope", tier_index = 2 },
+    { combo = 0, medal = "event", event = "rope", tier_index = 3 },
+    { combo = 0, medal = "event", event = "blindfire" },
+    { combo = 0, medal = "event", event = "first_blood" },
+    { combo = 0, medal = "event", event = "hotswap" },
+    { combo = 0, medal = "event", event = "overwatch" },
+    { combo = 0, medal = "event", event = "long_shot" },
 }
 
 function KH:DebugSimulate(n)
-    self:DebugClear()
+    -- L'aperçu utilise les tables du HUD : il n'est sûr qu'au menu principal,
+    -- jamais pendant un braquage (y compris briefing, garde à vue et pause).
+    local ok, in_menu = pcall(function()
+        return game_state_machine:last_queued_state_name() == "menu_main"
+    end)
+    if not ok or not in_menu then
+        log("[KyoHUD] Preview is only available from the main menu.")
+        return
+    end
+    self:ResetHeistCombatState()
     self._debug_preview_active = true
     n = n or 8
 
@@ -3889,7 +4197,7 @@ function KH:DebugSimulate(n)
 
     -- Simuler quelques kills
     local demo_kills = {
-        { name = "Medic", score = 6, special_kind = "medic", special_count = 2, label_index = 1 },
+        { name = "Medic", score = 6, headshot = true, special_kind = "medic", special_count = 2, label_index = 1 },
         { name = "Captain Winters", score = 100, special_kind = "boss", special_count = 1, label_index = 1 },
         { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
         { name = "Cloaker", score = 8, special_kind = "cloaker", special_count = 2, label_index = 1 },
@@ -3907,6 +4215,8 @@ function KH:DebugSimulate(n)
             name       = demo.name,
             score      = demo.score,
             score_text = format_kill_score(demo.score),
+            headshot   = demo.headshot == true,
+            headshot_icon = demo.headshot and headshot_icon_descriptor() or nil,
             special_kind = demo.special_kind,
             display_text = special_enemy_label(
                 demo.special_kind,
@@ -3949,13 +4259,14 @@ function KH:DebugSimulate(n)
         )
     elseif preview.medal == "kill_total" then
         self:_show_medal_card(t_now, make_kill_medal_card(preview.kills), true)
+    elseif preview.medal == "event" then
+        self:_show_medal_card(t_now, make_event_medal_card(preview.event, preview.tier_index), true)
     end
 end
 
 function KH:DebugClear()
-    -- Un aperçu se retire exactement comme une partie se termine ; seul le
-    -- panneau déjà dessiné doit être vidé en plus, car aucun nouveau HUD ne
-    -- vient le reconstruire ici.
+    -- Sans aperçu, ne toucher ni aux compteurs réels ni au panneau courant.
+    if not self._debug_preview_active then return end
     self:ResetHeistCombatState()
     if self._panel and alive(self._panel) then
         self._panel:clear()
@@ -3965,6 +4276,23 @@ end
 -- ═══════════════════════════════════════════════════
 -- Hooks HUD : initialisation et mise à jour
 -- ═══════════════════════════════════════════════════
+-- HUDManager relaie ces deux évènements sur l'hôte ET le client. Aucun accès
+-- à HUDAssaultCorner : un HUD tiers peut remplacer ou masquer ce panneau.
+if HUDManager.sync_start_assault then
+    Hooks:PostHook(HUDManager, "sync_start_assault", "KH_EventAssaultStart", function(self, assault_number)
+        if not KH._event_assault_active or KH._event_assault_number ~= assault_number then
+            KH._event_first_strike_awarded = false
+        end
+        KH._event_assault_active = true
+        KH._event_assault_number = assault_number
+    end)
+end
+if HUDManager.sync_end_assault then
+    Hooks:PostHook(HUDManager, "sync_end_assault", "KH_EventAssaultEnd", function()
+        KH._event_assault_active = false
+    end)
+end
+
 Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
     -- Un nouveau HUD correspond à une nouvelle partie : aucun buff, kill,
     -- score, bandeau ni série d'arme de la partie précédente ne doit survivre.

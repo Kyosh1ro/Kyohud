@@ -30,7 +30,9 @@ local function get_temp_duration(pm, upgrade)
             and pm._temporary_upgrades.temporary
             and pm._temporary_upgrades.temporary[upgrade]
         if entry and entry.expire_time then
-            return entry.expire_time - TimerManager:game():time()
+            -- PlayerManager écrit cette expiration avec Application:time().
+            -- Seule la durée résultante est ensuite convertie en timer HUD.
+            return entry.expire_time - Application:time()
         end
         return nil
     end)

@@ -1,3 +1,9 @@
+r87 (06.09.2026):
+- Event medals now recognize first kills, assault openings, critical-state eliminations, enemy actions, penetration shots, Cloaker counters, revenge kills, flashbang kills, quick weapon swaps, sniper duels and long-distance shots.
+- Headshots now add a dedicated icon to their regular killfeed card, while weapon-streak medals keep their chevrons and event or cumulative medals use a cleaner icon-and-label frame.
+- Multikill banners now switch to electric cyan from five kills onward.
+- Temporary buff timers now use the correct application clock, and combat tracking remains consistent when the killfeed is hidden or previews are cleared.
+
 r86 (04.09.2026):
 - Selected buffs now use localized compact labels, with Inspire states identified above their icons and composite stat labels placed below instead of redundant timers.
 - Buff cells now use open-top cyan tactical frames, bottom-weighted shading and color-coded timed perimeter progress with clearer warning and critical states.

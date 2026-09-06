@@ -8,7 +8,7 @@
   "ky_opt_language_english": "English",
   "ky_opt_language_french": "Français",
   "ky_opt_enable_killfeed": "Activer le KillFeed",
-  "ky_opt_enable_killfeed_desc": "Affiche les ennemis éliminés dans une rangée tactique horizontale sous le viseur",
+  "ky_opt_enable_killfeed_desc": "Affiche les ennemis éliminés sous le viseur ; les scores et compteurs continuent lorsque le killfeed est masqué",
   "ky_opt_killfeed_size": "Taille du killfeed",
   "ky_opt_killfeed_size_desc": "Nombre de kills affichés dans le killfeed (1-5). Par défaut : 3",
   "ky_opt_enable_buffs": "Activer l'affichage des buffs",
@@ -36,7 +36,7 @@
   "ky_opt_reset": "Réinitialiser par défaut",
   "ky_opt_reset_desc": "Remettre tous les paramètres à leurs valeurs par défaut",
   "ky_opt_debug_sim": "Prévisualiser buffs et kills",
-  "ky_opt_debug_sim_desc": "Prévisualise les buffs actifs, les cadres de kills spéciaux et les bandeaux de cibles prioritaires",
+  "ky_opt_debug_sim_desc": "Menu principal uniquement : prévisualise les buffs, les kills spéciaux et les bandeaux ; indisponible pendant un braquage",
   "ky_opt_debug_clear": "Effacer l'aperçu",
   "ky_opt_debug_clear_desc": "Supprime les buffs et kills de l'aperçu ; le deck d'atouts équipé reste visible",
 
@@ -129,6 +129,24 @@
   "ky_hud_streak_explosive_8": "BLAST ZONE",
 
   "ky_hud_kill_medal_kills": "KILLS",
+
+  "ky_hud_event_medal_first_strike": "Première frappe",
+  "ky_hud_event_medal_grave": "Fossoyeur",
+  "ky_hud_event_medal_low_hp": "Dernier souffle",
+  "ky_hud_event_medal_reload": "Rechargement fatal",
+  "ky_hud_event_medal_through_shield": "Perce-Bouclier",
+  "ky_hud_event_medal_one_shot_two_kills": "1 Balle 2 Morts",
+  "ky_hud_event_medal_revenge": "Vengeance",
+  "ky_hud_event_medal_bulltrue": "Bulltrue",
+  "ky_hud_event_medal_showstopper": "Showstopper",
+  "ky_hud_event_medal_rope": "Décroché",
+  "ky_hud_event_medal_rope_3": "Chute libre",
+  "ky_hud_event_medal_rope_5": "Nettoyage aérien",
+  "ky_hud_event_medal_blindfire": "Tir à l'aveugle",
+  "ky_hud_event_medal_first_blood": "Premier sang",
+  "ky_hud_event_medal_hotswap": "Échange rapide",
+  "ky_hud_event_medal_overwatch": "Contre-tir",
+  "ky_hud_event_medal_long_shot": "Longue portée",
 
 
   "ky_opt_cat_mastermind": "Cerveau",
