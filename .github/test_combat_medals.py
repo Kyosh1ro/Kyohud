@@ -29,13 +29,25 @@ class CombatMedalTests(unittest.TestCase):
             PlayerMovement = {on_SPOOCed=function() end}
             RaycastWeaponBase = {_check_kill_achievements=function() end}
             hud_icon_calls = 0
-            managers = {}; tweak_data = {hud_icons = {get_icon_data = function(self, name)
-                hud_icon_calls = hud_icon_calls + 1
-                return 'resolved/' .. name, {0,0,1,1}
-            end}}
+            managers = {}; tweak_data = {
+                weapon = {
+                    test_sniper = {categories = {'snp'}},
+                    test_shotgun = {categories = {'shotgun'}}
+                },
+                hud_icons = {get_icon_data = function(self, name)
+                    hud_icon_calls = hud_icon_calls + 1
+                    return 'resolved/' .. name, {0,0,1,1}
+                end}
+            }
             DB = {has = function() return true end}
             function Idstring(value) return value end
             function Vector3(...) return {...} end
+            mvector3 = {distance = function(a, b)
+                local x = (a.x or 0) - (b.x or 0)
+                local y = (a.y or 0) - (b.y or 0)
+                local z = (a.z or 0) - (b.z or 0)
+                return math.sqrt(x*x + y*y + z*z)
+            end}
             function log(...) end
             function alive(x) return x ~= nil and x ~= false end
             Color = setmetatable({white = {}, black = {}}, {__call = function(...) return {} end})
@@ -43,12 +55,13 @@ class CombatMedalTests(unittest.TestCase):
             Network = {is_client = function() return is_client end}
             TimerManager = {game = function() return {time = function() return game_t end} end}
             game_state_machine = {last_queued_state_name = function() return state_name end}
-            local_player = {}
+            local_player = {position = function() return {x=0,y=0,z=0} end}
             managers.player = {player_unit = function() return local_player end,
                 current_state = function() return 'standard' end}
-            function enemy(id, animation, rope, action)
+            function enemy(id, animation, rope, action, position)
                 return {base = function() return {_tweak_table = id or 'cop'} end,
                     anim_data = function() return animation or {} end,
+                    position = function() return position or {x=0,y=0,z=0} end,
                     movement = function() return {
                         _active_actions = {action},
                         rope_unit = function() return rope end
@@ -201,6 +214,42 @@ class CombatMedalTests(unittest.TestCase):
             assert(kyohud._last_weapon_switch_t == nil, 'heist reset kept weapon timestamp')
         ''')
 
+    def test_long_shot_uses_strict_thirty_meter_threshold(self):
+        self.lua.execute('''
+            assert(not kyohud:IsLongDistanceKill(
+                enemy('cop', nil, nil, nil, {x=3000,y=0,z=0})),
+                'exactly 30m must not trigger')
+            assert(kyohud:IsLongDistanceKill(
+                enemy('cop', nil, nil, nil, {x=3000.1,y=0,z=0})),
+                'distance above 30m did not trigger')
+            local broken = enemy()
+            broken.position = function() error('engine') end
+            assert(not kyohud:IsLongDistanceKill(broken), 'distance access was not protected')
+
+            is_client = true
+            Hooks.callbacks.KH_OnLocalPlayerKillshot({},
+                enemy('cop', nil, nil, nil, {x=3001,y=0,z=0}),
+                'bullet', false, 'test_sniper')
+            assert(count_event('long_shot') == 1, 'long-shot medal missing from kill path')
+            Hooks.callbacks.KH_OnLocalPlayerKillshot({},
+                enemy('cop', nil, nil, nil, {x=2999,y=0,z=0}),
+                'bullet', false, 'test_sniper')
+            assert(count_event('long_shot') == 1, 'short kill emitted long-shot medal')
+        ''')
+
+    def test_overwatch_requires_sniper_weapon_and_sniper_target(self):
+        self.lua.execute('''
+            kyohud:RecordScoredKill(enemy('sniper'), 'sniper', 'Sniper', false,
+                {variant='bullet', weapon_id='test_sniper'}, {})
+            assert(count_event('overwatch') == 1, 'sniper versus sniper did not trigger')
+            kyohud:RecordScoredKill(enemy('cop'), 'cop', 'Cop', false,
+                {variant='bullet', weapon_id='test_sniper'}, {})
+            kyohud:RecordScoredKill(enemy('sniper'), 'sniper', 'Sniper', false,
+                {variant='bullet', weapon_id='test_shotgun'}, {})
+            assert(count_event('overwatch') == 1,
+                'invalid target or weapon triggered overwatch')
+        ''')
+
     def test_rope_tiers_window_and_resets(self):
         self.lua.execute('''
             local same = enemy()
@@ -239,7 +288,7 @@ class CombatMedalTests(unittest.TestCase):
     def test_preview_covers_event_medals_and_rope_tiers(self):
         self.lua.execute('''
             local seen = {}
-            for i = 1, 20 do
+            for i = 1, 22 do
                 kyohud:DebugSimulate(0)
                 local card = kyohud._medal_card
                 if card and card.event then
@@ -249,7 +298,7 @@ class CombatMedalTests(unittest.TestCase):
             for _, id in ipairs({
                 'first_strike','grave','low_hp','reload','through_shield',
                 'one_shot_two_kills','revenge','bulltrue','showstopper',
-                'blindfire','first_blood','hotswap'
+                'blindfire','first_blood','hotswap','overwatch','long_shot'
             }) do
                 assert(seen[id .. ':0'], 'preview missing ' .. id)
             end
@@ -263,7 +312,8 @@ class CombatMedalTests(unittest.TestCase):
         ids = [
             'first_strike', 'grave', 'low_hp', 'reload', 'rope', 'rope_3',
             'rope_5', 'through_shield', 'one_shot_two_kills', 'revenge',
-            'bulltrue', 'showstopper', 'blindfire', 'first_blood', 'hotswap'
+            'bulltrue', 'showstopper', 'blindfire', 'first_blood', 'hotswap',
+            'overwatch', 'long_shot'
         ]
         fallback = (ROOT / 'lua/ky_localization.lua').read_text(encoding='utf-8-sig')
         for language in ('english', 'french'):

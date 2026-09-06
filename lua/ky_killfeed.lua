@@ -229,6 +229,8 @@ end
 -- « Dernier souffle » : sous ce ratio de santé, le kill est décoré.
 local LOW_HEALTH_RATIO = 0.1
 local FLASHBANG_INTENSITY_THRESHOLD = 0.05
+-- PAYDAY 2 exprime les positions en centimètres : 3000 unités = 30 mètres.
+local LONG_SHOT_DISTANCE = 3000
 
 local function local_player_unit()
     local ok, unit = pcall(function()
@@ -288,6 +290,20 @@ function KH:IsLocalPlayerFlashbanged()
     intensity = ok and tonumber(intensity) or nil
     return intensity ~= nil and intensity == intensity
         and intensity > FLASHBANG_INTENSITY_THRESHOLD
+end
+
+--- `true` si la cible se trouve à plus de 30 mètres du joueur local.
+--- Les positions et `mvector3` sont des frontières moteur fragiles : une lecture
+--- impossible ou une distance invalide vaut simplement « pas de Long Shot ».
+function KH:IsLongDistanceKill(unit)
+    local player = local_player_unit()
+    if not player or not unit then return false end
+
+    local ok, distance = pcall(function()
+        return mvector3.distance(player:position(), unit:position())
+    end)
+    distance = ok and tonumber(distance) or nil
+    return distance ~= nil and distance == distance and distance > LONG_SHOT_DISTANCE
 end
 
 --- Renseigne dans `out` l'état d'animation de l'ennemi : rechargement, course
@@ -466,6 +482,10 @@ function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian, attack_in
     -- Un civil ne décerne aucune médaille d'évènement, comme il ne fait
     -- progresser aucune série d'arme.
     local kill_events = not is_civilian and event_info or nil
+    if kill_events then
+        kill_events.overwatch = special_enemy_kind == "sniper"
+            and weapon_family == "sniper"
+    end
     self:add_kill(
         display_name,
         score,
@@ -510,6 +530,8 @@ local EVENT_INFO = {
     showstopper = false,
     blindfire = false,
     hotswap = false,
+    overwatch = false,
+    long_shot = false,
 }
 
 -- Le PreHook et le PostHook de `CopDamage:die` appartiennent au même chargement
@@ -556,6 +578,8 @@ local function event_info(unit, headshot, is_civilian)
     EVENT_INFO.showstopper = false
     EVENT_INFO.blindfire = false
     EVENT_INFO.hotswap = false
+    EVENT_INFO.overwatch = false
+    EVENT_INFO.long_shot = false
 
     consume_enemy_kill_state(unit, EVENT_INFO)
     if is_civilian then return nil end
@@ -569,6 +593,9 @@ local function event_info(unit, headshot, is_civilian)
         or false
     EVENT_INFO.blindfire = KH.IsLocalPlayerFlashbanged
         and KH:IsLocalPlayerFlashbanged()
+        or false
+    EVENT_INFO.long_shot = KH.IsLongDistanceKill
+        and KH:IsLongDistanceKill(unit)
         or false
     local time_ok, kill_t = pcall(function()
         return TimerManager:game():time()

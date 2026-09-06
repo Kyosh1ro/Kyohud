@@ -174,6 +174,8 @@ local function add_fallbacks(loc)
         ky_hud_event_medal_blindfire = "BlindFire",
         ky_hud_event_medal_first_blood = "First Blood",
         ky_hud_event_medal_hotswap   = "Hot Swap",
+        ky_hud_event_medal_overwatch = "Overwatch",
+        ky_hud_event_medal_long_shot = "Long Shot",
 
         -- Catégories
         ky_opt_cat_mastermind           = "Mastermind",

@@ -682,6 +682,18 @@ local EVENT_MEDAL_DEFINITIONS = {
         color    = Color(0.3, 0.85, 0.8),            -- bleu-vert
         icon     = { hud_tweak = "csb_switch" },
     },
+    overwatch = {
+        id       = "ky_hud_event_medal_overwatch",
+        fallback = "Overwatch",
+        color    = Color(0.4, 0.72, 1),
+        icon     = { hud_tweak = "crime_spree_heavy_sniper" },
+    },
+    long_shot = {
+        id       = "ky_hud_event_medal_long_shot",
+        fallback = "Long Shot",
+        color    = Color(0.45, 0.84, 1),
+        icon     = { hud_tweak = "csb_ammo" },
+    },
 }
 
 -- Une table Lua indexée par clé n'a pas d'ordre de parcours stable. Cette liste
@@ -690,6 +702,7 @@ local EVENT_MEDAL_DEFINITIONS = {
 local EVENT_MEDAL_ORDER = {
     "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
     "showstopper", "rope", "blindfire", "first_blood", "hotswap",
+    "overwatch", "long_shot",
 }
 
 -- ── Paliers de kills cumulés du braquage ──
@@ -4028,7 +4041,7 @@ end
 --   médaille de série d'arme dans le killfeed, avec les noms sous celle-ci ;
 --   médaille de kills cumulés « icône Dmg+ + 100 KILLS », dans cette même
 --   rangée partagée ;
---   les quinze cartes de médailles d'évènement, paliers de rappel compris,
+--   les dix-sept cartes de médailles d'évènement, paliers de rappel compris,
 --   une par appel, avec leur icône `hud_tweak`.
 -- Le premier appel montre directement l'exemple demandé, partiellement rempli.
 -- `combo` reste à 0 pour les cas d'annonce afin que seul le bandeau spécial soit
@@ -4055,6 +4068,8 @@ local DEBUG_BANNER_PREVIEWS = {
     { combo = 0, medal = "event", event = "blindfire" },
     { combo = 0, medal = "event", event = "first_blood" },
     { combo = 0, medal = "event", event = "hotswap" },
+    { combo = 0, medal = "event", event = "overwatch" },
+    { combo = 0, medal = "event", event = "long_shot" },
 }
 
 function KH:DebugSimulate(n)
