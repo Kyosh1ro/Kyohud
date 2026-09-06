@@ -24,6 +24,8 @@
     { "hook_id": "lib/managers/playermanager",       "script_path": "lua/ky_hooks.lua" },
     { "hook_id": "lib/managers/playermanager",       "script_path": "lua/ky_killfeed.lua" },
     { "hook_id": "lib/units/beings/player/playerdamage", "script_path": "lua/ky_playerdamage.lua" },
+    { "hook_id": "lib/units/beings/player/playermovement", "script_path": "lua/ky_playermovement.lua" },
+    { "hook_id": "lib/units/weapons/raycastweaponbase", "script_path": "lua/ky_raycastweaponbase.lua" },
     { "hook_id": "lib/units/enemies/cop/copdamage",  "script_path": "lua/ky_killfeed.lua" },
     { "hook_id": "lib/units/civilians/civiliandamage", "script_path": "lua/ky_civilian_killfeed.lua" }
   ]
