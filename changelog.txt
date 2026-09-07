@@ -1,3 +1,8 @@
+r88 (08.09.2026):
+- Spray Down now rewards four bullet kills within four seconds, once per magazine, and resets when the local weapon reloads.
+- Last Breath medals now have a 30-second cooldown to prevent repeated announcements during low-health kill streaks.
+- Hot Swap now tracks only weapon changes made by the local player.
+
 r87 (06.09.2026):
 - Event medals now recognize first kills, assault openings, critical-state eliminations, enemy actions, penetration shots, Cloaker counters, revenge kills, flashbang kills, quick weapon swaps, sniper duels and long-distance shots.
 - Headshots now add a dedicated icon to their regular killfeed card, while weapon-streak medals keep their chevrons and event or cumulative medals use a cleaner icon-and-label frame.

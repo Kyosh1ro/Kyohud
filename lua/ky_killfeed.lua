@@ -532,6 +532,8 @@ local EVENT_INFO = {
     hotswap = false,
     overwatch = false,
     long_shot = false,
+    magazine_kill = false,
+    spray_down = false,
 }
 
 -- Le PreHook et le PostHook de `CopDamage:die` appartiennent au même chargement
@@ -566,7 +568,7 @@ end
 --- La table de travail est remise à zéro en entrée, sur **tous** les chemins :
 --- un civil, une lecture moteur impossible ou un chargement partiel ne peut donc
 --- pas laisser le booléen d'un kill précédent décorer le kill suivant.
-local function event_info(unit, headshot, is_civilian)
+local function event_info(unit, headshot, is_civilian, info)
     EVENT_INFO.headshot = false
     EVENT_INFO.reload   = false
     EVENT_INFO.run      = false
@@ -580,6 +582,8 @@ local function event_info(unit, headshot, is_civilian)
     EVENT_INFO.hotswap = false
     EVENT_INFO.overwatch = false
     EVENT_INFO.long_shot = false
+    EVENT_INFO.magazine_kill = false
+    EVENT_INFO.spray_down = false
 
     consume_enemy_kill_state(unit, EVENT_INFO)
     if is_civilian then return nil end
@@ -597,6 +601,7 @@ local function event_info(unit, headshot, is_civilian)
     EVENT_INFO.long_shot = KH.IsLongDistanceKill
         and KH:IsLongDistanceKill(unit)
         or false
+    EVENT_INFO.magazine_kill = info and info.variant == "bullet" or false
     local time_ok, kill_t = pcall(function()
         return TimerManager:game():time()
     end)
@@ -615,7 +620,7 @@ local function record_kill(unit, is_civilian, info, headshot)
     local enemy_name = KH.GetKillDisplayName
         and KH:GetKillDisplayName(unit_id, is_civilian)
         or "Enemy"
-    local events = event_info(unit, headshot, is_civilian)
+    local events = event_info(unit, headshot, is_civilian, info)
 
     if KH.RecordScoredKill then
         KH:RecordScoredKill(unit, unit_id, enemy_name, is_civilian, info, events)
