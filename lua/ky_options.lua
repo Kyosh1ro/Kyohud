@@ -1,5 +1,5 @@
--- ky_options.lua — Menu BLT + sauvegarde/chargement des paramètres
--- Structure fixe en JSON ; UN SEUL BuildMenu, sous-menus par deep_clone
+-- ky_options.lua — BLT Menu + settings save/load
+-- Fixed JSON structure; single BuildMenu, submenus via deep_clone
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -17,11 +17,11 @@ end
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
-    log("[KyoHUD] Erreur chargement catalogue buffs (options): " .. tostring(catalog_err))
+    log("[KyoHUD] Buff catalog load error (options): " .. tostring(catalog_err))
 end
 
 -- ═══════════════════════════════════════════════════
--- 1) Paramètres par défaut & persistence
+-- 1) Default settings & persistence
 -- ═══════════════════════════════════════════════════
 KH._settings_path = SavePath .. "kyohud_settings.json"
 KH._legacy_settings_path = SavePath .. "kyosh1ro_hud_settings.json"
@@ -56,7 +56,7 @@ local HUD_DEFAULT_LAYOUTS = {
         id = "vanillahud_plus",
         mod_name = "VanillaHUDPlus",
         values = {
-            -- VanillaHUD+ centre sa liste à H - 125 px sur son panneau 1280 x 720.
+            -- VanillaHUD+ centers its list at H - 125 px on its 1280 x 720 panel.
             buff_position_x = 50,
             buff_position_y = 83,
         },
@@ -169,7 +169,7 @@ function KH.Load()
         local raw = f:read("*all"); f:close()
         local ok, data = pcall(json.decode, raw)
         if ok and type(data) == "table" then
-            -- PAS de `x and y or z` ici : il renvoie le défaut quand la valeur sauvée est `false`
+            -- NO `x and y or z` here: it returns the default when the saved value is `false`
             for k, dv in pairs(KH._defaults) do
                 if data[k] ~= nil then
                     KH.settings[k] = data[k]
@@ -195,8 +195,8 @@ function KH.Load()
             else
                 KH.settings.buff_toggles = build_default_buff_toggles()
             end
-            -- L'ancienne plage 100-500 était visuellement bornée à 70-160 px.
-            -- 128-291 couvre la même zone utile sans conserver de portion inerte.
+            -- The old range 100-500 was visually bounded to 70-160 px.
+            -- 128-291 covers the same useful area without retaining an inert portion.
             local saved_radius = KH.settings.circle_radius
             local normalized_radius = math.max(
                 KILLFEED_OFFSET_MIN,
@@ -206,8 +206,8 @@ function KH.Load()
                 )
             )
             KH.settings.circle_radius = normalized_radius
-            -- Réécrire une ancienne sauvegarde pour retirer l'option publique
-            -- `buff_duration` et normaliser l'ancienne plage du décalage vertical.
+            -- Rewrite old saved settings to remove the public option
+            -- `buff_duration` and normalize the old vertical offset range.
             if loaded_legacy_settings or data.buff_duration ~= nil
                     or saved_radius ~= normalized_radius then
                 KH.Save()
@@ -288,7 +288,7 @@ local function load_menu_definition(filename)
     local path = MY_MOD_PATH .. "menu/" .. filename
     local file = io.open(path, "r")
     if not file then
-        log("[KyoHUD] Impossible d'ouvrir la définition de menu: " .. tostring(path))
+        log("[KyoHUD] Unable to open menu definition: " .. tostring(path))
         return nil
     end
 
@@ -297,11 +297,11 @@ local function load_menu_definition(filename)
 
     local ok, content = pcall(json.decode, raw)
     if not ok or type(content) ~= "table" then
-        log("[KyoHUD] JSON de menu invalide " .. tostring(path) .. ": " .. tostring(content))
+        log("[KyoHUD] Invalid menu JSON " .. tostring(path) .. ": " .. tostring(content))
         return nil
     end
     if type(content.menu_id) ~= "string" or type(content.items) ~= "table" then
-        log("[KyoHUD] Définition de menu incomplète: " .. tostring(path))
+        log("[KyoHUD] Incomplete menu definition: " .. tostring(path))
         return nil
     end
     return content
@@ -342,7 +342,7 @@ if KH.BUFF_MAP then
 end
 
 -- ═══════════════════════════════════════════════════
--- 3) Construction du menu
+-- 3) Menu construction
 -- ═══════════════════════════════════════════════════
 local function populate_json_menu(definition)
     if not definition then return end
@@ -399,7 +399,7 @@ local function populate_json_menu(definition)
                 menu_id = definition.menu_id, priority = priority,
             })
         else
-            log("[KyoHUD] Type d'élément de menu JSON inconnu: " .. tostring(item_type))
+            log("[KyoHUD] Unknown JSON menu element type: " .. tostring(item_type))
         end
     end
     update_best_streak_menu_enabled()
@@ -409,16 +409,16 @@ end
 Hooks:Add("MenuManagerSetupCustomMenus", "KY_SetupMenu", function(menu_manager, nodes)
     if not MAIN_MENU_DEFINITION or not BUFFS_MENU_DEFINITION then return end
     MenuHelper:NewMenu(MENU_ID)
-    -- PAS de NewMenu pour les sous-menus, on les crée par clonage
+    -- NO NewMenu for submenus; create them via cloning
 end)
 
--- ── HOOK 2 : Populate (items du menu principal uniquement) ──
+-- ── HOOK 2: Populate (main menu items only) ──
 Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
     populate_json_menu(MAIN_MENU_DEFINITION)
 end)
 
--- ── Utilitaire : créer un item toggle sur un noeud existant ──
--- Le toggle PD2 a BESOIN des options on/off avec les textures tickbox
+-- ── Utility: create a toggle item on an existing node ──
+-- The PD2 toggle REQUIRES on/off options with tickbox textures
 local function add_toggle_to_node(node, id, title_id, desc_id, callback_name, value)
     local ok, err = pcall(function()
         local data = {
@@ -454,7 +454,7 @@ local function add_toggle_to_node(node, id, title_id, desc_id, callback_name, va
         end
     end)
     if not ok then
-        log("[KyoHUD] Erreur ajout toggle " .. id .. ": " .. tostring(err))
+        log("[KyoHUD] Error adding toggle " .. id .. ": " .. tostring(err))
     end
 end
 
@@ -472,7 +472,7 @@ local function add_menu_link_to_node(node, id, title_id, desc_id, next_node)
         if item then node:add_item(item) end
     end)
     if not ok then
-        log("[KyoHUD] Erreur ajout lien de menu " .. tostring(id) .. ": " .. tostring(err))
+        log("[KyoHUD] Error adding menu link " .. tostring(id) .. ": " .. tostring(err))
     end
 end
 
@@ -480,7 +480,7 @@ end
 Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, nodes)
     if not MAIN_MENU_DEFINITION or not BUFFS_MENU_DEFINITION then return end
 
-    -- 3a. UN SEUL BuildMenu — le menu principal
+    -- 3a. Single BuildMenu — the main menu
     local main_ok, main_err = pcall(function()
         nodes[MENU_ID] = MenuHelper:BuildMenu(MENU_ID, {
             back_callback = MAIN_MENU_DEFINITION.back_callback or "KY_BackCallback",
@@ -488,11 +488,11 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
     end)
 
     if not main_ok then
-        log("[KyoHUD] ERREUR menu principal: " .. tostring(main_err))
+        log("[KyoHUD] Main menu error: " .. tostring(main_err))
         return
     end
 
-    -- 3b. Créer le menu Buffs et les sous-menus par CLONAGE du noeud principal
+    -- 3b. Create the Buffs menu and submenus via CLONING of the main node
     local buffs_node
     local buffs_ok, buffs_err = pcall(function()
         buffs_node = deep_clone(nodes[MENU_ID])
@@ -501,7 +501,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
     end)
 
     if not buffs_ok then
-        log("[KyoHUD] ERREUR clone menu Buffs: " .. tostring(buffs_err))
+        log("[KyoHUD] Buffs menu clone error: " .. tostring(buffs_err))
         return
     end
 
@@ -511,11 +511,11 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         local sub_id = menu_item.next_menu
 
         local clone_ok, clone_err = pcall(function()
-            -- Cloner le noeud du menu principal (récupère le renderer, layout, etc.)
+            -- Clone the main menu node (recovers renderer, layout, etc.)
             local sub_node = deep_clone(nodes[MENU_ID])
             sub_node:clean_items()
 
-            -- Ajouter le toggle de la catégorie en premier
+            -- Add the category toggle first
             add_toggle_to_node(
                 sub_node,
                 "ky_cat_" .. cat_id,
@@ -525,7 +525,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
                 KH.settings.buff_categories[cat_id] ~= false
             )
 
-            -- Ajouter les toggles de buffs individuels
+            -- Add individual buff toggles
             if KH.BUFF_MAP then
                 local sorted = KH.GetSortedBuffIdsForCategory and KH.GetSortedBuffIdsForCategory(cat_id) or {}
 
@@ -549,7 +549,7 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         end)
 
         if clone_ok then
-            -- Ajouter le lien vers la catégorie dans le menu Buffs
+            -- Add the link to the category in the Buffs menu
             add_menu_link_to_node(
                 buffs_node,
                 menu_item.id,
@@ -559,11 +559,11 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
             )
             sub_count = sub_count + 1
         else
-            log("[KyoHUD] ERREUR clone sous-menu " .. cat_id .. ": " .. tostring(clone_err))
+            log("[KyoHUD] Submenu clone error " .. cat_id .. ": " .. tostring(clone_err))
         end
     end
 
-    -- 3c. Lier au menu BLT Options
+    -- 3c. Link to the BLT Options menu
     local parent_id = MAIN_MENU_DEFINITION.parent_menu_id or "blt_options"
     if nodes[parent_id] then
         MenuHelper:AddMenuItem(
@@ -573,8 +573,8 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
             MAIN_MENU_DEFINITION.description
         )
     else
-        log("[KyoHUD] ERREUR menu parent introuvable: " .. tostring(parent_id))
+        log("[KyoHUD] Parent menu not found: " .. tostring(parent_id))
     end
 
-    log("[KyoHUD] Menu JSON construit: principal + Buffs + " .. sub_count .. "/" .. #CAT_ORDER .. " catégories (deep_clone).")
+    log("[KyoHUD] JSON menu built: main + Buffs + " .. sub_count .. "/" .. #CAT_ORDER .. " categories (deep_clone).")
 end)

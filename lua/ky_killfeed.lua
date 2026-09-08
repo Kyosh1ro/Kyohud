@@ -1,10 +1,10 @@
--- ky_killfeed.lua — Killfeed : scoring, attribution et détection des kills
+-- ky_killfeed.lua — Killfeed: scoring, attribution, and kill detection
 -- KyoHUD
--- Ce fichier est chargé dans les contextes PlayerManager, CopDamage et
--- HuskCopDamage (mod.txt), et également par dofile depuis
+-- This file is loaded in PlayerManager, CopDamage, and
+-- HuskCopDamage contexts (mod.txt), and also by dofile from
 -- ky_civilian_killfeed.lua (CivilianDamage).
--- Les hooks sont installés conditionnellement via RequiredScript afin de ne
--- cibler que la classe présente dans chaque contexte de chargement.
+-- Hooks are installed conditionally via RequiredScript to only
+-- target the class present in each loading context.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -12,16 +12,17 @@ local KH = kyohud
 local HOTSWAP_WINDOW = 2.5
 
 -- ═══════════════════════════════════════════════════
--- Catalogue de scoring (garde d'initialisation séparée)
+-- Scoring catalog (separate initialization guard)
 -- ═══════════════════════════════════════════════════
--- Le concept et les valeurs initiales sont inspirés de Joy's Score Counter
--- par Offyerrocker, lui-même fondé sur les répliques de score de Joy en jeu.
--- La détection, l'attribution et le rendu sont propres à KyoHUD ; voir
--- CREDITS.md pour la filiation complète et le lien vers le projet source.
+-- Concept and initial values are inspired by Joy's Score Counter
+-- by Offyerrocker, himself based on in-game score replays by Joy.
+-- Detection, attribution, and rendering are specific to KyoHUD; see
+-- CREDITS.md for full lineage and link to the source project.
 --
--- Le catalogue peut être chargé plusieurs fois (PlayerManager, CopDamage,
--- CivilianDamage) ; la garde empêche une reconstruction inutile tout en
--- permettant à chaque contexte d'installer ses propres hooks ensuite.
+
+-- The catalog can be loaded multiple times (PlayerManager, CopDamage,
+-- CivilianDamage); the guard prevents unnecessary reconstruction while
+-- allowing each context to install its own hooks afterward.
 
 if not KH._killscore_catalog_loaded then
 
@@ -123,12 +124,12 @@ local function contains(value, pattern)
     return value and string.find(value, pattern, 1, true) ~= nil
 end
 
--- ── Familles de dégâts / d'armes ──
--- La cause finale de la mort décide seule de la famille créditée. L'ordre est
--- exclusif : la variante de dégâts (feu, poison, explosion, mêlée) d'abord,
--- puis seulement la catégorie de l'arme.
--- Un kill différé par le feu ne crédite donc jamais le fusil à pompe qui a
--- allumé la cible, et un souffle incendiaire qui tue directement reste explosif.
+-- ── Damage/weapon families ──
+-- The final cause of death decides alone the credited family. Order is
+-- exclusive: damage variant (fire, poison, explosion, melee) first,
+-- then only weapon category.
+-- A kill deferred by fire never credits the shotgun that lit the target,
+-- and a direct-fire incendiary blast remains explosive.
 local WEAPON_FAMILY_BY_VARIANT = {
     fire      = "incendiary",
     poison    = "poison",
@@ -142,9 +143,9 @@ local WEAPON_FAMILY_BY_CATEGORY = {
     snp     = "sniper",
 }
 
--- `akimbo` est un qualificatif cumulé à la catégorie de base de l'arme
--- (`{ "pistol", "akimbo" }`, `{ "shotgun", "akimbo" }`, …). Il prime donc sur
--- toute autre correspondance, quelle que soit sa position dans la liste.
+-- `akimbo` is a cumulative qualifier to the base weapon category
+-- (`{ "pistol", "akimbo" }`, `{ "shotgun", "akimbo" }`, …). It thus takes precedence over
+-- any other match, regardless of its position in the list.
 local PRIORITY_WEAPON_FAMILY = "akimbo"
 
 local function family_from_categories(categories)
@@ -165,8 +166,8 @@ end
 
 local function family_from_weapon_tweak(weapon_tweak)
     if type(weapon_tweak) ~= "table" then return nil end
-    -- `categories` est la forme moderne ; `category` reste utilisée par
-    -- d'anciennes définitions et par des armes ajoutées par d'autres mods.
+    -- `categories` is the modern form; `category` remains used by
+    -- old definitions and weapons added by other mods.
     return family_from_categories(weapon_tweak.categories)
         or family_from_categories(weapon_tweak.category)
 end
@@ -197,7 +198,7 @@ local function family_from_weapon_unit(weapon_unit)
         if family then return family end
     end
 
-    -- Repli : certaines bases d'armes moddées n'exposent que l'identifiant.
+    -- Fallback: some modded weapon bases expose only the identifier.
     local name_ok, name_id = pcall(function()
         if base.get_name_id then return base:get_name_id() end
         return base._name_id
@@ -205,10 +206,8 @@ local function family_from_weapon_unit(weapon_unit)
     return name_ok and family_from_weapon_id(name_id) or nil
 end
 
---- Famille créditée par un kill, ou `nil` si la cause réelle est inconnue.
---- `attack_info` peut porter `variant`, `weapon_unit` et `weapon_id`. L'arme
---- actuellement équipée n'est jamais consultée : un DOT ou un projectile ne
---- doit pas créditer une arme que le joueur tient au moment de la mort.
+--- Credit family by a kill, or `nil` if the actual cause is unknown.
+--- `attack_info` can carry `variant`, `weapon_unit`, and `weapon_id`. The currently equipped weapon is never consulted: a DOT or projectile should not credit a weapon the player is holding at death.
 function KH:GetKillWeaponFamily(attack_info)
     if type(attack_info) ~= "table" then return nil end
 
@@ -221,16 +220,16 @@ function KH:GetKillWeaponFamily(attack_info)
         or family_from_weapon_id(attack_info.weapon_id)
 end
 
--- ── Évènements de kill ──
--- Les signaux moteur sont lus au kill, sans état inter-kills dans ce module.
--- Le HUD gère séparément le verrou par assaut et les paliers de rappel, après
--- déduplication. Les lectures fragiles sont protégées par `pcall` : une lecture
--- impossible vaut « évènement absent », jamais un signal du kill précédent.
+-- ── Kill Events ──
+-- Engine signals are read at kill time, with no inter-kill state in this module.
+-- The HUD separately manages the per-assault lock and rappel tiers after
+-- deduplication. Fragile reads are protected by `pcall`: a failed read means
+-- an absent event, never a signal from the previous kill.
 
--- « Dernier souffle » : sous ce ratio de santé, le kill est décoré.
+-- « Last Breath »: below this health ratio, the kill is decorated.
 local LOW_HEALTH_RATIO = 0.1
 local FLASHBANG_INTENSITY_THRESHOLD = 0.05
--- PAYDAY 2 exprime les positions en centimètres : 3000 unités = 30 mètres.
+-- PAYDAY 2 expresses positions in centimeters: 3000 units = 30 meters.
 local LONG_SHOT_DISTANCE = 3000
 
 local function local_player_unit()
@@ -243,10 +242,10 @@ local function local_player_unit()
     return (alive_ok and is_alive) and unit or nil
 end
 
---- `true` si le joueur local est à terre au moment du kill.
---- `PlayerManager:current_state()` renvoie le nom de l'état courant
---- (`"bleed_out"`, `"standard"`, …) ; `PlayerMovement:current_state_name()` sert
---- de repli, car le manager peut ne pas encore avoir suivi la transition.
+--- `true` if the local player is down at the moment of the kill.
+--- `PlayerManager:current_state()` returns the name of the current state
+--- (`"bleed_out"`, `"standard"`, …); `PlayerMovement:current_state_name()` serves
+--- as a fallback, as the manager may not have followed the transition yet.
 function KH:IsLocalPlayerDowned()
     local ok, state = pcall(function()
         return managers and managers.player and managers.player:current_state()
@@ -264,7 +263,7 @@ function KH:IsLocalPlayerDowned()
     return move_ok and move_state == "bleed_out"
 end
 
---- `true` si la santé du joueur local est sous le seuil critique.
+--- `true` if the local player's health is below the critical threshold.
 function KH:IsLocalPlayerLowHealth()
     local unit = local_player_unit()
     if not unit then return false end
@@ -275,14 +274,13 @@ function KH:IsLocalPlayerLowHealth()
         return damage:health_ratio()
     end)
     ratio = ok and tonumber(ratio) or nil
-    -- `ratio ~= ratio` écarte un NaN issu d'une santé maximale nulle.
+    -- `ratio ~= ratio` filters out a NaN from a zero maximum health.
     if not ratio or ratio ~= ratio or ratio < 0 then return false end
     return ratio < LOW_HEALTH_RATIO
 end
 
---- `true` si l'intensité d'aveuglement courante dépasse la fin de décroissance
---- visuellement négligeable. Le contrôleur et son champ sont privés : toute
---- absence ou erreur moteur vaut donc simplement « pas aveuglé ».
+--- `true` if the current blindness intensity exceeds visually negligible decay.
+--- The controller and its field are private: any engine absence or error thus simply means « not blinded ».
 function KH:IsLocalPlayerFlashbanged()
     local ok, intensity = pcall(function()
         local controller = managers and managers.environment_controller
@@ -293,11 +291,11 @@ function KH:IsLocalPlayerFlashbanged()
         and intensity > FLASHBANG_INTENSITY_THRESHOLD
 end
 
---- `true` si le joueur local a les deux pieds en l'air au moment du kill.
---- Le drapeau appartient à l'état joueur courant (`PlayerStandard:in_air()`) ;
---- les états qui ne l'exposent pas — menotté, à terre, civil — n'ont pas de
---- notion de saut. Toute la chaîne moteur est fragile : seule une réponse
---- strictement `true` compte, une absence ou une erreur vaut « au sol ».
+--- `true` if the local player has both feet in the air at the moment of the kill.
+--- The flag belongs to the current player state (`PlayerStandard:in_air()`);
+--- states that do not expose it — handcuffed, down, civilian — have no
+--- jump notion. The entire engine chain is fragile: only a strictly
+--- positive `true` counts; any absence or error means « on the ground ».
 function KH:IsLocalPlayerAirborne()
     local unit = local_player_unit()
     if not unit then return false end
@@ -311,9 +309,9 @@ function KH:IsLocalPlayerAirborne()
     return ok and in_air == true
 end
 
---- `true` si la cible se trouve à plus de 30 mètres du joueur local.
---- Les positions et `mvector3` sont des frontières moteur fragiles : une lecture
---- impossible ou une distance invalide vaut simplement « pas de Long Shot ».
+--- `true` if the target is more than 30 meters from the local player.
+--- Positions and `mvector3` are fragile engine boundaries: an impossible read or
+--- invalid distance simply means « no Long Shot ».
 function KH:IsLongDistanceKill(unit)
     local player = local_player_unit()
     if not player or not unit then return false end
@@ -325,10 +323,10 @@ function KH:IsLongDistanceKill(unit)
     return distance ~= nil and distance == distance and distance > LONG_SHOT_DISTANCE
 end
 
---- Renseigne dans `out` les états pré-mort utiles de l'ennemi : animation,
---- suspension à une corde et port d'un sac. À appeler **avant** `CopDamage:die`,
---- qui lance l'animation de mort et peut faire lâcher le butin.
---- Les accesseurs propres à `CopMovement` ont tous un repli `false`.
+--- Populates `out` with useful pre-death enemy states: animation,
+--- suspension on a rope, and carrying a bag. Call **before** `CopDamage:die`,
+--- which triggers the death animation and may drop loot.
+--- `CopMovement` accessors all have a fallback of `false`.
 function KH:ReadEnemyKillState(unit, out)
     out.reload = false
     out.run = false
@@ -365,9 +363,9 @@ function KH:ReadEnemyKillState(unit, out)
     end)
     out.loot_carrier = carry_ok and carrying_bag == true
 
-    -- Le jeu lit lui-même l'ActionSpooc dans `_active_actions[1]` pour ses
-    -- succès Cloaker. Sur un husk ou une implémentation moddée qui ne l'expose
-    -- pas, une lecture impossible reste volontairement un évènement absent.
+    -- The game reads ActionSpooc itself in `_active_actions[1]` for its
+    -- Cloaker achievements. On a husk or modified implementation that does not expose
+    -- it, an impossible read remains intentionally an absent event.
     local spooc_ok, attacking, flying = pcall(function()
         local movement = unit:movement()
         local action = movement and movement._active_actions
@@ -420,8 +418,8 @@ function KH:GetSpecialEnemyKind(unit_id)
     if self:IsDozerUnitId(unit_id) then return "dozer" end
     if self:IsBossUnitId(unit_id) then return "boss" end
 
-    -- Prioriser les Cloakers : certaines variantes moddees contiennent aussi
-    -- "shield" dans leur identifiant interne (par exemple meme_man_shield).
+    -- Prioritize Cloakers: certain modded variants also contain
+    -- "shield" in their internal identifier (e.g., meme_man_shield).
     if contains(unit_id, "spooc") or contains(unit_id, "cloaker")
             or unit_id == "meme_man_shield" then
         return "cloaker"
@@ -436,8 +434,8 @@ function KH:GetSpecialEnemyKind(unit_id)
     return nil
 end
 
---- Résout la source locale sans confondre le joueur et sa sentry. Le repli
---- `is_owner()` conserve l'attribution quand l'unité du joueur est indisponible.
+--- Resolves the local source without confusing the player and its sentry. The fallback
+--- `is_owner()` preserves attribution when the player unit is unavailable.
 function KH:GetLocalKillSource(attacker)
     if not attacker then return nil end
 
@@ -486,7 +484,7 @@ function KH:GetKillBaseScore(unit_id, is_civilian)
         return -25
     end
 
-    -- Repli par archétype pour les variantes ajoutées par d'autres mods.
+    -- Fallback by archetype for variants added by other mods.
     if contains(unit_id, "_boss") or contains(unit_id, "phalanx_vip") then return 100 end
     if contains(unit_id, "tank") or contains(unit_id, "dozer") then return 12 end
     if contains(unit_id, "spooc") or contains(unit_id, "cloaker") then return 10 end
@@ -525,12 +523,11 @@ function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian, attack_in
     local score = self:GetKillScore(unit_id, is_civilian)
     local special_banner = (special_enemy_kind == "dozer" or special_enemy_kind == "boss")
         and special_enemy_kind or nil
-    -- Un civil ne fait progresser aucune série d'arme.
+    -- A civilian advances no weapon streak.
     local weapon_family = not is_civilian and not is_sentry
         and self:GetKillWeaponFamily(attack_info)
         or nil
-    -- Un civil ne décerne aucune médaille d'évènement, comme il ne fait
-    -- progresser aucune série d'arme.
+    -- A civilian awards no event medal, just as it advances no weapon streak.
     local kill_events = not is_civilian and not is_sentry and event_info or nil
     if kill_events then
         kill_events.overwatch = special_enemy_kind == "sniper"
@@ -550,14 +547,14 @@ end
 
 KH._killscore_catalog_loaded = true
 
-end -- fin de la garde _killscore_catalog_loaded
+end -- end of guard _killscore_catalog_loaded
 
 -- ═══════════════════════════════════════════════════
--- Hooks de détection des kills (contextuels)
+-- Kill detection hooks (contextual)
 -- ═══════════════════════════════════════════════════
 
--- Table de travail unique : la cause du kill n'est lue que le temps de
--- l'attribution, sans allouer une table par mort.
+-- Single working table: the kill cause is read only for the duration of
+-- attribution, without allocating a table per death.
 local ATTACK_INFO = { variant = nil, weapon_unit = nil, weapon_id = nil }
 
 local function attack_info(variant, weapon_unit, weapon_id)
@@ -567,8 +564,8 @@ local function attack_info(variant, weapon_unit, weapon_id)
     return ATTACK_INFO
 end
 
--- Seconde table de travail unique : les évènements d'un kill ne vivent que le
--- temps de son attribution, sans allouer une table par mort.
+-- Second single working table: kill events live only for the duration of their
+-- attribution, without allocating a table per death.
 local EVENT_INFO = {
     headshot = false,
     reload   = false,
@@ -589,10 +586,10 @@ local EVENT_INFO = {
     spray_down = false,
 }
 
--- Le PreHook et le PostHook de `CopDamage:die` appartiennent au même chargement
--- du script et partagent cette table locale à clés faibles. Chaque capture est
--- consommée par le PostHook correspondant ; une erreur moteur ne peut donc ni
--- retenir une unité morte ni contaminer le kill suivant.
+-- The PreHook and PostHook of `CopDamage:die` belong to the same script load
+-- and share this local weak-keyed table. Each capture is consumed by the
+-- corresponding PostHook; an engine error thus cannot retain a dead unit nor
+-- contaminate the next kill.
 local PRE_DIE_ENEMY_STATES = setmetatable({}, { __mode = "k" })
 
 local function consume_enemy_kill_state(unit, out)
@@ -614,14 +611,15 @@ local function consume_enemy_kill_state(unit, out)
     return out
 end
 
---- Compose les évènements d'un kill, ou `nil` pour un civil. Les états ennemis
---- viennent de la capture faite avant `CopDamage:die` lorsqu'elle existe ; les
---- états joueur sont lus ici, à l'instant du kill. La capture est consommée même
---- pour un civil afin de ne retenir aucune unité morte.
+--- Composes kill events, or `nil` for a civilian. Enemy states come from the
+--- capture made before `CopDamage:die` if it exists; player states are read here,
+--- at the moment of the kill. The capture is consumed even for a civilian to
+--- retain no dead unit.
 ---
---- La table de travail est remise à zéro en entrée, sur **tous** les chemins :
---- un civil, une lecture moteur impossible ou un chargement partiel ne peut donc
---- pas laisser le booléen d'un kill précédent décorer le kill suivant.
+
+--- The working table is reset at entry, on **all** paths:
+--- a civilian, an impossible engine read, or a partial load thus cannot
+--- leave a previous kill's boolean decorating the next kill.
 local function event_info(unit, headshot, is_civilian, info)
     EVENT_INFO.headshot = false
     EVENT_INFO.reload   = false
@@ -646,8 +644,8 @@ local function event_info(unit, headshot, is_civilian, info)
 
     EVENT_INFO.headshot = headshot == true
     EVENT_INFO.grave = KH.IsLocalPlayerDowned and KH:IsLocalPlayerDowned() or false
-    -- Les conditions restent indépendantes : un kill à terre peut donc aussi
-    -- remplir le critère de santé basse si le moteur rapporte un ratio < 10 %.
+    -- Conditions remain independent: a downed kill can thus also
+    -- meet the low health criterion if the engine reports a ratio < 10%.
     EVENT_INFO.low_hp = KH.IsLocalPlayerLowHealth
         and KH:IsLocalPlayerLowHealth()
         or false
@@ -694,14 +692,15 @@ end
 
 if RequiredScript == "lib/managers/playermanager" then
     -- ── Anti-Flash ──
-    -- `FlashGrenadeUnitDamage` diffuse `flash_grenade_destroyed` avec l'unité qui
-    -- a détruit la grenade, sur hôte comme sur client. Le message ne décrit
-    -- aucune mort : la médaille est donc émise directement, sans kill, sans score
-    -- et sans toucher au moindre état de braquage.
+    -- `FlashGrenadeUnitDamage` broadcasts `flash_grenade_destroyed` with the unit that
+    -- destroyed the grenade, on host as well as client. The message describes
+    -- no death: the medal is thus emitted directly, without a kill, without score
+    -- and without touching any breach state.
     --
-    -- La clé d'inscription est une table vivant dans `KH` : elle reste stable
-    -- pour toute la session, y compris si SuperBLT réexécute ce chunk, et ne peut
-    -- pas entrer en collision avec la clé d'un autre mod.
+
+    -- The registration key is a table living in `KH`: it remains stable
+    -- for the entire session, even if SuperBLT re-executes this chunk, and cannot
+    -- collide with another mod's key.
     KH._flash_grenade_listener_uid = KH._flash_grenade_listener_uid or {}
 
     local function on_flash_grenade_destroyed(attacker_unit)
@@ -715,11 +714,7 @@ if RequiredScript == "lib/managers/playermanager" then
         end
     end
 
-    -- `managers.player` n'existe pas encore quand ce chunk est chargé : la
-    -- première tentative échoue donc normalement. Seule une inscription
-    -- réellement réussie pose le drapeau, et le drapeau vit sur `KH` afin qu'un
-    -- rechargement du script ne produise jamais une seconde inscription — le
-    -- système de messages du jeu appellerait alors deux fois la même médaille.
+    -- `managers.player` does not exist yet when this chunk is loaded: the first attempt fails as expected. Only a genuinely successful registration sets the flag, and the flag lives on `KH` so that a script reload never produces a second registration — the game's message system would then call the same medal twice.
     local function ensure_flash_grenade_listener()
         if KH._flash_grenade_listener_registered then return true end
 
@@ -745,9 +740,9 @@ if RequiredScript == "lib/managers/playermanager" then
 
     ensure_flash_grenade_listener()
 
-    -- Repli : `spawned_player` est appelé une fois par apparition du joueur
-    -- local, quand `managers.player` est nécessairement construit. Le drapeau
-    -- rend l'appel suivant immédiatement inerte.
+    -- Fallback: `spawned_player` is called once each time the local player spawns,
+    -- when `managers.player` has necessarily been constructed. The flag makes
+    -- the next call immediately inert.
     Hooks:PostHook(PlayerManager, "spawned_player", "KH_RegisterFlashGrenadeListener", function()
         ensure_flash_grenade_listener()
     end)
@@ -760,8 +755,7 @@ if RequiredScript == "lib/managers/playermanager" then
             return unit_id and CopDamage.is_civilian(unit_id) or false
         end)
 
-        -- Côté client, le tir à la tête est porté par l'argument `headshot` de
-        -- `on_killshot` : `attack_data` n'existe pas sur ce chemin.
+        -- On the client side, the headshot is carried by the `headshot` argument of `on_killshot`: `attack_data` does not exist on this path.
         record_kill(
             killed_unit,
             civilian_ok and is_civilian == true,
@@ -772,11 +766,7 @@ if RequiredScript == "lib/managers/playermanager" then
     end)
 
 elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
-    -- Le rechargement, la course et la suspension à une corde sont des états
-    -- d'animation que `CopDamage:die` écrase en lançant l'animation de mort. Ils
-    -- sont donc capturés avant l'appel original, jamais après. Ce PreHook ne
-    -- fait que lire : il ne modifie ni `attack_data`, ni l'unité, ni le
-    -- déroulement de `die`.
+    -- Reload, sprint, and rope suspension are animation states that `CopDamage:die` overwrites by triggering the death animation. They are therefore captured before the original call, never after. This PreHook only reads: it does not modify either `attack_data`, the unit, or the flow of `die`.
     Hooks:PreHook(CopDamage, "die", "KH_OnEnemyDiePre", function(self, attack_data)
         if not attack_data then return end
         local kill_source = KH.GetLocalKillSource
@@ -800,8 +790,7 @@ elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
         local attacker = attack_data.attacker_unit
         local kill_source = KH.GetLocalKillSource and KH:GetLocalKillSource(attacker)
         if not kill_source then
-            -- Une cible de vengeance tuée par quelqu'un d'autre ne doit pas
-            -- rester dans le set jusqu'au ramassage par le GC.
+            -- A revenge target killed by someone else must not remain in the set until pickup by the GC.
             if unit and KH._revenge_targets then
                 KH._revenge_targets[unit] = nil
             end
@@ -814,9 +803,7 @@ elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
         end)
         is_civilian = civilian_ok and is_civilian == true
 
-        -- `weapon_id` n'est pas standard dans `attack_data` ; il n'est lu que
-        -- comme repli pour les mods qui l'ajoutent, sans jamais remplacer la
-        -- cause réelle portée par `variant` et `weapon_unit`.
+        -- `weapon_id` is not standard in `attack_data`; it is read only as a fallback for mods that add it, never replacing the actual cause carried by `variant` and `weapon_unit`.
         local id_ok, weapon_id = pcall(function()
             return attack_data.weapon_id or attack_data.name_id
         end)
@@ -835,7 +822,7 @@ elseif RequiredScript == "lib/units/enemies/cop/huskcopdamage" then
         if kill_source ~= "sentry" then return end
 
         local unit = self._unit
-        -- Le protocole sentry ne conserve pas un headshot fiable côté client.
+        -- The sentry protocol does not maintain a reliable headshot on the client side.
         record_kill(unit, false, attack_info(
             attack_data.variant,
             attack_data.weapon_unit,
@@ -843,6 +830,4 @@ elseif RequiredScript == "lib/units/enemies/cop/huskcopdamage" then
         ), false, kill_source)
     end)
 end
--- Lorsque ce fichier est chargé par dofile depuis ky_civilian_killfeed.lua
--- (contexte CivilianDamage), aucune branche RequiredScript ne correspond :
--- seul le catalogue de scoring est initialisé, sans installer de hook ennemi.
+-- When this file is loaded via dofile from ky_civilian_killfeed.lua (CivilianDamage context), no RequiredScript branch matches: only the scoring catalog is initialized, without installing an enemy hook.

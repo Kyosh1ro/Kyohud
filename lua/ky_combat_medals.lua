@@ -1,5 +1,5 @@
--- ky_combat_medals.lua — État des médailles lié aux armes
--- Chargé uniquement dans les contextes SuperBLT déclarés dans mod.txt.
+-- ky_combat_medals.lua — Medal states linked to weapons
+-- Loaded only in SuperBLT contexts declared in mod.txt.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -16,8 +16,8 @@ local function local_player_unit()
 end
 
 if RequiredScript == "lib/units/weapons/newraycastweaponbase" then
-    -- Seul le rechargement de l'arme du joueur local ouvre un nouveau chargeur.
-    -- Les armes des bots et des autres unités ne touchent jamais à cet état.
+    -- Only reloading the local player's weapon opens a new magazine.
+    -- Bots' and other units' weapons never touch this state.
     Hooks:PostHook(
         NewRaycastWeaponBase,
         "on_reload",

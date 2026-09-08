@@ -1,7 +1,7 @@
 if not kyohud then
     kyohud = Kyosh1roHUD or {}
 end
-Kyosh1roHUD = kyohud -- Alias conservé pour les intégrations antérieures au renommage.
+Kyosh1roHUD = kyohud -- Alias retained for pre-renaming integrations.
 
 local KH = kyohud
 
@@ -31,9 +31,8 @@ KH.BUFF_CATEGORIES = {
     ai = "AI Skills",
 }
 
--- Palette néon tactique propre à KyoHUD. Les entrées de BUFF_MAP
--- référencent ces rôles par leur nom afin que le catalogue ne dépende pas
--- des objets Color du moteur au moment de son chargement.
+-- KyoHUD-specific tactical neon palette. BUFF_MAP entries reference these roles by name so the catalog does not depend on engine Color objects at load time.
+--
 KH.BUFF_COLORS = {
     debuff = "FF5F78",
     team = "52D6FF",
@@ -44,15 +43,9 @@ KH.BUFF_COLORS = {
     total_dodge_chance = "F5D547",
 }
 
--- value_format sélectionne la conversion de la valeur moteur dans
--- ky_buffhud.lua. show_stack_count ajoute un badge sans remplacer la valeur.
--- persistent_counter conserve l'icône d'une compétence équipée et décrit la
--- valeur dynamique que le HUD doit afficher même lorsque son buff est inactif.
--- label décrit un libellé ciblé qui n'emprunte jamais value_text : il porte sa
--- clé de localisation, son repli et son placement. `placement = "top"` (valeur
--- par défaut) le dessine au-dessus de l'icône ; `placement = "timer"` l'installe
--- sous l'icône, dans l'emplacement du timer, dont il remplace le compte à
--- rebours.
+-- value_format selects the conversion of the engine value in ky_buffhud.lua. show_stack_count adds a badge without replacing the value.
+-- persistent_counter retains the icon of an equipped skill and describes the dynamic value the HUD must display even when its buff is inactive.
+-- label describes a targeted label that never borrows from value_text: it carries its own localization key, fallback, and placement. `placement = "top"` (default) draws it above the icon; `placement = "timer"` installs it below the icon in the timer slot, replacing the countdown.
 KH.BUFF_MAP = {
     aggressive_reload_aced = { skill_id = "speedy_reload", skills_new = { 1, 1 }, category = "mastermind", value_format = "multiplier_percent", default_show = true },
     inspire = { skill_id = "inspire", skills_new = { 0, 9 }, category = "mastermind", default_show = true },
@@ -212,10 +205,8 @@ KH.BUFF_MAP = {
     },
 }
 
--- Buffs du menu « Perk Decks » pouvant remplacer l'icône du deck équipé en
--- première position. Les clés suivent l'ordre des spécialisations du jeu.
--- Copycat peut reproduire plusieurs decks : ses effets natifs sont prioritaires,
--- puis tous les effets de deck que le HUD sait détecter sont acceptés.
+-- Buffs from the « Perk Decks » menu that can replace the icon of the equipped deck in first position. Keys follow the game's specialization order.
+-- Copycat can reproduce multiple decks: its native effects take priority, then all deck effects the HUD knows how to detect are accepted.
 KH.PERK_DECK_BUFFS = {
     [1] = { "hostage_situation" }, -- Crew Chief
     [2] = { "muscle_regen" }, -- Muscle
@@ -231,8 +222,7 @@ KH.PERK_DECK_BUFFS = {
     [18] = { "smoke_screen_grenade", "sicario_dodge" }, -- Sicario
     [19] = { "delayed_damage" }, -- Stoic
     [20] = { "tag_team" }, -- Tag Team
-    -- Hacker conserve toujours l'icône de son deck : ses charges et son
-    -- cooldown de Pocket ECM sont affichés séparément par le HUD.
+    -- Hacker always retains its deck icon: its charges and Pocket ECM cooldown are displayed separately by the HUD.
     [22] = { "copr_ability" }, -- Leech
     [23] = { -- Copycat
         "copycat_health_invul",
@@ -316,9 +306,7 @@ KH.UPGRADE_TO_BUFF = {
     long_dis_revive = "inspire_revive_debuff",
 }
 
--- Un évènement source peut alimenter son icône propre et un indicateur
--- composite. Cette table reprend les regroupements de VanillaHUD+ sans rendre
--- ce mod dépendant de ses classes de rendu.
+-- A source event can feed its own icon and a composite indicator. This table adopts VanillaHUD+ groupings without making this mod dependent on their render classes.
 KH.BUFF_SOURCE_TARGETS = {
     damage_speed_multiplier = { "second_wind" },
     team_damage_speed_multiplier_received = { "second_wind" },
@@ -389,16 +377,12 @@ KH.BUFF_SOURCE_TARGETS = {
 }
 
 function KH.GetBuffTargets(source_id)
-    -- VanillaHUD+ regroupe normalement le cooldown avec l'effet actif de la
-    -- Pocket ECM. KyoHUD les sépare afin de conserver l'icône Hacker et
-    -- d'afficher le cooldown dans sa propre cellule juste à côté.
+    -- VanillaHUD+ normally groups the cooldown with the active Pocket ECM effect. KyoHUD separates them to retain the Hacker icon and display the cooldown in its own cell right beside it.
     if source_id == "pocket_ecm_jammer_debuff" then
         return KH.BUFF_SOURCE_TARGETS[source_id] or { source_id }
     end
 
-    -- Si VanillaHUD+ expose sa table de regroupement, la consulter à chaque
-    -- évènement. Cela garde le pont compatible avec de nouveaux alias ajoutés
-    -- par VanillaHUD+ sans casser le fonctionnement autonome.
+    -- If VanillaHUD+ exposes its grouping table, consult it on every event. This keeps the bridge compatible with new aliases added by VanillaHUD+ without breaking autonomous operation.
     local vhud_buffs = HUDListManager and HUDListManager.BUFFS
     local vhud_targets = vhud_buffs and vhud_buffs[source_id]
     if type(vhud_targets) == "table" then
