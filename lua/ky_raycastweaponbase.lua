@@ -14,12 +14,16 @@ Hooks:PostHook(
         -- être prise pour le début d'un nouveau tir.
         if not is_civilian and cop_kill_count == 1 then
             self._kyohud_wall_bang_card = nil
+            self._kyohud_collateral_emitted = nil
         end
 
-        -- Cette méthode est appelée une fois pour chaque mort du rayon. Le
-        -- compteur passe par 2 une seule fois : tester `== 2` garantit donc une
-        -- seule carte pour tout tir ayant tué au moins deux ennemis.
-        if cop_kill_count == 2 and KH.ShowEventMedal then
+        -- Cette méthode est appelée une fois pour chaque mort du rayon. Les civils
+        -- ne font pas avancer `cop_kill_count` et peuvent donc répéter la valeur 2.
+        -- Le filtre et le verrou garantissent une seule carte Collatéral par tir.
+        if not is_civilian and cop_kill_count == 2
+                and not self._kyohud_collateral_emitted
+                and KH.ShowEventMedal then
+            self._kyohud_collateral_emitted = true
             KH:ShowEventMedal("one_shot_two_kills")
         end
 

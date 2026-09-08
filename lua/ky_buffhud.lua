@@ -645,7 +645,7 @@ local EVENT_MEDAL_DEFINITIONS = {
     },
     one_shot_two_kills = {
         id       = "ky_hud_event_medal_one_shot_two_kills",
-        fallback = "One Shot Two Kills",
+        fallback = "Collateral",
         color    = Color(1, 0.48, 0.12),             -- rouge-or
         icon     = { hud_tweak = "pd2_kill" },
     },

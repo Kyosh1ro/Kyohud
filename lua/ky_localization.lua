@@ -164,7 +164,7 @@ local function add_fallbacks(loc)
         ky_hud_event_medal_low_hp    = "Last Breath",
         ky_hud_event_medal_reload    = "Reload This",
         ky_hud_event_medal_through_shield = "Through the Shield",
-        ky_hud_event_medal_one_shot_two_kills = "One Shot Two Kills",
+        ky_hud_event_medal_one_shot_two_kills = "Collateral",
         ky_hud_event_medal_revenge   = "Revenge",
         ky_hud_event_medal_bulltrue  = "Bulltrue",
         ky_hud_event_medal_showstopper = "Showstopper",
