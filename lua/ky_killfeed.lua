@@ -292,6 +292,24 @@ function KH:IsLocalPlayerFlashbanged()
         and intensity > FLASHBANG_INTENSITY_THRESHOLD
 end
 
+--- `true` si le joueur local a les deux pieds en l'air au moment du kill.
+--- Le drapeau appartient à l'état joueur courant (`PlayerStandard:in_air()`) ;
+--- les états qui ne l'exposent pas — menotté, à terre, civil — n'ont pas de
+--- notion de saut. Toute la chaîne moteur est fragile : seule une réponse
+--- strictement `true` compte, une absence ou une erreur vaut « au sol ».
+function KH:IsLocalPlayerAirborne()
+    local unit = local_player_unit()
+    if not unit then return false end
+
+    local ok, in_air = pcall(function()
+        local movement = unit:movement()
+        local state = movement and movement.current_state and movement:current_state()
+        if not state or not state.in_air then return nil end
+        return state:in_air()
+    end)
+    return ok and in_air == true
+end
+
 --- `true` si la cible se trouve à plus de 30 mètres du joueur local.
 --- Les positions et `mvector3` sont des frontières moteur fragiles : une lecture
 --- impossible ou une distance invalide vaut simplement « pas de Long Shot ».
@@ -306,14 +324,15 @@ function KH:IsLongDistanceKill(unit)
     return distance ~= nil and distance == distance and distance > LONG_SHOT_DISTANCE
 end
 
---- Renseigne dans `out` l'état d'animation de l'ennemi : rechargement, course
---- et suspension à une corde. À appeler **avant** `CopDamage:die`, qui lance
---- l'animation de mort et écrase `reload` et `run`.
---- `rope_unit()` n'existe que sur `CopMovement` : le repli husk laisse `false`.
+--- Renseigne dans `out` les états pré-mort utiles de l'ennemi : animation,
+--- suspension à une corde et port d'un sac. À appeler **avant** `CopDamage:die`,
+--- qui lance l'animation de mort et peut faire lâcher le butin.
+--- Les accesseurs propres à `CopMovement` ont tous un repli `false`.
 function KH:ReadEnemyKillState(unit, out)
     out.reload = false
     out.run = false
     out.rope = false
+    out.loot_carrier = false
     out.bulltrue = false
     out.showstopper = false
     if not unit then return out end
@@ -337,6 +356,13 @@ function KH:ReadEnemyKillState(unit, out)
         return movement:rope_unit()
     end)
     out.rope = rope_ok and rope and true or false
+
+    local carry_ok, carrying_bag = pcall(function()
+        local movement = unit:movement()
+        if not movement or not movement.carrying_bag then return false end
+        return movement:carrying_bag()
+    end)
+    out.loot_carrier = carry_ok and carrying_bag == true
 
     -- Le jeu lit lui-même l'ActionSpooc dans `_active_actions[1]` pour ses
     -- succès Cloaker. Sur un husk ou une implémentation moddée qui ne l'expose
@@ -523,6 +549,7 @@ local EVENT_INFO = {
     reload   = false,
     run      = false,
     rope     = false,
+    loot_carrier = false,
     grave    = false,
     low_hp   = false,
     revenge  = false,
@@ -532,6 +559,7 @@ local EVENT_INFO = {
     hotswap = false,
     overwatch = false,
     long_shot = false,
+    air_kill = false,
     magazine_kill = false,
     spray_down = false,
 }
@@ -549,6 +577,7 @@ local function consume_enemy_kill_state(unit, out)
         out.reload = state.reload
         out.run = state.run
         out.rope = state.rope
+        out.loot_carrier = state.loot_carrier
         out.bulltrue = state.bulltrue
         out.showstopper = state.showstopper
         return out
@@ -573,6 +602,7 @@ local function event_info(unit, headshot, is_civilian, info)
     EVENT_INFO.reload   = false
     EVENT_INFO.run      = false
     EVENT_INFO.rope     = false
+    EVENT_INFO.loot_carrier = false
     EVENT_INFO.grave    = false
     EVENT_INFO.low_hp   = false
     EVENT_INFO.revenge  = false
@@ -582,6 +612,7 @@ local function event_info(unit, headshot, is_civilian, info)
     EVENT_INFO.hotswap = false
     EVENT_INFO.overwatch = false
     EVENT_INFO.long_shot = false
+    EVENT_INFO.air_kill = false
     EVENT_INFO.magazine_kill = false
     EVENT_INFO.spray_down = false
 
@@ -600,6 +631,9 @@ local function event_info(unit, headshot, is_civilian, info)
         or false
     EVENT_INFO.long_shot = KH.IsLongDistanceKill
         and KH:IsLongDistanceKill(unit)
+        or false
+    EVENT_INFO.air_kill = KH.IsLocalPlayerAirborne
+        and KH:IsLocalPlayerAirborne()
         or false
     EVENT_INFO.magazine_kill = info and info.variant == "bullet" or false
     local time_ok, kill_t = pcall(function()
@@ -630,6 +664,63 @@ local function record_kill(unit, is_civilian, info, headshot)
 end
 
 if RequiredScript == "lib/managers/playermanager" then
+    -- ── Anti-Flash ──
+    -- `FlashGrenadeUnitDamage` diffuse `flash_grenade_destroyed` avec l'unité qui
+    -- a détruit la grenade, sur hôte comme sur client. Le message ne décrit
+    -- aucune mort : la médaille est donc émise directement, sans kill, sans score
+    -- et sans toucher au moindre état de braquage.
+    --
+    -- La clé d'inscription est une table vivant dans `KH` : elle reste stable
+    -- pour toute la session, y compris si SuperBLT réexécute ce chunk, et ne peut
+    -- pas entrer en collision avec la clé d'un autre mod.
+    KH._flash_grenade_listener_uid = KH._flash_grenade_listener_uid or {}
+
+    local function on_flash_grenade_destroyed(attacker_unit)
+        if not KH.IsLocalKillAttacker or not KH:IsLocalKillAttacker(attacker_unit) then
+            return
+        end
+        if KH.ShowEventMedal then
+            KH:ShowEventMedal("no_flashbang")
+        end
+    end
+
+    -- `managers.player` n'existe pas encore quand ce chunk est chargé : la
+    -- première tentative échoue donc normalement. Seule une inscription
+    -- réellement réussie pose le drapeau, et le drapeau vit sur `KH` afin qu'un
+    -- rechargement du script ne produise jamais une seconde inscription — le
+    -- système de messages du jeu appellerait alors deux fois la même médaille.
+    local function ensure_flash_grenade_listener()
+        if KH._flash_grenade_listener_registered then return true end
+
+        local ok, registered = pcall(function()
+            local player_manager = managers and managers.player
+            if not player_manager or not player_manager.register_message then
+                return false
+            end
+            player_manager:register_message(
+                "flash_grenade_destroyed",
+                KH._flash_grenade_listener_uid,
+                on_flash_grenade_destroyed
+            )
+            return true
+        end)
+
+        if ok and registered == true then
+            KH._flash_grenade_listener_registered = true
+            return true
+        end
+        return false
+    end
+
+    ensure_flash_grenade_listener()
+
+    -- Repli : `spawned_player` est appelé une fois par apparition du joueur
+    -- local, quand `managers.player` est nécessairement construit. Le drapeau
+    -- rend l'appel suivant immédiatement inerte.
+    Hooks:PostHook(PlayerManager, "spawned_player", "KH_RegisterFlashGrenadeListener", function()
+        ensure_flash_grenade_listener()
+    end)
+
     Hooks:PostHook(PlayerManager, "on_killshot", "KH_OnLocalPlayerKillshot", function(self, killed_unit, variant, headshot, weapon_id)
         if not Network:is_client() then return end
 
