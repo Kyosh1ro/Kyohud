@@ -17,7 +17,8 @@ class CombatMedalTests(unittest.TestCase):
             function Hooks:PreHook(class, method, id, fn) self.callbacks[id] = fn end
             function Hooks:Add(...) end
             HUDManager = {sync_start_assault = function() end, sync_end_assault = function() end}
-            PlayerManager = {}; PlayerInventory = {equip_selection = function() end}
+            PlayerManager = {spawned_player = function() end}
+            PlayerInventory = {equip_selection = function() end}
             CopDamage = {is_civilian = function(id) return id == 'civilian' end}
             PlayerDamage = {
                 damage_tase=function() end, damage_bullet=function() end,
@@ -56,8 +57,14 @@ class CombatMedalTests(unittest.TestCase):
             TimerManager = {game = function() return {time = function() return game_t end} end}
             game_state_machine = {last_queued_state_name = function() return state_name end}
             local_player = {position = function() return {x=0,y=0,z=0} end}
+            registered_messages = {}
             managers.player = {player_unit = function() return local_player end,
-                current_state = function() return 'standard' end}
+                current_state = function() return 'standard' end,
+                register_message = function(self, msg_id, uid, callback)
+                    registered_messages[#registered_messages+1] = {
+                        msg_id = msg_id, uid = uid, callback = callback
+                    }
+                end}
             function enemy(id, animation, rope, action, position)
                 return {base = function() return {_tweak_table = id or 'cop'} end,
                     anim_data = function() return animation or {} end,
@@ -380,21 +387,26 @@ class CombatMedalTests(unittest.TestCase):
     def test_preview_covers_event_medals_and_rope_tiers(self):
         self.lua.execute('''
             local seen = {}
-            for i = 1, 23 do
+            local labels = {}
+            for i = 1, 27 do
                 kyohud:DebugSimulate(0)
                 local card = kyohud._medal_card
                 if card and card.event then
                     seen[card.event .. ':' .. tostring(card.tier_index or 0)] = true
+                    labels[card.event] = card.label
                 end
             end
             for _, id in ipairs({
                 'first_strike','grave','low_hp','reload','through_shield',
                 'one_shot_two_kills','revenge','bulltrue','showstopper',
-                'blindfire','first_blood','hotswap','overwatch','long_shot','spray_down'
+                'blindfire','first_blood','hotswap','overwatch','long_shot','spray_down',
+                'no_flashbang','air_kill','wall_bang','loot_carrier'
             }) do
                 assert(seen[id .. ':0'], 'preview missing ' .. id)
             end
             for i = 1, 3 do assert(seen['rope:' .. i], 'preview missing rope tier ' .. i) end
+            assert(labels.wall_bang == 'Wallbang x3',
+                'wall_bang preview did not show a multi-kill count')
             assert(not seen['headshot:0'], 'old headshot preview')
             assert(not seen['run:0'], 'removed run preview')
         ''')
@@ -405,7 +417,8 @@ class CombatMedalTests(unittest.TestCase):
             'first_strike', 'grave', 'low_hp', 'reload', 'rope', 'rope_3',
             'rope_5', 'through_shield', 'one_shot_two_kills', 'revenge',
             'bulltrue', 'showstopper', 'blindfire', 'first_blood', 'hotswap',
-            'overwatch', 'long_shot', 'spray_down'
+            'overwatch', 'long_shot', 'spray_down',
+            'no_flashbang', 'air_kill', 'wall_bang', 'loot_carrier',
         ]
         fallback = (ROOT / 'lua/ky_localization.lua').read_text(encoding='utf-8-sig')
         for language in ('english', 'french'):
@@ -459,6 +472,47 @@ class CombatMedalTests(unittest.TestCase):
             broken.movement = function() error('engine') end
             Hooks.callbacks.KH_OnLocalPlayerKillshot({}, broken, 'bullet', false)
             assert(#cards == before, 'failed engine read leaked prior events')
+        ''')
+
+    def test_loot_carrier_is_captured_before_death_on_host_and_read_on_client(self):
+        self.lua.execute('''
+            local carrying = true
+            local victim = enemy('cop')
+            victim.movement = function()
+                return {
+                    _active_actions = {},
+                    rope_unit = function() return nil end,
+                    carrying_bag = function() return carrying end,
+                }
+            end
+            local attack = {attacker_unit=local_player, variant='bullet'}
+            Hooks.callbacks.KH_OnEnemyDiePre({_unit=victim}, attack)
+            carrying = false
+            Hooks.callbacks.KH_OnEnemyDie({_unit=victim}, attack)
+            assert(count_event('loot_carrier') == 1,
+                'host did not preserve the pre-death bag state')
+
+            is_client = true
+            local client_victim = enemy('cop')
+            client_victim.movement = function()
+                return {
+                    _active_actions = {},
+                    rope_unit = function() return nil end,
+                    carrying_bag = function() return true end,
+                }
+            end
+            Hooks.callbacks.KH_OnLocalPlayerKillshot(
+                {}, client_victim, 'bullet', false
+            )
+            assert(count_event('loot_carrier') == 2,
+                'client did not read the live bag state')
+
+            local broken = enemy('cop')
+            broken.movement = function() error('engine') end
+            Hooks.callbacks.KH_OnLocalPlayerKillshot({}, broken, 'bullet', false)
+            Hooks.callbacks.KH_OnLocalPlayerKillshot({}, enemy('cop'), 'bullet', false)
+            assert(count_event('loot_carrier') == 2,
+                'failed or absent carrying_bag read leaked a previous event')
         ''')
 
     def test_cloaker_attack_state_and_revenge_events(self):
@@ -570,7 +624,7 @@ class CombatMedalTests(unittest.TestCase):
 
     def test_exact_killfeed_context_registrations(self):
         for context, expected in (
-            ('lib/managers/playermanager', {'KH_OnLocalPlayerKillshot'}),
+            ('lib/managers/playermanager', {'KH_OnLocalPlayerKillshot', 'KH_RegisterFlashGrenadeListener'}),
             ('lib/units/enemies/cop/copdamage', {'KH_OnEnemyDiePre', 'KH_OnEnemyDie'}),
             ('lib/units/civilians/civiliandamage', set()),
         ):
@@ -595,6 +649,159 @@ class CombatMedalTests(unittest.TestCase):
             ('lib/units/weapons/newraycastweaponbase', 'lua/ky_combat_medals.lua'),
             hooks,
         )
+
+    def test_no_flashbang_unique_registration_despite_reload(self):
+        self.lua.execute('''
+            assert(kyohud._flash_grenade_listener_registered == true,
+                'listener was not registered during setUp')
+            _test_before_count = #registered_messages
+        ''')
+        self.load('ky_killfeed.lua', 'lib/managers/playermanager')
+        self.lua.execute('''
+            assert(#registered_messages == _test_before_count,
+                'reloading chunk registered a duplicate listener')
+        ''')
+
+    def test_no_flashbang_callback_local_only(self):
+        self.lua.execute('''
+            local medal_count = count_event('no_flashbang')
+            -- Callback with local player as attacker
+            local cb = registered_messages[1].callback
+            cb(local_player)
+            assert(count_event('no_flashbang') == medal_count + 1,
+                'local attacker did not emit no_flashbang medal')
+            -- Callback with remote attacker (not local player)
+            cb({})
+            assert(count_event('no_flashbang') == medal_count + 1,
+                'remote attacker emitted no_flashbang medal')
+            -- Callback with nil attacker
+            cb(nil)
+            assert(count_event('no_flashbang') == medal_count + 1,
+                'nil attacker emitted no_flashbang medal')
+        ''')
+
+    def test_no_flashbang_register_message_failure_and_retry(self):
+        self.lua.execute('''
+            kyohud._flash_grenade_listener_registered = false
+            _test_orig_register = managers.player.register_message
+            managers.player.register_message = function() error('engine') end
+        ''')
+        self.load('ky_killfeed.lua', 'lib/managers/playermanager')
+        self.lua.execute('''
+            assert(not kyohud._flash_grenade_listener_registered,
+                'pcall failure must not set registered flag')
+            managers.player.register_message = _test_orig_register
+            Hooks.callbacks.KH_RegisterFlashGrenadeListener({})
+            assert(kyohud._flash_grenade_listener_registered == true,
+                'spawned_player fallback did not retry registration')
+        ''')
+
+    def test_no_flashbang_heist_reset_preserves_listener(self):
+        self.lua.execute('''
+            assert(kyohud._flash_grenade_listener_registered == true)
+            local uid_before = kyohud._flash_grenade_listener_uid
+            local msg_count = #registered_messages
+            kyohud:ResetHeistCombatState()
+            assert(kyohud._flash_grenade_listener_registered == true,
+                'heist reset disarmed the flash grenade listener')
+            assert(kyohud._flash_grenade_listener_uid == uid_before,
+                'heist reset replaced the listener uid')
+            assert(#registered_messages == msg_count,
+                'heist reset re-registered the listener')
+        ''')
+
+    def test_air_kill_true_and_false(self):
+        self.lua.execute('''
+            local air_state = {in_air = function() return true end}
+            local movement = {current_state = function() return air_state end}
+            local_player.movement = function() return movement end
+            assert(kyohud:IsLocalPlayerAirborne() == true,
+                'airborne player not detected')
+            air_state.in_air = function() return false end
+            assert(kyohud:IsLocalPlayerAirborne() == false,
+                'grounded player marked airborne')
+            local_player.movement = nil
+        ''')
+
+    def test_air_kill_state_without_in_air(self):
+        self.lua.execute('''
+            local no_air = {}
+            local movement = {current_state = function() return no_air end}
+            local_player.movement = function() return movement end
+            assert(kyohud:IsLocalPlayerAirborne() == false,
+                'state without in_air must return false')
+            movement.current_state = function() return nil end
+            assert(kyohud:IsLocalPlayerAirborne() == false,
+                'nil state must return false')
+            local_player.movement = nil
+        ''')
+
+    def test_air_kill_pcall_error(self):
+        self.lua.execute('''
+            local_player.movement = function() error('engine crash') end
+            assert(kyohud:IsLocalPlayerAirborne() == false,
+                'engine error must return false')
+            local_player.movement = nil
+        ''')
+
+    def test_air_kill_propagation_without_contamination(self):
+        self.lua.execute('''
+            kill({air_kill=true})
+            assert(count_event('air_kill') == 1,
+                'airborne kill did not emit air_kill medal')
+            kill({air_kill=false})
+            assert(count_event('air_kill') == 1,
+                'grounded kill emitted air_kill medal')
+            local total_kills = #kyohud._kills
+            assert(total_kills == 2, 'air_kill affected kill count')
+            assert(kyohud._kills[1].score_text, 'air_kill corrupted first kill card')
+            assert(kyohud._kills[2].score_text, 'air_kill corrupted second kill card')
+        ''')
+
+    def test_wall_bang_non_civilian(self):
+        self.load('ky_raycastweaponbase.lua', 'lib/units/weapons/raycastweaponbase')
+        self.lua.execute('''
+            local hook = Hooks.callbacks.KH_RaycastKillMedals
+            local weapon = {}
+            local before = count_event('wall_bang')
+            hook(weapon, 1, {}, 'cop', false, true, false)
+            hook(weapon, 1, {}, 'civilian', true, true, false)
+            hook(weapon, 2, {}, 'cop', false, true, false)
+            hook(weapon, 3, {}, 'cop', false, true, false)
+            assert(count_event('wall_bang') == before + 1,
+                'one shot emitted more than one wall_bang card')
+            assert(last_event('wall_bang').label == 'Wallbang x3',
+                'wall_bang card did not show the shot kill count')
+
+            hook(weapon, 1, {}, 'cop', false, true, false)
+            assert(count_event('wall_bang') == before + 2,
+                'a new shot did not start a new wall_bang card')
+            assert(last_event('wall_bang').label == 'Wallbang',
+                'a single-kill shot displayed an unnecessary x1 suffix')
+        ''')
+
+    def test_wall_bang_civilian_excluded(self):
+        self.load('ky_raycastweaponbase.lua', 'lib/units/weapons/raycastweaponbase')
+        self.lua.execute('''
+            local hook = Hooks.callbacks.KH_RaycastKillMedals
+            local before = count_event('wall_bang')
+            hook({}, 1, {}, 'cop', true, true, false)
+            assert(count_event('wall_bang') == before,
+                'civilian wall kill emitted wall_bang medal')
+        ''')
+
+    def test_wall_bang_no_scoring(self):
+        self.load('ky_raycastweaponbase.lua', 'lib/units/weapons/raycastweaponbase')
+        self.lua.execute('''
+            local before_kills = kyohud._heist_kill_count
+            local before_score = kyohud._heist_score_total
+            local hook = Hooks.callbacks.KH_RaycastKillMedals
+            hook({}, 1, {}, 'cop', false, true, false)
+            assert(kyohud._heist_kill_count == before_kills,
+                'wall_bang changed kill count')
+            assert(kyohud._heist_score_total == before_score,
+                'wall_bang changed score')
+        ''')
 
 if __name__ == '__main__':
     unittest.main()

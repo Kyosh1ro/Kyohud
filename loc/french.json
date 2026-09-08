@@ -148,6 +148,10 @@
   "ky_hud_event_medal_overwatch": "Contre-tir",
   "ky_hud_event_medal_long_shot": "Longue portée",
   "ky_hud_event_medal_spray_down": "Rafale mortelle",
+  "ky_hud_event_medal_no_flashbang": "Anti-Flash",
+  "ky_hud_event_medal_air_kill": "Tir aérien",
+  "ky_hud_event_medal_wall_bang": "Perce-Muraille",
+  "ky_hud_event_medal_loot_carrier": "Bas les pattes",
 
 
   "ky_opt_cat_mastermind": "Cerveau",

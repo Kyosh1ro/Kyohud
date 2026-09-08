@@ -703,15 +703,44 @@ local EVENT_MEDAL_DEFINITIONS = {
         color    = Color(1, 0.48, 0.16),
         icon     = { hud_tweak = "csb_switch" },
     },
+    no_flashbang = {
+        id       = "ky_hud_event_medal_no_flashbang",
+        fallback = "No Flashbang",
+        color    = Color(1, 0.9, 0.4),                -- jaune flash
+        icon     = { hud_tweak = "csb_throwables" },
+    },
+    air_kill = {
+        id       = "ky_hud_event_medal_air_kill",
+        fallback = "Air Kill",
+        color    = Color(0.5, 0.8, 1),                -- bleu ciel
+        icon     = { hud_tweak = "csb_stamina" },
+    },
+    wall_bang = {
+        id       = "ky_hud_event_medal_wall_bang",
+        fallback = "Wallbang",
+        color    = Color(0.7, 0.72, 0.75),            -- gris béton
+        icon     = { hud_tweak = "pd2_kill" },
+    },
+    loot_carrier = {
+        id       = "ky_hud_event_medal_loot_carrier",
+        fallback = "Hands Off",
+        color    = Color(0.95, 0.8, 0.3),             -- or/vert butin
+        icon     = { hud_tweak = "pd2_lootdrop" },
+    },
 }
 
 -- Une table Lua indexée par clé n'a pas d'ordre de parcours stable. Cette liste
 -- fige donc l'ordre d'émission : deux kills portant les mêmes évènements
 -- produisent toujours exactement la même suite de médailles.
+--
+-- Seules les médailles portées par `event_info` figurent ici. `no_flashbang` et
+-- `wall_bang` sont émises directement par leur hook moteur via
+-- `KH:ShowEventMedal`, sans passer par le chemin de kill : les lister ici ne
+-- ferait que chercher un booléen qui n'existe jamais.
 local EVENT_MEDAL_ORDER = {
     "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
     "showstopper", "rope", "blindfire", "first_blood", "hotswap",
-    "overwatch", "long_shot", "spray_down",
+    "overwatch", "long_shot", "air_kill", "loot_carrier", "spray_down",
 }
 
 -- Dernier souffle reste un signal critique, mais ne doit pas remplir la file
@@ -911,10 +940,31 @@ local function make_event_medal_card(id, tier_index)
     }
 end
 
+local function set_event_medal_count(card, count)
+    count = tonumber(count)
+    if not card or not count then return card end
+
+    count = math.max(1, math.floor(count))
+    card._count_label_base = card._count_label_base or card.label
+    card.label = count > 1
+        and card._count_label_base .. " x" .. tostring(count)
+        or card._count_label_base
+    return card
+end
+
 --- Émet directement une carte d'évènement sans enregistrer de kill ni de score.
 --- Réservé aux hooks moteur qui agrègent déjà les victimes d'un même tir.
-function KH:ShowEventMedal(id)
-    self:_show_medal_card(now(), make_event_medal_card(id), false)
+function KH:ShowEventMedal(id, count)
+    local card = set_event_medal_count(make_event_medal_card(id), count)
+    self:_show_medal_card(now(), card, false)
+    return card
+end
+
+--- Actualise le compteur d'une carte déjà émise pendant le même tir. La carte
+--- active ou placée dans la FIFO est la même table : le libellé visible évolue
+--- donc jusqu'au total final sans ajouter une seconde médaille.
+function KH:UpdateEventMedalCount(card, count)
+    return set_event_medal_count(card, count)
 end
 
 --- Un rechargement ouvre un nouveau chargeur pour Spray Down. L'appelant
@@ -4087,7 +4137,7 @@ end
 --   médaille de série d'arme dans le killfeed, avec les noms sous celle-ci ;
 --   médaille de kills cumulés « icône Dmg+ + 100 KILLS », dans cette même
 --   rangée partagée ;
---   les dix-huit cartes de médailles d'évènement, paliers de rappel compris,
+--   les vingt-deux cartes de médailles d'évènement, paliers de rappel compris,
 --   une par appel, avec leur icône `hud_tweak`.
 -- Le premier appel montre directement l'exemple demandé, partiellement rempli.
 -- `combo` reste à 0 pour les cas d'annonce afin que seul le bandeau spécial soit
@@ -4117,6 +4167,10 @@ local DEBUG_BANNER_PREVIEWS = {
     { combo = 0, medal = "event", event = "overwatch" },
     { combo = 0, medal = "event", event = "long_shot" },
     { combo = 0, medal = "event", event = "spray_down" },
+    { combo = 0, medal = "event", event = "no_flashbang" },
+    { combo = 0, medal = "event", event = "air_kill" },
+    { combo = 0, medal = "event", event = "wall_bang", event_count = 3 },
+    { combo = 0, medal = "event", event = "loot_carrier" },
 }
 
 function KH:DebugSimulate(n)
@@ -4307,7 +4361,8 @@ function KH:DebugSimulate(n)
     elseif preview.medal == "kill_total" then
         self:_show_medal_card(t_now, make_kill_medal_card(preview.kills), true)
     elseif preview.medal == "event" then
-        self:_show_medal_card(t_now, make_event_medal_card(preview.event, preview.tier_index), true)
+        local card = make_event_medal_card(preview.event, preview.tier_index)
+        self:_show_medal_card(t_now, set_event_medal_count(card, preview.event_count), true)
     end
 end
 
