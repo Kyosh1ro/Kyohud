@@ -124,8 +124,38 @@ if not KH.settings.buff_toggles then
 end
 
 function KH.Save()
-    local f = io.open(KH._settings_path, "w")
-    if f then f:write(json.encode(KH.settings)); f:close() end
+    local encoded_ok, encoded = pcall(json.encode, KH.settings)
+    if not encoded_ok or type(encoded) ~= "string" then return false end
+
+    local temp_path = KH._settings_path .. ".tmp"
+    local f = io.open(temp_path, "w")
+    if not f then return false end
+
+    local write_ok, write_result = pcall(f.write, f, encoded)
+    local close_ok, close_result = pcall(f.close, f)
+    if not write_ok or not write_result or not close_ok or not close_result then
+        os.remove(temp_path)
+        return false
+    end
+
+    -- os.rename replaces atomically where supported. On Windows, preserve the
+    -- current save through a backup while replacing an existing destination.
+    if os.rename(temp_path, KH._settings_path) then return true end
+
+    local backup_path = KH._settings_path .. ".bak"
+    os.remove(backup_path)
+    if not os.rename(KH._settings_path, backup_path) then
+        os.remove(temp_path)
+        return false
+    end
+    if not os.rename(temp_path, KH._settings_path) then
+        os.rename(backup_path, KH._settings_path)
+        os.remove(temp_path)
+        return false
+    end
+
+    os.remove(backup_path)
+    return true
 end
 
 function KH.Load()
