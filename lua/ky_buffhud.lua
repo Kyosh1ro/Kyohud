@@ -3081,44 +3081,129 @@ function KH:ensure_panel(force)
 end
 
 -- ═══════════════════════════════════════════════════
--- Layout: horizontal row centered on a screen percentage position
--- Spacing tightens if necessary to mask no buff.
+-- Layout: horizontal row centered on a screen percentage position.
+-- The gap closes first, then every buff metric scales together. If the row
+-- still cannot fit at the readable minimum, its last slot becomes a +N cell.
 -- ═══════════════════════════════════════════════════
-local function compute_horizontal_positions(
+local BUFF_ROW_EDGE_MARGIN = 4
+local BUFF_ROW_MIN_ICON_SIZE = 20
+
+function KH.compute_buff_row_layout(
         count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y,
         top_label_height)
+    count = math.max(0, math.floor(tonumber(count) or 0))
+    panel_w = math.max(0, tonumber(panel_w) or 0)
+    panel_h = math.max(0, tonumber(panel_h) or 0)
+    icon_size = math.max(1, tonumber(icon_size) or 32)
+    frame_pad_x = math.max(0, tonumber(frame_pad_x) or 0)
+    frame_pad_y = math.max(0, tonumber(frame_pad_y) or 0)
+
     local positions = {}
-    if count == 0 then return positions end
+    local preferred_cell_w = icon_size + frame_pad_x * 2
+    local preferred_gap = clamp(icon_size * 0.25, 4, 12)
+    local available_w = math.max(0, panel_w - BUFF_ROW_EDGE_MARGIN * 2)
+    local effective_size = icon_size
+    local scale = 1
+    local cell_w = preferred_cell_w
+    local gap = preferred_gap
+    local visible_count = count
+    local hidden_count = 0
+    local slot_count = count
 
-    local edge_margin = 4
-    local frame_w = icon_size + frame_pad_x * 2
-    local desired_pitch = frame_w + clamp(icon_size * 0.25, 4, 12)
-    local available_w = math.max(frame_w, panel_w - edge_margin * 2)
-    local pitch = desired_pitch
-
-    if count > 1 and frame_w + pitch * (count - 1) > available_w then
-        pitch = math.max(0, (available_w - frame_w) / (count - 1))
+    if count == 0 then
+        return {
+            positions = positions,
+            effective_size = effective_size,
+            frame_pad_x = frame_pad_x,
+            frame_pad_y = frame_pad_y,
+            cell_w = cell_w,
+            gap = gap,
+            pitch = cell_w + gap,
+            scale = scale,
+            visible_count = 0,
+            hidden_count = 0,
+            slot_count = 0,
+        }
     end
 
-    local row_w = frame_w + pitch * (count - 1)
+    local preferred_row_w = preferred_cell_w * count
+        + preferred_gap * math.max(0, count - 1)
+    if preferred_row_w > available_w then
+        gap = count > 1
+            and math.max(0, (available_w - preferred_cell_w * count) / (count - 1))
+            or 0
+    end
+
+    if preferred_cell_w * count > available_w then
+        local fit_scale = available_w / (preferred_cell_w * count)
+        local minimum_scale = math.min(1, BUFF_ROW_MIN_ICON_SIZE / icon_size)
+
+        if fit_scale >= minimum_scale then
+            scale = fit_scale
+        else
+            scale = minimum_scale
+            cell_w = preferred_cell_w * scale
+            local capacity = math.floor(available_w / cell_w + 0.000001)
+
+            -- A pathologically narrow panel still gets one complete explicit
+            -- slot. This emergency branch may go below the readable minimum,
+            -- because staying inside KyoHUD's panel is the stronger invariant.
+            if capacity < 1 then
+                capacity = 1
+                scale = available_w / preferred_cell_w
+                cell_w = available_w
+            end
+
+            slot_count = math.min(count, capacity)
+            if slot_count < count then
+                visible_count = math.max(0, slot_count - 1)
+                hidden_count = count - visible_count
+            end
+        end
+
+        effective_size = icon_size * scale
+        frame_pad_x = frame_pad_x * scale
+        frame_pad_y = frame_pad_y * scale
+        cell_w = effective_size + frame_pad_x * 2
+        gap = 0
+    end
+
+    local pitch = cell_w + gap
+    local row_w = slot_count > 0
+        and cell_w + pitch * (slot_count - 1)
+        or 0
     local anchor_x = panel_w * clamp(x_percent, 0, 100) / 100
     local row_left = clamp(
         anchor_x - row_w * 0.5,
-        edge_margin,
-        math.max(edge_margin, panel_w - edge_margin - row_w)
+        BUFF_ROW_EDGE_MARGIN,
+        math.max(BUFF_ROW_EDGE_MARGIN, panel_w - BUFF_ROW_EDGE_MARGIN - row_w)
     )
 
     -- Keep the value above, the frame and timer below the icon in the panel.
-    local min_y = icon_size * 0.5 + frame_pad_y + (top_label_height or 18) + edge_margin
-    local max_y = panel_h - icon_size * 0.5 - 22
+    local min_y = effective_size * 0.5 + frame_pad_y
+        + (top_label_height or 18) * scale + BUFF_ROW_EDGE_MARGIN
+    local max_y = panel_h - effective_size * 0.5 - 22 * scale
     local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
-    local first_x = row_left + frame_w * 0.5
+    local first_x = row_left + cell_w * 0.5
 
-    for i = 0, count - 1 do
+    for i = 0, slot_count - 1 do
         positions[#positions + 1] = { x = first_x + pitch * i, y = y }
     end
 
-    return positions
+    return {
+        positions = positions,
+        effective_size = effective_size,
+        frame_pad_x = frame_pad_x,
+        frame_pad_y = frame_pad_y,
+        cell_w = cell_w,
+        gap = gap,
+        pitch = pitch,
+        scale = scale,
+        visible_count = visible_count,
+        hidden_count = hidden_count,
+        slot_count = slot_count,
+        overflow_text = hidden_count > 0 and ("+" .. tostring(hidden_count)) or nil,
+    }
 end
 
 local function compare_buff_arrival(a, b)
@@ -3450,8 +3535,8 @@ function KH:draw()
             table.insert(buff_list, buff)
         end
 
-        local frame_pad_x = clamp(size * 0.16, 4, 9)
-        local frame_pad_y = clamp(size * 0.08, 2, 4)
+        local preferred_frame_pad_x = clamp(size * 0.16, 4, 9)
+        local preferred_frame_pad_y = clamp(size * 0.08, 2, 4)
         -- A single row suffices as long as a top label and value do not
         -- coexist; once a cell carries both, the top margin becomes two lines. A label placed in the timer remains under
         -- the icon and never consumes this margin.
@@ -3465,19 +3550,27 @@ function KH:draw()
                 end
             end
         end
-        local positions = compute_horizontal_positions(
+        local layout = self.compute_buff_row_layout(
             #buff_list,
             tonumber(s.buff_position_x) or 50,
             tonumber(s.buff_position_y) or 85,
             w,
             h,
             size,
-            frame_pad_x,
-            frame_pad_y,
+            preferred_frame_pad_x,
+            preferred_frame_pad_y,
             top_label_height
         )
-        for idx, buff in ipairs(buff_list) do
-            local pos = positions[idx]
+        local buff_size = layout.effective_size
+        local frame_pad_x = layout.frame_pad_x
+        local frame_pad_y = layout.frame_pad_y
+        local buff_text_scale = layout.scale
+        local buff_text_h = math.max(10, 16 * buff_text_scale)
+        local buff_text_gap = 2 * buff_text_scale
+
+        for idx = 1, layout.visible_count do
+            local buff = buff_list[idx]
+            local pos = layout.positions[idx]
             if pos then
                 -- The visual state is resolved once per rendered buff: it
                 -- controls the cell's opacity, perimeter outline, and
@@ -3493,10 +3586,10 @@ function KH:draw()
 
                 -- Each buff retains its own cell, subtle enough that
                 -- the icon and timer remain the dominant information.
-                local frame_x = pos.x - size * 0.5 - frame_pad_x
-                local frame_y = pos.y - size * 0.5 - frame_pad_y
-                local frame_w = size + frame_pad_x * 2
-                local frame_h = size + frame_pad_y * 2
+                local frame_x = pos.x - buff_size * 0.5 - frame_pad_x
+                local frame_y = pos.y - buff_size * 0.5 - frame_pad_y
+                local frame_w = buff_size + frame_pad_x * 2
+                local frame_h = buff_size + frame_pad_y * 2
 
                 draw_buff_cell_frame(
                     self._panel,
@@ -3528,10 +3621,10 @@ function KH:draw()
 
                 local params = {
                     layer = 101,
-                    w     = size,
-                    h     = size,
-                    x     = pos.x - size / 2,
-                    y     = pos.y - size / 2,
+                    w     = buff_size,
+                    h     = buff_size,
+                    x     = pos.x - buff_size / 2,
+                    y     = pos.y - buff_size / 2,
                 }
 
                 if buff.icon.rect then
@@ -3556,14 +3649,14 @@ function KH:draw()
                     self._panel:text({
                         text      = buff.value_text,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = clamp(size * 0.38, 11, 15),
+                        font_size = math.max(8, clamp(size * 0.38, 11, 15) * buff_text_scale),
                         color     = buff.color or Color.white,
                         align     = "center",
                         vertical  = "center",
                         x         = frame_x,
-                        y         = frame_y - (top_label and 34 or 17),
+                        y         = frame_y - (top_label and 34 or 17) * buff_text_scale,
                         w         = frame_w,
-                        h         = 16,
+                        h         = buff_text_h,
                         layer     = 102,
                         alpha     = buff_alpha,
                     })
@@ -3573,24 +3666,24 @@ function KH:draw()
                     self._panel:text({
                         text      = top_label,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = clamp(size * 0.3, 9, 12),
+                        font_size = math.max(8, clamp(size * 0.3, 9, 12) * buff_text_scale),
                         color     = HUD_ACCENT_COLOR,
                         align     = "center",
                         vertical  = "center",
                         x         = frame_x,
-                        y         = frame_y - 17,
+                        y         = frame_y - 17 * buff_text_scale,
                         w         = frame_w,
-                        h         = 16,
+                        h         = buff_text_h,
                         layer     = 102,
                         alpha     = buff_alpha,
                     })
                 end
 
                 if buff.stack_text then
-                    local badge_w = clamp(size * 0.55, 15, 26)
-                    local badge_h = clamp(size * 0.36, 10, 16)
-                    local badge_x = pos.x + size * 0.5 - badge_w
-                    local badge_y = pos.y + size * 0.5 - badge_h
+                    local badge_w = clamp(size * 0.55, 15, 26) * buff_text_scale
+                    local badge_h = clamp(size * 0.36, 10, 16) * buff_text_scale
+                    local badge_x = pos.x + buff_size * 0.5 - badge_w
+                    local badge_y = pos.y + buff_size * 0.5 - badge_h
                     self._panel:rect({
                         x = badge_x,
                         y = badge_y,
@@ -3603,7 +3696,7 @@ function KH:draw()
                     self._panel:text({
                         text = buff.stack_text,
                         font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = clamp(size * 0.3, 9, 12),
+                        font_size = math.max(8, clamp(size * 0.3, 9, 12) * buff_text_scale),
                         color = Color.white,
                         align = "center",
                         vertical = "center",
@@ -3624,14 +3717,14 @@ function KH:draw()
                     self._panel:text({
                         text      = timer_label,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = clamp(size * 0.3, 9, 12),
+                        font_size = math.max(8, clamp(size * 0.3, 9, 12) * buff_text_scale),
                         color     = HUD_ACCENT_COLOR,
                         align     = "center",
                         vertical  = "center",
                         x         = frame_x,
-                        y         = pos.y + size / 2 + 2,
+                        y         = pos.y + buff_size / 2 + buff_text_gap,
                         w         = frame_w,
-                        h         = 16,
+                        h         = buff_text_h,
                         layer     = 102,
                         alpha     = buff_alpha,
                     })
@@ -3639,18 +3732,50 @@ function KH:draw()
                     self._panel:text({
                         text      = string.format("%.1f", remaining),
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = 14,
+                        font_size = math.max(8, 14 * buff_text_scale),
                         color     = state.timer_color or Color.white,
                         align     = "center",
-                        x         = pos.x - size / 2,
-                        y         = pos.y + size / 2 + 2,
-                        w         = size,
-                        h         = 16,
+                        x         = pos.x - buff_size / 2,
+                        y         = pos.y + buff_size / 2 + buff_text_gap,
+                        w         = buff_size,
+                        h         = buff_text_h,
                         layer     = 102,
                         alpha     = alpha * (0.8 + 0.2 * state.emphasis) * state.alpha_scale,
                     })
                 end
             end
+        end
+
+        if layout.hidden_count > 0 then
+            local pos = layout.positions[layout.slot_count]
+            local frame_x = pos.x - buff_size * 0.5 - frame_pad_x
+            local frame_y = pos.y - buff_size * 0.5 - frame_pad_y
+            local frame_w = buff_size + frame_pad_x * 2
+            local frame_h = buff_size + frame_pad_y * 2
+
+            draw_buff_cell_frame(
+                self._panel,
+                frame_x,
+                frame_y,
+                frame_w,
+                frame_h,
+                alpha,
+                98
+            )
+            self._panel:text({
+                text = layout.overflow_text,
+                font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
+                font_size = math.max(9, 16 * buff_text_scale),
+                color = HUD_ACCENT_COLOR,
+                align = "center",
+                vertical = "center",
+                x = frame_x,
+                y = frame_y,
+                w = frame_w,
+                h = frame_h,
+                layer = 102,
+                alpha = alpha,
+            })
         end
     end
 
