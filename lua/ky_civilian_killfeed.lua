@@ -1,4 +1,4 @@
--- ky_civilian_killfeed.lua — Ajout des civils au killfeed avec pénalité
+-- ky_civilian_killfeed.lua — Add civilians to killfeed with penalty
 -- KyoHUD
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
@@ -8,7 +8,7 @@ local MY_MOD_PATH = ModPath
 
 local score_ok, score_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_killfeed.lua")
 if not score_ok then
-    log("[KyoHUD] Erreur chargement du calcul des scores civils : " .. tostring(score_err))
+    log("[KyoHUD] Civilian score calculation load error: " .. tostring(score_err))
 end
 
 Hooks:PostHook(CivilianDamage, "_on_damage_received", "KH_OnCivilianDamageReceived", function(self, attack_data)

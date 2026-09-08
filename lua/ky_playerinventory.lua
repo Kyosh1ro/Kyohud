@@ -1,11 +1,9 @@
--- ky_playerinventory.lua — Horodatage des changements d'arme locaux
+-- ky_playerinventory.lua — Timestamping of local weapon changes
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
 local KH = kyohud
 
--- Une première sélection correspond à l'équipement initial au spawn et ne doit
--- pas ouvrir la fenêtre Hot Swap. Les clés faibles évitent de retenir les
--- inventaires détruits lors d'un changement de niveau.
+-- A first selection corresponds to initial spawn equipment and must not open the Hot Swap window. Weak keys avoid retaining inventories destroyed during a level change.
 local equipped_selections = setmetatable({}, { __mode = "k" })
 
 if RequiredScript == "lib/units/beings/player/playerinventory"
