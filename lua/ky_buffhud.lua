@@ -46,6 +46,8 @@ KH._banner_queue = {}          -- FIFO bornée : annonces en attente d'affichage
 KH._weapon_streaks = {}        -- { [family] = { count, tier_index, last_t } }
 KH._heist_kill_count = 0       -- kills ennemis cumulés depuis le début du braquage
 KH._heist_kill_medal_index = 0 -- dernier palier de kills cumulés déjà annoncé
+KH._sentry_kill_count = 0
+KH._sentry_kill_medal_index = 0
 KH._medal_card = nil           -- médaille affichée dans la rangée du killfeed
 KH._medal_queue = {}           -- FIFO bornée, indépendante du bandeau supérieur
 KH._spray_down_kills = 0       -- kills par balle depuis le dernier rechargement
@@ -237,6 +239,15 @@ local function headshot_icon_descriptor()
         HEADSHOT_ICON_DESCRIPTOR = { texture = texture, rect = rect }
     end
     return HEADSHOT_ICON_DESCRIPTOR
+end
+
+local SENTRY_ICON_DESCRIPTOR
+local function sentry_icon_descriptor()
+    if not SENTRY_ICON_DESCRIPTOR then
+        local texture, rect = get_icon_data({ hud_tweak = "equipment_sentry" })
+        SENTRY_ICON_DESCRIPTOR = { texture = texture, rect = rect }
+    end
+    return SENTRY_ICON_DESCRIPTOR
 end
 
 -- Le catalogue partagé des buffs est chargé depuis ky_buff_catalog.lua.
@@ -755,6 +766,7 @@ local SPRAY_DOWN_WINDOW = 4
 -- retombe à zéro qu'avec `KH:ResetHeistCombatState`. Les paliers sont
 -- strictement croissants et chacun n'est annoncé qu'une fois par braquage.
 local KILL_MEDAL_THRESHOLDS = { 50, 75, 100, 150, 200, 300, 400, 500 }
+local SENTRY_KILL_MEDAL_THRESHOLDS = { 50, 100, 150 }
 
 -- Or : la médaille cumulée se distingue des couleurs de famille d'arme.
 local KILL_MEDAL_COLOR = Color(1, 0.84, 0.35)
@@ -769,6 +781,7 @@ local KILL_MEDAL_ICON_BUFF = "damage_increase"
 local MEDAL_KIND_WEAPON_STREAK = "weapon_streak"
 local MEDAL_KIND_KILL_TOTAL = "kill_total"
 local MEDAL_KIND_EVENT = "event"
+local MEDAL_KIND_SENTRY_KILL = "sentry_kill"
 
 -- Le bandeau supérieur est exclusivement réservé au multikill, au boss et au
 -- Dozer. Priorité d'affichage : boss > dozer. Le multikill n'entre pas dans la
@@ -914,6 +927,19 @@ local function make_kill_medal_card(kill_count)
         label = tostring(kill_count) .. " "
             .. localized_text("ky_hud_kill_medal_kills", "KILLS"),
         color = KILL_MEDAL_COLOR,
+    }
+end
+
+local function make_sentry_kill_medal_card(kill_count)
+    if type(kill_count) ~= "number" then return nil end
+
+    return {
+        kind = MEDAL_KIND_SENTRY_KILL,
+        icon = sentry_icon_descriptor(),
+        icon_color = Color.white,
+        label = tostring(kill_count) .. " "
+            .. localized_text("ky_hud_kill_medal_kills", "KILLS"),
+        color = Color.white,
     }
 end
 
@@ -2596,10 +2622,10 @@ end
 -- concurrence avec un boss ou un Dozer, et les deux peuvent être visibles en
 -- même temps sur deux niveaux distincts.
 --
--- Toutes les familles de médailles — séries d'arme, médailles d'évènement et
--- paliers de kills cumulés — partagent ce même niveau, ce même rendu, cette même
--- durée et cette même file FIFO bornée. Seule la construction de la carte
--- diffère.
+-- Toutes les familles de médailles — séries d'arme, médailles d'évènement,
+-- paliers de kills cumulés et paliers de sentry — partagent ce même niveau, ce
+-- même rendu, cette même durée et cette même file FIFO bornée. Seule la
+-- construction de la carte diffère.
 function KH:_start_medal_card(t, card, preview)
     card.preview = preview == true
     card.started_t = t
@@ -2647,7 +2673,8 @@ end
 
 --- Efface les médailles de la rangée partagée. Sans `kind`, tout disparaît ;
 --- avec un `kind`, les autres familles gardent leur carte active et leur place
---- dans la file. Une médaille cumulée survit donc à un reset de séries d'arme.
+--- dans la file. Les médailles cumulées et de sentry survivent donc à un reset
+--- de séries d'arme.
 function KH:_clear_medal_cards(kind)
     local card = self._medal_card
     if card and (not kind or card.kind == kind) then
@@ -2732,6 +2759,18 @@ function KH:_register_heist_kill()
     return threshold
 end
 
+function KH:_register_sentry_kill()
+    local count = (self._sentry_kill_count or 0) + 1
+    self._sentry_kill_count = count
+
+    local next_index = (self._sentry_kill_medal_index or 0) + 1
+    local threshold = SENTRY_KILL_MEDAL_THRESHOLDS[next_index]
+    if not threshold or count < threshold then return nil end
+
+    self._sentry_kill_medal_index = next_index
+    return threshold
+end
+
 --- Remise à zéro des séries d'arme : les compteurs repartent de zéro et toute
 --- médaille de série encore affichée ou en attente disparaît, car elle ne
 --- récompense plus une série vivante. Les annonces de boss et de Dozer restent
@@ -2764,8 +2803,9 @@ end
 
 --- Remet à zéro tout l'état de combat propre à une partie : buffs affichés et
 --- leurs sources, killfeed et son score, multikill, bandeaux prioritaires,
---- séries d'arme et combos de spéciaux. Une partie ne doit jamais hériter de
---- l'état de la précédente, ni d'un aperçu de debug resté affiché.
+--- séries d'arme, paliers de sentry et combos de spéciaux. Une partie ne doit
+--- jamais hériter de l'état de la précédente, ni d'un aperçu de debug resté
+--- affiché.
 ---
 --- Ce qui n'appartient pas à une partie est volontairement conservé : les
 --- réglages, le catalogue, le panneau KyoHUD et les listeners du pont
@@ -2804,6 +2844,8 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     -- partie : ils survivent aux chutes, mais jamais à un nouveau braquage.
     self._heist_kill_count = 0
     self._heist_kill_medal_index = 0
+    self._sentry_kill_count = 0
+    self._sentry_kill_medal_index = 0
     self:ResetSprayDownMagazine()
     self:_clear_medal_cards()
     self._special_enemy_combos = {}
@@ -2846,23 +2888,25 @@ function KH:_register_rope_kill(t)
     end
 end
 
-function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family, event_info)
+function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family, event_info, kill_source)
     -- enable_killfeed contrôle uniquement le rendu : scores, séries et états de
     -- médailles continuent d'avancer pendant qu'il est masqué, comme sur dev.
     if not self.settings then return end
 
-    local first_strike = contributes_to_combo ~= false
+    local is_sentry = kill_source == "sentry"
+    local first_strike = not is_sentry and contributes_to_combo ~= false
         and self._event_assault_active and not self._event_first_strike_awarded
     if first_strike then self._event_first_strike_awarded = true end
-    local first_blood = contributes_to_combo ~= false
+    local first_blood = not is_sentry and contributes_to_combo ~= false
         and not self._first_blood_done and (self._heist_kill_count or 0) == 0
     if first_blood then self._first_blood_done = true end
     local t = now()
-    local rope_tier = contributes_to_combo ~= false and event_info and event_info.rope
+    local rope_tier = not is_sentry and contributes_to_combo ~= false
+        and event_info and event_info.rope
         and self:_register_rope_kill(t) or nil
 
     local dur = KILLFEED_ENTRY_DURATION
-    if contributes_to_combo ~= false then
+    if contributes_to_combo ~= false and not is_sentry then
         local combo = self._kill_combo or { count = 0 }
         if combo.preview then
             combo = { count = 0 }
@@ -2882,9 +2926,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
             or nil
         self._kill_combo = combo
     end
-    if special_banner == "dozer" then
+    if not is_sentry and special_banner == "dozer" then
         self:_show_dozer_banner(t, false)
-    elseif special_banner == "boss" then
+    elseif not is_sentry and special_banner == "boss" then
         self:_show_boss_banner(t, false)
     end
 
@@ -2894,7 +2938,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     -- est donc figé, et c'est lui qui décide de la carte affichée en premier et
     -- de l'ordre de la file FIFO commune :
     --   série d'arme -> médailles d'évènement -> palier de kills cumulés.
-    local streak_tier_index = weapon_family
+    local streak_tier_index = not is_sentry and weapon_family
         and self:_register_weapon_family_kill(weapon_family, t)
         or nil
     if streak_tier_index then
@@ -2908,7 +2952,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     -- masqué. Les cartes suivent l'ordre figé d'`EVENT_MEDAL_ORDER`. Au-delà de la
     -- carte active et des `MAX_MEDAL_QUEUE` places de la file, les médailles
     -- suivantes sont abandonnées : elles n'ouvrent aucun palier à rattraper.
-    if contributes_to_combo ~= false then
+    if contributes_to_combo ~= false and not is_sentry then
         if event_info then event_info.spray_down = false end
         if event_info and event_info.magazine_kill and not self._spray_down_awarded then
             local started_t = tonumber(self._spray_down_started_t)
@@ -2958,6 +3002,14 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         if kill_medal_count then
             self:_show_medal_card(t, make_kill_medal_card(kill_medal_count), false)
         end
+        if is_sentry then
+            local sentry_medal_count = self:_register_sentry_kill()
+            if sentry_medal_count then
+                self:_show_medal_card(
+                    t, make_sentry_kill_medal_card(sentry_medal_count), false
+                )
+            end
+        end
     end
 
     -- Le score représente tous les points produits pendant une apparition
@@ -2975,7 +3027,8 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
 
     local special_count
     local special_label_index
-    local special_definition = special_enemy_definition(special_enemy_kind)
+    local special_definition = not is_sentry
+        and special_enemy_definition(special_enemy_kind) or nil
     if special_definition then
         local special_combo = self._special_enemy_combos[special_enemy_kind]
             or { count = 0 }
@@ -2998,7 +3051,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         name       = enemy_name or "Enemy",
         score      = score,
         score_text = format_kill_score(score),
-        headshot   = event_info ~= nil and event_info.headshot == true,
+        headshot   = not is_sentry and event_info ~= nil and event_info.headshot == true,
+        sentry     = is_sentry,
+        sentry_icon = is_sentry and sentry_icon_descriptor() or nil,
         special_kind = special_definition and special_enemy_kind or nil,
         display_text = special_enemy_label(
             special_enemy_kind,
@@ -3692,7 +3747,9 @@ function KH:draw()
                 and (kill._measured_score_w or approximate_text_width(kill.score_text, kill_font_size))
                 or 0
             local content_gap = kill.score_text and text_gap or 0
-            local icon_reserved = kill.headshot and kill.headshot_icon
+            local leading_icon = kill.sentry_icon
+                or (kill.headshot and kill.headshot_icon)
+            local icon_reserved = leading_icon
                 and (headshot_icon_size + headshot_icon_gap)
                 or 0
             local item_w = math.ceil(
@@ -4009,8 +4066,8 @@ function KH:draw()
                 item_x = item_x + 18 * (1 - scroll)
             end
 
-            local item_color = kill.special_kind
-                and special_enemy_color(kill.special_kind)
+            local item_color = kill.sentry and Color.white
+                or (kill.special_kind and special_enemy_color(kill.special_kind))
                 or feed_color
             draw_killfeed_card_frame(
                 self._panel,
@@ -4025,10 +4082,11 @@ function KH:draw()
 
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
-            local headshot_icon = kill.headshot and kill.headshot_icon or nil
+            local leading_icon = kill.sentry_icon
+                or (kill.headshot and kill.headshot_icon)
             local minimum_text_w = 1 + (score_text and (text_gap + 1) or 0)
             local icon_available_w = math.max(0, inner_w - minimum_text_w)
-            local icon_size = headshot_icon
+            local icon_size = leading_icon
                 and math.min(
                     headshot_icon_size,
                     math.max(0, icon_available_w - headshot_icon_gap)
@@ -4063,10 +4121,10 @@ function KH:draw()
                     h = icon_size,
                     x = content_x,
                     y = feed_y + (item_h - icon_size) * 0.5,
-                    texture = headshot_icon.texture,
+                    texture = leading_icon.texture,
                 }
-                if headshot_icon.rect then
-                    params.texture_rect = headshot_icon.rect
+                if leading_icon.rect then
+                    params.texture_rect = leading_icon.rect
                 end
                 local bitmap = self._panel:bitmap(params)
                 bitmap:set_color(item_color)
@@ -4137,6 +4195,7 @@ end
 --   médaille de série d'arme dans le killfeed, avec les noms sous celle-ci ;
 --   médaille de kills cumulés « icône Dmg+ + 100 KILLS », dans cette même
 --   rangée partagée ;
+--   carte et médaille de sentry blanches avec l'icône `equipment_sentry` ;
 --   les vingt-deux cartes de médailles d'évènement, paliers de rappel compris,
 --   une par appel, avec leur icône `hud_tweak`.
 -- Le premier appel montre directement l'exemple demandé, partiellement rempli.
@@ -4149,6 +4208,7 @@ local DEBUG_BANNER_PREVIEWS = {
     { combo = 0, banner = "boss" },
     { combo = 0, medal = "weapon_streak", family = "shotgun", tier_index = 2 },
     { combo = 0, medal = "kill_total", kills = 100 },
+    { combo = 0, medal = "sentry_kill", kills = 100 },
     { combo = 0, medal = "event", event = "first_strike" },
     { combo = 0, medal = "event", event = "grave" },
     { combo = 0, medal = "event", event = "low_hp" },
@@ -4296,11 +4356,19 @@ function KH:DebugSimulate(n)
         }
     end
 
-    -- Simuler quelques kills
+    local next_preview_index = (self._debug_banner_preview_index
+        % #DEBUG_BANNER_PREVIEWS) + 1
+    local next_preview = DEBUG_BANNER_PREVIEWS[next_preview_index]
+    local third_demo_kill = next_preview.medal == "sentry_kill"
+        and { name = "SWAT", score = 1, sentry = true }
+        or { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 }
+
+    -- Simuler quelques kills. La carte sentry remplace temporairement le Shield
+    -- uniquement pendant son propre cas d'aperçu afin de conserver les deux tests.
     local demo_kills = {
         { name = "Medic", score = 6, headshot = true, special_kind = "medic", special_count = 2, label_index = 1 },
         { name = "Captain Winters", score = 100, special_kind = "boss", special_count = 1, label_index = 1 },
-        { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
+        third_demo_kill,
         { name = "Cloaker", score = 8, special_kind = "cloaker", special_count = 2, label_index = 1 },
         { name = "Taser", score = 7, special_kind = "taser", special_count = 2, label_index = 1 },
     }
@@ -4318,6 +4386,8 @@ function KH:DebugSimulate(n)
             score_text = format_kill_score(demo.score),
             headshot   = demo.headshot == true,
             headshot_icon = demo.headshot and headshot_icon_descriptor() or nil,
+            sentry     = demo.sentry == true,
+            sentry_icon = demo.sentry and sentry_icon_descriptor() or nil,
             special_kind = demo.special_kind,
             display_text = special_enemy_label(
                 demo.special_kind,
@@ -4360,6 +4430,8 @@ function KH:DebugSimulate(n)
         )
     elseif preview.medal == "kill_total" then
         self:_show_medal_card(t_now, make_kill_medal_card(preview.kills), true)
+    elseif preview.medal == "sentry_kill" then
+        self:_show_medal_card(t_now, make_sentry_kill_medal_card(preview.kills), true)
     elseif preview.medal == "event" then
         local card = make_event_medal_card(preview.event, preview.tier_index)
         self:_show_medal_card(t_now, set_event_medal_count(card, preview.event_count), true)

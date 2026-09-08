@@ -1,7 +1,8 @@
 -- ky_killfeed.lua — Killfeed : scoring, attribution et détection des kills
 -- KyoHUD
--- Ce fichier est chargé dans les contextes PlayerManager et CopDamage (mod.txt)
--- et également par dofile depuis ky_civilian_killfeed.lua (CivilianDamage).
+-- Ce fichier est chargé dans les contextes PlayerManager, CopDamage et
+-- HuskCopDamage (mod.txt), et également par dofile depuis
+-- ky_civilian_killfeed.lua (CivilianDamage).
 -- Les hooks sont installés conditionnellement via RequiredScript afin de ne
 -- cibler que la classe présente dans chaque contexte de chargement.
 
@@ -435,18 +436,39 @@ function KH:GetSpecialEnemyKind(unit_id)
     return nil
 end
 
-function KH:IsLocalKillAttacker(attacker)
-    if not attacker or not alive(attacker) then return false end
+--- Résout la source locale sans confondre le joueur et sa sentry. Le repli
+--- `is_owner()` conserve l'attribution quand l'unité du joueur est indisponible.
+function KH:GetLocalKillSource(attacker)
+    if not attacker then return nil end
 
-    local player = managers.player and managers.player:player_unit()
-    if not player or not alive(player) then return false end
-    if attacker == player then return true end
+    local player = local_player_unit()
+    if player and attacker == player then return "player" end
 
-    local ok, thrower = pcall(function()
-        local base = attacker:base()
-        return base and base.thrower_unit and base:thrower_unit()
+    local base_ok, base = pcall(function()
+        if not alive(attacker) then return nil end
+        return attacker:base()
     end)
-    return ok and thrower == player
+    if not base_ok or not base then return nil end
+
+    if player and base.thrower_unit then
+        local thrower_ok, thrower = pcall(function() return base:thrower_unit() end)
+        if thrower_ok and thrower == player then return "player" end
+    end
+
+    if not base.sentry_gun then return nil end
+    if player and base.get_owner then
+        local owner_ok, owner = pcall(function() return base:get_owner() end)
+        if owner_ok and owner == player then return "sentry" end
+    end
+    if base.is_owner then
+        local owner_ok, is_owner = pcall(function() return base:is_owner() end)
+        if owner_ok and is_owner == true then return "sentry" end
+    end
+    return nil
+end
+
+function KH:IsLocalKillAttacker(attacker)
+    return self:GetLocalKillSource(attacker) ~= nil
 end
 
 function KH:GetKillBaseScore(unit_id, is_civilian)
@@ -489,7 +511,7 @@ end
 KH._recorded_kill_units = KH._recorded_kill_units
     or setmetatable({}, { __mode = "k" })
 
-function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian, attack_info, event_info)
+function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian, attack_info, event_info, kill_source)
     if not self.add_kill then return end
     if unit and self._recorded_kill_units[unit] then return end
 
@@ -497,17 +519,19 @@ function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian, attack_in
         self._recorded_kill_units[unit] = true
     end
 
-    local special_enemy_kind = not is_civilian and self:GetSpecialEnemyKind(unit_id) or nil
+    local is_sentry = kill_source == "sentry"
+    local special_enemy_kind = not is_civilian and not is_sentry
+        and self:GetSpecialEnemyKind(unit_id) or nil
     local score = self:GetKillScore(unit_id, is_civilian)
     local special_banner = (special_enemy_kind == "dozer" or special_enemy_kind == "boss")
         and special_enemy_kind or nil
     -- Un civil ne fait progresser aucune série d'arme.
-    local weapon_family = not is_civilian
+    local weapon_family = not is_civilian and not is_sentry
         and self:GetKillWeaponFamily(attack_info)
         or nil
     -- Un civil ne décerne aucune médaille d'évènement, comme il ne fait
     -- progresser aucune série d'arme.
-    local kill_events = not is_civilian and event_info or nil
+    local kill_events = not is_civilian and not is_sentry and event_info or nil
     if kill_events then
         kill_events.overwatch = special_enemy_kind == "sniper"
             and weapon_family == "sniper"
@@ -519,7 +543,8 @@ function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian, attack_in
         special_banner,
         special_enemy_kind,
         weapon_family,
-        kill_events
+        kill_events,
+        kill_source
     )
 end
 
@@ -649,15 +674,19 @@ local function event_info(unit, headshot, is_civilian, info)
     return EVENT_INFO
 end
 
-local function record_kill(unit, is_civilian, info, headshot)
+local function record_kill(unit, is_civilian, info, headshot, kill_source)
     local unit_id = KH.GetKillUnitId and KH:GetKillUnitId(unit)
     local enemy_name = KH.GetKillDisplayName
         and KH:GetKillDisplayName(unit_id, is_civilian)
         or "Enemy"
-    local events = event_info(unit, headshot, is_civilian, info)
+    local events = kill_source ~= "sentry"
+        and event_info(unit, headshot, is_civilian, info)
+        or nil
 
     if KH.RecordScoredKill then
-        KH:RecordScoredKill(unit, unit_id, enemy_name, is_civilian, info, events)
+        KH:RecordScoredKill(
+            unit, unit_id, enemy_name, is_civilian, info, events, kill_source
+        )
     elseif KH.add_kill then
         KH:add_kill(enemy_name)
     end
@@ -676,7 +705,9 @@ if RequiredScript == "lib/managers/playermanager" then
     KH._flash_grenade_listener_uid = KH._flash_grenade_listener_uid or {}
 
     local function on_flash_grenade_destroyed(attacker_unit)
-        if not KH.IsLocalKillAttacker or not KH:IsLocalKillAttacker(attacker_unit) then
+        local kill_source = KH.GetLocalKillSource
+            and KH:GetLocalKillSource(attacker_unit)
+        if kill_source ~= "player" then
             return
         end
         if KH.ShowEventMedal then
@@ -735,7 +766,8 @@ if RequiredScript == "lib/managers/playermanager" then
             killed_unit,
             civilian_ok and is_civilian == true,
             attack_info(variant, nil, weapon_id),
-            headshot == true
+            headshot == true,
+            "player"
         )
     end)
 
@@ -747,8 +779,9 @@ elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
     -- déroulement de `die`.
     Hooks:PreHook(CopDamage, "die", "KH_OnEnemyDiePre", function(self, attack_data)
         if not attack_data then return end
-        if not KH.IsLocalKillAttacker
-                or not KH:IsLocalKillAttacker(attack_data.attacker_unit) then
+        local kill_source = KH.GetLocalKillSource
+            and KH:GetLocalKillSource(attack_data.attacker_unit)
+        if kill_source ~= "player" then
             return
         end
         if KH.ReadEnemyKillState then
@@ -765,7 +798,8 @@ elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
 
         local unit = self._unit
         local attacker = attack_data.attacker_unit
-        if not KH.IsLocalKillAttacker or not KH:IsLocalKillAttacker(attacker) then
+        local kill_source = KH.GetLocalKillSource and KH:GetLocalKillSource(attacker)
+        if not kill_source then
             -- Une cible de vengeance tuée par quelqu'un d'autre ne doit pas
             -- rester dans le set jusqu'au ramassage par le GC.
             if unit and KH._revenge_targets then
@@ -790,7 +824,23 @@ elseif RequiredScript == "lib/units/enemies/cop/copdamage" then
             attack_data.variant,
             attack_data.weapon_unit,
             id_ok and weapon_id or nil
-        ), attack_data.headshot == true)
+        ), attack_data.headshot == true, kill_source)
+    end)
+elseif RequiredScript == "lib/units/enemies/cop/huskcopdamage" then
+    Hooks:PostHook(HuskCopDamage, "die", "KH_OnClientSentryEnemyDie", function(self, attack_data)
+        if not Network:is_client() or not attack_data then return end
+
+        local kill_source = KH.GetLocalKillSource
+            and KH:GetLocalKillSource(attack_data.attacker_unit)
+        if kill_source ~= "sentry" then return end
+
+        local unit = self._unit
+        -- Le protocole sentry ne conserve pas un headshot fiable côté client.
+        record_kill(unit, false, attack_info(
+            attack_data.variant,
+            attack_data.weapon_unit,
+            nil
+        ), false, kill_source)
     end)
 end
 -- Lorsque ce fichier est chargé par dofile depuis ky_civilian_killfeed.lua

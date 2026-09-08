@@ -388,12 +388,26 @@ class CombatMedalTests(unittest.TestCase):
         self.lua.execute('''
             local seen = {}
             local labels = {}
-            for i = 1, 27 do
+            local sentry_medal_seen = false
+            local sentry_kill_seen = false
+            local shield_kill_seen = false
+            for i = 1, 28 do
                 kyohud:DebugSimulate(0)
                 local card = kyohud._medal_card
                 if card and card.event then
                     seen[card.event .. ':' .. tostring(card.tier_index or 0)] = true
                     labels[card.event] = card.label
+                end
+                if card and card.kind == 'sentry_kill' then
+                    sentry_medal_seen = card.label == '100 KILLS'
+                        and card.icon and card.icon.texture == 'resolved/equipment_sentry'
+                end
+                for _, kill in ipairs(kyohud._kills) do
+                    if kill.sentry and kill.sentry_icon
+                            and kill.sentry_icon.texture == 'resolved/equipment_sentry' then
+                        sentry_kill_seen = true
+                    end
+                    if kill.special_kind == 'shield' then shield_kill_seen = true end
                 end
             end
             for _, id in ipairs({
@@ -407,6 +421,9 @@ class CombatMedalTests(unittest.TestCase):
             for i = 1, 3 do assert(seen['rope:' .. i], 'preview missing rope tier ' .. i) end
             assert(labels.wall_bang == 'Wallbang x3',
                 'wall_bang preview did not show a multi-kill count')
+            assert(sentry_medal_seen, 'preview missing sentry kill medal')
+            assert(sentry_kill_seen, 'preview missing sentry killfeed card')
+            assert(shield_kill_seen, 'sentry preview removed the Shield kill card')
             assert(not seen['headshot:0'], 'old headshot preview')
             assert(not seen['run:0'], 'removed run preview')
         ''')
@@ -617,6 +634,192 @@ class CombatMedalTests(unittest.TestCase):
             assert(kyohud:IsLocalPlayerDowned())
         ''')
 
+    def test_local_sentry_owner_is_a_local_kill_source(self):
+        self.lua.execute('''
+            local remote_player = {}
+            local local_sentry = {
+                base = function()
+                    return {
+                        sentry_gun = true,
+                        get_owner = function() return local_player end,
+                    }
+                end,
+            }
+            local remote_sentry = {
+                base = function()
+                    return {
+                        sentry_gun = true,
+                        get_owner = function() return remote_player end,
+                    }
+                end,
+            }
+            assert(kyohud:GetLocalKillSource(local_sentry) == 'sentry',
+                'local sentry was not attributed to its owner')
+            assert(kyohud:GetLocalKillSource(remote_sentry) == nil,
+                'remote sentry was attributed to the local player')
+            assert(kyohud:GetLocalKillSource(local_player) == 'player',
+                'direct local player kill source changed')
+        ''')
+
+    def test_local_sentry_peer_survives_missing_player_unit(self):
+        self.lua.execute('''
+            local original_player_unit = managers.player.player_unit
+            managers.player.player_unit = function() return nil end
+            local sentry = {
+                base = function()
+                    return {
+                        sentry_gun = true,
+                        is_owner = function() return true end,
+                    }
+                end,
+            }
+            assert(kyohud:GetLocalKillSource(sentry) == 'sentry',
+                'local sentry was lost while its owner unit was unavailable')
+            managers.player.player_unit = original_player_unit
+        ''')
+
+    def test_sentry_killfeed_scores_without_player_combat_events(self):
+        self.lua.execute('''
+            kyohud:RecordScoredKill(enemy('tank'), 'tank', 'Bulldozer', false,
+                nil, {headshot=true, low_hp=true}, 'sentry')
+            local entry = kyohud._kills[#kyohud._kills]
+            assert(entry and entry.sentry == true, 'sentry kill card was not marked')
+            assert(entry.sentry_icon and entry.sentry_icon.texture == 'resolved/equipment_sentry',
+                'sentry icon was not resolved before draw')
+            assert(entry.score == 12 and kyohud._heist_score_total == 12,
+                'sentry kill did not add its normal score')
+            assert(kyohud._heist_kill_count == 1 and kyohud._sentry_kill_count == 1,
+                'sentry enemy kill did not advance both counters')
+            assert(kyohud._kill_combo.count == 0, 'sentry kill advanced multikill')
+            assert(kyohud._special_kill_banner == nil, 'sentry Dozer opened a priority banner')
+            assert(count_event('headshot') == 0 and count_event('low_hp') == 0
+                and count_event('first_blood') == 0,
+                'sentry kill emitted a player event medal')
+        ''')
+
+    def test_sentry_civilian_scores_without_advancing_kill_counters(self):
+        self.lua.execute('''
+            kyohud:RecordScoredKill(enemy('civilian'), 'civilian', 'Civilian', true,
+                nil, nil, 'sentry')
+            local entry = kyohud._kills[#kyohud._kills]
+            assert(entry and entry.sentry == true, 'sentry civilian card was not marked')
+            assert(entry.score == -25 and kyohud._heist_score_total == -25,
+                'sentry civilian penalty was not scored')
+            assert(kyohud._heist_kill_count == 0 and kyohud._sentry_kill_count == 0,
+                'sentry civilian advanced an enemy counter')
+            assert(kyohud._kill_combo.count == 0, 'sentry civilian advanced multikill')
+        ''')
+
+    def test_sentry_kill_medals_at_50_100_150_and_heist_reset(self):
+        self.lua.execute('''
+            for i = 1, 150 do
+                kyohud:RecordScoredKill(enemy('cop'), 'cop', 'Cop', false,
+                    nil, nil, 'sentry')
+            end
+            local sentry_labels = {}
+            for _, card in ipairs(cards) do
+                if card.kind == 'sentry_kill' then
+                    sentry_labels[#sentry_labels + 1] = card.label
+                    assert(card.icon and card.icon.texture == 'resolved/equipment_sentry',
+                        'sentry medal icon was not resolved')
+                end
+            end
+            assert(#sentry_labels == 3, 'expected three sentry medal tiers')
+            assert(sentry_labels[1] == '50 KILLS' and sentry_labels[2] == '100 KILLS'
+                and sentry_labels[3] == '150 KILLS', 'unexpected sentry medal labels')
+            assert(kyohud._heist_kill_count == 150 and kyohud._sentry_kill_count == 150,
+                'sentry totals did not reach 150')
+            assert(kyohud._kill_combo.count == 0, 'sentry series changed multikill')
+            kyohud:ResetWeaponStreaks()
+            assert(kyohud._sentry_kill_count == 150, 'down reset the sentry counter')
+            kyohud:ResetHeistCombatState()
+            assert(kyohud._sentry_kill_count == 0 and kyohud._sentry_kill_medal_index == 0,
+                'new heist did not reset sentry medals')
+        ''')
+
+    def test_host_sentry_kill_source_reaches_the_killfeed(self):
+        self.lua.execute('''
+            local sentry = {
+                base = function()
+                    return {
+                        sentry_gun = true,
+                        get_owner = function() return local_player end,
+                    }
+                end,
+            }
+            local target = enemy('cop')
+            Hooks.callbacks.KH_OnEnemyDie({_unit=target}, {
+                attacker_unit=sentry,
+                variant='bullet',
+            })
+            local entry = kyohud._kills[#kyohud._kills]
+            assert(entry and entry.sentry == true,
+                'host sentry source was lost before the killfeed')
+            assert(kyohud._heist_score_total == 1, 'host sentry kill was not scored')
+        ''')
+
+    def test_client_husk_sentry_hook_reaches_the_killfeed(self):
+        self.lua.execute('''
+            Hooks.callbacks = {}
+            HuskCopDamage = {die=function() end}
+            is_client = true
+        ''')
+        self.load('ky_killfeed.lua', 'lib/units/enemies/cop/huskcopdamage')
+        self.lua.execute('''
+            local sentry = {
+                base = function()
+                    return {
+                        sentry_gun = true,
+                        get_owner = function() return local_player end,
+                    }
+                end,
+            }
+            local target = enemy('cop')
+            assert(Hooks.callbacks.KH_OnClientSentryEnemyDie,
+                'client sentry death hook was not installed')
+            Hooks.callbacks.KH_OnClientSentryEnemyDie({_unit=target}, {
+                attacker_unit=sentry,
+                variant='bullet',
+            })
+            local entry = kyohud._kills[#kyohud._kills]
+            assert(entry and entry.sentry == true,
+                'client sentry source was lost before the killfeed')
+        ''')
+
+        import json
+        mod = json.loads((ROOT / 'mod.txt').read_text(encoding='utf-8-sig'))
+        hooks = {(hook['hook_id'], hook['script_path']) for hook in mod['hooks']}
+        self.assertIn(
+            ('lib/units/enemies/cop/huskcopdamage', 'lua/ky_killfeed.lua'),
+            hooks,
+        )
+
+    def test_sentry_civilian_hook_preserves_the_sentry_source(self):
+        self.lua.execute('''
+            Hooks.callbacks = {}
+            CivilianDamage = {_on_damage_received=function() end}
+        ''')
+        self.load('ky_civilian_killfeed.lua', 'lib/units/civilians/civiliandamage')
+        self.lua.execute('''
+            local sentry = {
+                base = function()
+                    return {
+                        sentry_gun = true,
+                        get_owner = function() return local_player end,
+                    }
+                end,
+            }
+            local target = enemy('civilian')
+            Hooks.callbacks.KH_OnCivilianDamageReceived({_unit=target}, {
+                attacker_unit=sentry,
+                result={type='death'},
+            })
+            local entry = kyohud._kills[#kyohud._kills]
+            assert(entry and entry.sentry == true,
+                'civilian hook discarded the sentry source')
+            assert(entry.score == -25, 'civilian sentry penalty changed')
+        ''')
+
     def test_exact_playerinventory_context_registration(self):
         self.lua.execute('Hooks.callbacks = {}')
         self.load('ky_playerinventory.lua', 'lib/units/beings/player/playerinventory')
@@ -626,6 +829,7 @@ class CombatMedalTests(unittest.TestCase):
         for context, expected in (
             ('lib/managers/playermanager', {'KH_OnLocalPlayerKillshot', 'KH_RegisterFlashGrenadeListener'}),
             ('lib/units/enemies/cop/copdamage', {'KH_OnEnemyDiePre', 'KH_OnEnemyDie'}),
+            ('lib/units/enemies/cop/huskcopdamage', {'KH_OnClientSentryEnemyDie'}),
             ('lib/units/civilians/civiliandamage', set()),
         ):
             self.lua.execute('Hooks.callbacks = {}')
@@ -678,6 +882,12 @@ class CombatMedalTests(unittest.TestCase):
             cb(nil)
             assert(count_event('no_flashbang') == medal_count + 1,
                 'nil attacker emitted no_flashbang medal')
+            cb({base=function() return {
+                sentry_gun=true,
+                get_owner=function() return local_player end,
+            } end})
+            assert(count_event('no_flashbang') == medal_count + 1,
+                'local sentry emitted a player event medal')
         ''')
 
     def test_no_flashbang_register_message_failure_and_retry(self):
