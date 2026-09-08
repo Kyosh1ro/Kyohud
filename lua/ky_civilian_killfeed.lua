@@ -14,7 +14,9 @@ end
 Hooks:PostHook(CivilianDamage, "_on_damage_received", "KH_OnCivilianDamageReceived", function(self, attack_data)
     local result = attack_data and attack_data.result
     if not result or result.type ~= "death" then return end
-    if not KH.IsLocalKillAttacker or not KH:IsLocalKillAttacker(attack_data.attacker_unit) then return end
+    local kill_source = KH.GetLocalKillSource
+        and KH:GetLocalKillSource(attack_data.attacker_unit)
+    if not kill_source then return end
 
     local unit = self._unit
     local unit_id = KH.GetKillUnitId and KH:GetKillUnitId(unit)
@@ -23,6 +25,6 @@ Hooks:PostHook(CivilianDamage, "_on_damage_received", "KH_OnCivilianDamageReceiv
         or "Civilian"
 
     if KH.RecordScoredKill then
-        KH:RecordScoredKill(unit, unit_id, civilian_name, true)
+        KH:RecordScoredKill(unit, unit_id, civilian_name, true, nil, nil, kill_source)
     end
 end)
