@@ -1,302 +1,107 @@
-r88 (08.09.2026):
+r20 (09.09.2026):
+-New combat medals: Air kill, Wallbang, No Flashbang, Hands off;
+-Support for sentry kills;
+-Fix Collateral medal;
+-Secure saving of settings;
+-Non-overlapping adaptive buff row.
+
+r19 (08.09.2026):
 - Spray Down now rewards four bullet kills within four seconds, once per magazine, and resets when the local weapon reloads.
 - Last Breath medals now have a 30-second cooldown to prevent repeated announcements during low-health kill streaks.
 - Hot Swap now tracks only weapon changes made by the local player.
 
-r87 (06.09.2026):
+r18 (06.09.2026):
 - Event medals now recognize first kills, assault openings, critical-state eliminations, enemy actions, penetration shots, Cloaker counters, revenge kills, flashbang kills, quick weapon swaps, sniper duels and long-distance shots.
 - Headshots now add a dedicated icon to their regular killfeed card, while weapon-streak medals keep their chevrons and event or cumulative medals use a cleaner icon-and-label frame.
 - Multikill banners now switch to electric cyan from five kills onward.
 - Temporary buff timers now use the correct application clock, and combat tracking remains consistent when the killfeed is hidden or previews are cleared.
 
-r86 (04.09.2026):
+r17 (04.09.2026):
 - Selected buffs now use localized compact labels, with Inspire states identified above their icons and composite stat labels placed below instead of redundant timers.
 - Buff cells now use open-top cyan tactical frames, bottom-weighted shading and color-coded timed perimeter progress with clearer warning and critical states.
 - Cumulative enemy kills now award per-heist medals at 50, 75, 100, 150, 200, 300, 400 and 500 kills in the shared killfeed medal row.
 
-r85 (03.09.2026):
+r16 (03.09.2026):
 - Akimbo weapons and poison kills now have dedicated weapon-family streak medals with localized tier announcements.
 - Weapon-family streaks now expire independently after the combo window, allowing their medal tiers to be earned again during the same heist.
 - The heist score values now use a consistent 20-pixel font with roomier row spacing for clearer readability.
 - The total-score widget now uses a dedicated compact tactical frame, with the best streak displayed inline.
 - Development-only hook and killfeed load messages have been removed from the SuperBLT log.
 
-r84 (01.09.2026):
-- A persistent heist score widget now tracks the total combat score, including civilian penalties, and the best continuous scoring streak after killfeed cards expire.
-- The score widget can be toggled, its Best Streak line can be hidden separately, and its horizontal and vertical positions are configurable.
-- Combat-score inspiration and source lineage now credit Joy's Score Counter while documenting KyoHUD's independent detection, attribution, rendering, and state management.
-
-r83 (01.09.2026):
+r15 (01.09.2026):
+- A persistent heist score widget now tracks the total combat score (including civilian penalties) and the best continuous scoring streak; it can be toggled, its Best Streak line hidden separately, and its position configured. Inspiration credited to Joy's Score Counter.
 - Buffs, killfeed cards, combat score, banners, combos, and weapon streaks now reset cleanly between heists and after previews.
-- Buff detection is more resilient without VanillaHUD Plus, while passive health-regeneration updates avoid redundant work and use the local minion count reliably.
-- The killfeed vertical-offset slider now covers only its effective 128-291 range, with existing settings migrated automatically.
-- Debug-facing preview controls now use release-ready labels, and multikill labels remain stable while special banners are displayed.
-- Source lineage is now documented, and the release workflow replaces its opaque hash executable with a tested, standard-library Python implementation.
+- Buff detection is more resilient without VanillaHUD Plus, and the killfeed vertical-offset slider now covers only its effective 128-291 range with existing settings migrated automatically.
+- Debug preview controls now use release-ready labels, source lineage is documented, and the release workflow uses a tested Python hash implementation.
 
-r82 (27.08.2026):
+r14 (27.08.2026):
 - The killfeed can now display up to five cards while preserving chronological order and adaptive horizontal spacing.
 - The icon-size slider now ranges from 32 to 40 pixels and keeps 32 pixels as its default.
 - The public Display Duration option has been removed; killfeed cards and unknown temporary durations use an internal five-second fallback.
 
-r81 (26.08.2026):
+r13 (26.08.2026):
 - Multikill banners now fill mirrored chevrons with each additional kill.
 - Weapon-family streaks now award tiered medals for shotguns, sniper rifles, incendiary kills, melee kills, and explosives.
 - Weapon medals use a dedicated full-width killfeed row while the score and latest eliminated-unit names remain visible below.
 
-r80 (25.08.2026):
+r12 (25.08.2026):
 - Buff frames now change color as they approach expiration, with warning and critical states.
+- Killfeed detection and combat scoring are consolidated into a single script (preserving the separate host, client, and civilian paths), and all runtime Lua scripts are organized under the `lua/` directory.
+- Killstreak x10 renamed from "DECADE OF DESTRUCTION" to "DECADE OF DOOM", consistent across the menu and localization files.
 
-r79 (25.08.2026):
-- Killfeed detection and combat scoring are now consolidated in a single script while preserving the separate host, client, and civilian paths.
-- All runtime Lua scripts are now organized under the `lua/` directory, with SuperBLT hooks and internal loaders updated accordingly.
-- The default buff-row position and the internal "DECADE OF DOOM" fallback are now consistent with the menu and localization files.
-
-r78 (25.08.2026):
-- Killstreak x10 : DECADE OF DESTRUCTION changed to DECADE OF DOOM
-
-r77 (24.08.2026):
-- Sliders in options fixed
-
-r76 (24.08.2026):
+r11 (24.08.2026):
 - GitHub releases now automatically receive the `latest.zip` archive and hashed SuperBLT metadata required for in-game updates.
+- Fixed the options sliders.
 
-r75 (23.08.2026):
-- Boss eliminations now use the same orange priority-target banner and special killfeed card as Bulldozers, with a dedicated "BOSS ELIMINATED" announcement.
-
-r74 (23.08.2026):
+r10 (23.08.2026):
+- The language selector now appears first in the menu and offers AUTO Detection, English, or French, with English as the fallback.
 - SuperBLT can now detect and download new KyoHUD releases automatically from the public GitHub repository.
+- Boss eliminations now use the orange priority-target banner and special killfeed card, with a dedicated "BOSS ELIMINATED" announcement.
+- Multikill announcements now rotate between three complete label sets whenever a combo resets, and the README and changelog are now written in English.
 
-r73 (23.08.2026):
-- Multikill announcements now rotate between three complete label sets whenever a combo resets.
-
-r72 (23.08.2026):
-- The README and changelog are now written in English, and the README highlights the local-player killfeed and combat announcements before buffs.
-
-r71 (23.08.2026):
-- The language selector now appears first in the menu and offers AUTO Detection, English, or French, with English as the fallback language.
-
-r70 (21.08.2026):
+r9 (21.08.2026):
 - Kyosh1ro HUD is now KyoHUD - Killfeed & Combat Score, with `kyohud` as its internal identifier and automatic migration of existing settings.
 
-r69 (20.08.2026):
-- The Hacker perk deck now keeps its icon in the first slot, displays the number of available Pocket ECMs above it, and places their recharge cooldown next to it.
+r8 (20.08.2026):
+- Buff cells were reworked into lighter, clearly separated tactical cells: subtle black background, corner accents, a glowing outline that drains around the icon in proportion to remaining duration, and a styled bottom bar.
+- The options menu is now organized from JSON files, with buff filters grouped into a dedicated submenu, and a README was added.
+- A fresh installation now detects Void UI and VanillaHUD+ to align the buff row and the multikill/killfeed block with their default positions.
+- Perk-deck buffs now surface in the first slot: Confident's Joker counter, Anarchist's armor-break invulnerability, and the Hacker deck's Pocket ECM count and recharge cooldown.
 
-r68 (20.08.2026):
-- With the Anarchist perk deck equipped, armor-break invulnerability now replaces the deck icon in the first slot while active.
+r7 (19.08.2026):
+- Kill streaks from 2 to 10 now have distinct announcements, followed by "KILL CHAIN xN" from the eleventh kill onward.
+- Special enemies (Bulldozers, Medics, Cloakers, Tasers, Shields, Snipers) now use distinct tactical frames with unique announcements ("KILLDOZER", "TANK BUSTER", ...) and an `xN` counter for consecutive same-type eliminations.
+- Special-kill frames fit their width to the slogan and score, and the banner and killfeed reserve room for their tactical brackets.
+- The cumulative elimination score now appears as a compact tactical card to the left of the killfeed, amber-tinted (red when negative), updating with each card and resetting when the last expires.
 
-r67 (20.08.2026):
-- Confident now remains visible when equipped and enabled in the options, with a `0/1` or `0/2` Joker counter depending on the build's conversion capacity.
+r6 (18.08.2026):
+- Each buff type now has a distinct color drawn from the Kyosh1ro palette, which stays active even with VanillaHUD+ installed.
+- Buffs now display their values (including passive health regeneration), and the buff row opens with seven static slots (equipped perk deck, regenerations, cooldowns, damage modifiers) followed by other buffs chronologically.
+- Priority indicators stay hidden while inactive, the equipped perk deck holds the first slot and gives way to its active effect, and AI-teammate buffs show an `[AI]` marker.
+- Each eliminated unit now shows its points in the killfeed (with civilian penalties), frames fit their width to the name and score, and local eliminations are detected even when joining another player's game.
 
-r66 (20.08.2026):
-- The standard configuration now aligns the buff row with VanillaHUD+'s original buff-list position by default.
-
-r65 (20.08.2026):
-- The bottom bar of buff cells has been refined to 1 px.
-
-r64 (20.08.2026):
-- The bottom bar of buff cells now uses the same 2 px thickness as the sides of killfeed cards.
-
-r63 (20.08.2026):
-- Buff cells replace their corners and chevrons with three thin top segments and a wider, thicker bottom bar styled after the multikill banner.
-
-r62 (20.08.2026):
-- Buff cells now stand apart from VanillaHUD+ frames with a thick tactical bar and chevrons along their bottom edge.
-
-r61 (20.08.2026):
-- A fresh installation now detects VanillaHUD+ when active and aligns the buff row with its original buff-list position by default.
-
-r60 (20.08.2026):
-- A fresh installation now detects Void UI when active and automatically adjusts the default placement of the buffs and multikill/killfeed block.
-
-r59 (20.08.2026):
-- Added a README with a concise overview of the mod, its features, installation, and configuration.
-
-r58 (20.08.2026):
-- The options menu is now organized from JSON files: primary settings remain directly accessible, while buff filters are grouped into a dedicated submenu.
-
-r57 (20.08.2026):
-- Temporary buffs now have a glowing outline that drains around their icon in precise proportion to their remaining duration.
-
-r56 (20.08.2026):
-- Buffs now use lighter, clearly separated cells with a subtle black background and small corner accents that prioritize icons and timers.
-
-r55 (19.08.2026):
-- The cumulative score now uses a compact card matching the killfeed's height, with a width fitted to its value and the same highlighted tactical frame.
-
-r54 (19.08.2026):
-- The cumulative killfeed score now uses a tactical hexagonal frame and amber tint, while a negative total remains highlighted in red.
-
-r53 (19.08.2026):
-- The cumulative score from eliminations now appears in red to the left of the killfeed, updates with every new card, and resets to zero when the final card expires.
-
-r52 (19.08.2026):
-- Bulldozers now also use colored killfeed announcements with "TANK BUSTER," "ARMOR BREAKER," "HEAVY DOWN," or "I'VE GOT THE BIG GUY," along with a dedicated `xN` counter.
-
-r51 (19.08.2026):
-- Special kills now use the regular killfeed's compact frame to prevent overlap while retaining their colors, slogans, and colored text.
-
-r50 (19.08.2026):
-- The multikill banner and killfeed frames now reserve room for their protruding tactical brackets, preserving 1.5 px of visible spacing between them.
-
-r49 (19.08.2026):
-- Special-kill frames now fit their width to the slogan and score, like regular kills, to maintain a compact row.
-
-r48 (19.08.2026):
-- Medics, Cloakers, Tasers, Shields, and Snipers now use a distinct tactical frame as wide as the multikill banner, with unique announcements and an `xN` counter for consecutive eliminations of the same type.
-
-r47 (19.08.2026):
-- Eliminating a Bulldozer now cycles through "KILLDOZER," "DOZER DOWN," or "BULLDOZED" in the large tactical banner before returning it to the active multikill announcement.
-
-r46 (19.08.2026):
-- Streaks from 2 to 10 kills now have distinct announcements matching the Kyosh1ro HUD identity, followed by "KILL CHAIN xN" from the eleventh kill onward.
-
-r45 (18.08.2026):
-- The Kyosh1ro palette now remains active when VanillaHUD+ is installed; its color settings no longer override the mod's colors.
-
-r44 (18.08.2026):
-- The killfeed now detects local-player eliminations when joining a game hosted by another player.
-
-r43 (18.08.2026):
-- Each killfeed frame now fits its width to the unit name and score, while the row remains centered and tightens when necessary.
-
-r42 (18.08.2026):
-- Every eliminated unit now displays its points next to its name in the killfeed, using a multiplier appropriate to the difficulty.
-- Civilians killed by the player or their projectiles appear with a penalty and do not contribute to kill streaks.
-
-r41 (18.08.2026):
-- Buffs granted by AI teammate skills now display an `[AI]` marker above their icon.
-
-r40 (18.08.2026):
-- The equipped perk deck keeps the first slot as a placeholder and gives way to its perk-deck buff when an associated effect becomes active.
-- The matching accounts for the selected deck, custom decks based on an existing deck, and filters in the "Perk Deck Buffs" category.
-
-r39 (18.08.2026):
-- Priority regeneration, cooldown, and damage indicators no longer appear while inactive; their order remains fixed when they appear.
-- The equipped perk deck remains in the first slot, and other active buffs continue to be added to its right.
-
-r38 (18.08.2026):
-- Added seven static slots at the start of the buff row: equipped perk deck, passive health regeneration, standard armor regeneration, armor-break cooldown, damage increase, damage reduction, and melee damage increase.
-- Other buffs continue to be added chronologically to the right of the static slots.
-
-r37 (18.08.2026):
-- Created the changelog and reconstructed revisions r1 through r36.
-- Adopted revision-based versioning in `mod.txt`.
-
-r36 (18.08.2026):
-- Added value displays for all supported buffs.
-
-r35 (18.08.2026):
-- Added a value display for passive health regeneration.
-
-r34 (18.08.2026):
-- Added the Kyosh1ro color palette for buffs.
-
-r33 (18.08.2026):
-- Added a distinct color for each buff type.
-
-r32 (17.08.2026):
-- Displayed the killfeed as a horizontal row.
-- Added documentation safeguards to preserve horizontal rendering during merges.
-
-r31 (17.08.2026):
+r5 (17.08.2026):
+- Added autonomous detection of temporary buffs, cooldowns, and regeneration effects exposed by PAYDAY 2 and VanillaHUD+, with dynamic icon resolution and a fallback texture.
+- Buffs and the killfeed are now laid out as configurable horizontal rows, with a killfeed limit of 1, 2, or 3 entries and harmonized frames.
 - Removed the gray killfeed square and reworked its frame.
+- Fixed the Hostage Taker healing cycle and several buff mappings; removed the unavailable Iron Man and duplicate Inspire options and added Endurance.
 
-r30 (17.08.2026):
-- Restored horizontal buffs and their options after a merge.
-- Added rules for creating new branches from an up-to-date base.
+r4 (16.08.2026):
+- Added double-kill, triple-kill, and subsequent kill-streak banners with tactical styling.
+- Buffs and the killfeed now use a circular arc layout with fixed spacing and corrected kill positioning.
+- Added persistent buff and kill simulations to the debug tools.
 
-r29 (17.08.2026):
-- Added a configurable killfeed limit of 1, 2, or 3 entries.
-
-r28 (17.08.2026):
-- Replaced the buff arc with a configurable horizontal row.
-
-r27 (17.08.2026):
-- Restored the compact buff frame after a merge conflict.
-
-r26 (17.08.2026):
-- Harmonized the buff frames and kill-streak banner.
-
-r25 (17.08.2026):
-- Added autonomous detection of temporary buffs, cooldowns, and regeneration effects exposed by PAYDAY 2 and VanillaHUD+.
-- Added dynamic icon resolution with a fallback texture.
-- Fixed the Hostage Taker healing cycle and several buff mappings.
-- Removed the unavailable Iron Man option and duplicate Inspire option; added Endurance.
-- Removed repetitive position logs.
-
-r24 (17.08.2026):
-- Added tactical styling to the kill-streak banner.
-
-r23 (16.08.2026):
-- Added double-kill, triple-kill, and subsequent streak banners.
-
-r22 (16.08.2026):
-- Fixed kill positioning in the left-side arc.
-
-r21 (16.08.2026):
-- Removed the old `2026_04_04_log.txt` diagnostic file.
-
-r20 (16.08.2026):
-- Added persistent kill simulation to the debug tools.
-
-r19 (16.08.2026):
-- Added persistent buff simulation to the debug tools.
-
-r18 (16.08.2026):
-- fix circular buff
-
-r17 (16.08.2026):
-- Fixed circular spacing for buffs and the killfeed.
-
-r16 (16.08.2026):
-- fix
-
-r15 (12.07.2026):
+r3 (12.07.2026):
 - Added option persistence and fixed French-language loading.
 - Added the killfeed and buff-duration setting.
 - Removed automatic activation of debug mode.
 
-r14 (04.04.2026):
+r2 (04.04.2026):
+- Reworked the options menu with per-category and individual buff-selection submenus, including descriptions.
+- Fixed several menu and load-order issues (CoreMenuItemToggle crash, submenus not appearing, catalog load order).
 - Fixed the language fallback that forced English instead of French.
 
-r13 (04.04.2026):
-- Loaded the catalog before the options and shared it with the HUD, hooks, and localization.
-
-r12 (04.04.2026):
-- Fixed the load order that prevented buff submenus from being created.
-
-r11 (04.04.2026):
-- Fixed the CoreMenuItemToggle crash.
-- Added descriptions to selection options.
-
-r10 (04.04.2026):
-- Completed a second revision of the individual buff-selection submenus.
-
-r9 (04.04.2026):
-- Created the individual buff-selection submenus.
-
-r8 (04.04.2026):
-- Reworked the options menu.
-- Temporarily enabled all buffs for debugging and adjusted HUD element spacing.
-
-r7 (04.04.2026):
-- Fixed the menu not appearing in-game with multiple submenus.
-
-r6 (03.04.2026):
-- Added fallbacks for menu descriptions and individual buff options.
-
-r5 (03.04.2026):
-- Updated localizations and added fallbacks for new keys.
-
-r4 (03.04.2026):
-- Replaced `pick_icon` with the `KH.BUFF_MAP` catalog and `KH.UPGRADE_TO_BUFF` mappings.
-
-r3 (03.04.2026):
-- Added filtering options by category and individual buff.
-
-r2 (03.04.2026):
-- Imported the icon catalog inspired by VanillaHUD+.
-- Added an initial complete buff map and individual buff selection.
-
 r1 (03.04.2026):
-- Mod created
+- Mod created, with an icon catalog inspired by VanillaHUD+ and an initial buff map.
+- Added filtering by category and individual buff, backed by the `KH.BUFF_MAP` catalog and `KH.UPGRADE_TO_BUFF` mappings.
+- Added localizations and fallbacks for menu descriptions and buff options.
