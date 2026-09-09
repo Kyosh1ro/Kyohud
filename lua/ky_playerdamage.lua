@@ -1,4 +1,4 @@
--- ky_playerdamage.lua — Détection autonome de la régénération passive
+-- ky_playerdamage.lua — Autonomous detection of passive regeneration
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -20,9 +20,7 @@ local function remember_pending_attacker(player_damage)
     remember_revenge_target(player_damage and player_damage._kh_revenge_attacker)
 end
 
--- Les dégâts qui font tomber le joueur appellent `on_downed` pendant leur
--- exécution. Le candidat est posé avant l'appel moteur puis retiré après afin
--- qu'un dégât non fatal ne puisse contaminer une chute ultérieure.
+-- Damage that downs the player calls `on_downed` during execution. The candidate is stored before the engine call and removed afterward so non-fatal damage cannot contaminate a later down.
 for _, method in ipairs({
     "damage_bullet", "damage_melee", "damage_explosion", "damage_fire",
     "damage_fire_hit", "damage_simple", "damage_killzone",
@@ -37,7 +35,7 @@ for _, method in ipairs({
     end
 end
 
--- `damage_tase` conserve officiellement l'attaque dans `tase_data()`.
+-- `damage_tase` officially retains the attack in `tase_data()`.
 if type(PlayerDamage.damage_tase) == "function" then
     Hooks:PostHook(PlayerDamage, "damage_tase", "KH_RevengeRememberTase", function(player_damage)
         local ok, data = pcall(function() return player_damage:tase_data() end)
@@ -48,7 +46,7 @@ end
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
     pcall(function()
-        log("[KyoHUD][Regen] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
+        log("[KyoHUD][Regen] Buff catalog load error: " .. tostring(catalog_err))
     end)
 end
 
@@ -83,7 +81,7 @@ local function is_full_health(player_damage)
     local ok, value = pcall(function()
         return player_damage:full_health()
     end)
-    -- En cas d'API indisponible, ne pas afficher un faux buff permanent.
+    -- If the API is unavailable, do not display a fake permanent buff.
     return not ok or value == true
 end
 
@@ -120,9 +118,7 @@ local function emit(event, source_id, duration, value)
     end
 end
 
--- Champ privé KyoHUD porté par l'instance PlayerDamage : dernier état de santé
--- réellement observé par la régénération passive. `nil` tant qu'aucun
--- rafraîchissement n'a eu lieu, afin que la première observation émette toujours.
+-- Private KyoHUD field carried by the PlayerDamage instance: last health state actually observed by passive regeneration. `nil` until any refresh has occurred, so that the first observation always emits.
 local HEALTH_STATE_FIELD = "_kh_passive_regen_injured"
 
 local function refresh_passive_regen(player_damage, injured)
@@ -131,8 +127,7 @@ local function refresh_passive_regen(player_damage, injured)
     if injured == nil then
         injured = not is_full_health(player_damage)
     end
-    -- Tout chemin de rafraîchissement explicite met l'état en cache à jour :
-    -- un set_health suivant sur le même état ne refera donc pas le travail.
+    -- Any explicit refresh path updates the cached state: a subsequent set_health on the same state will therefore not redo the work.
     player_damage[HEALTH_STATE_FIELD] = injured
 
     local duration = tonumber(player_damage._health_regen_update_timer)
@@ -163,13 +158,8 @@ function KH:RefreshPassiveHealthRegen()
     end
 end
 
--- ── Chute du joueur : remise à zéro des séries d'arme ──
--- Les compteurs de médailles ne survivent pas à une mise à terre. Seuls les
--- évènements de PlayerDamage sont utilisés, jamais les accesseurs d'état :
--- `bleed_out()`, `incapacitated()` et `arrested()` renvoient simplement l'état
--- courant et sont interrogés en boucle, ce qui déclencherait un reset permanent.
--- `on_downed`, `on_incapacitated` et `on_arrested` sont eux appelés une fois à
--- l'entrée dans chaque état (voir les annotations de
+-- ── Player down: reset weapon streaks ──
+-- Medal counters do not survive a player down. Only PlayerDamage events are used, never state accessors: `bleed_out()`, `incapacitated()` and `arrested()` simply return the current state and are queried in a loop, which would trigger a permanent reset. `on_downed`, `on_incapacitated` and `on_arrested` are called once upon entering each state (see annotations of
 -- `lib/units/beings/player/playerdamage`).
 local PLAYER_DOWN_EVENTS = { "on_downed", "on_incapacitated", "on_arrested" }
 
@@ -180,8 +170,7 @@ local function reset_weapon_streaks(player_damage)
 end
 
 for _, event in ipairs(PLAYER_DOWN_EVENTS) do
-    -- Ne rien enrober si la méthode n'existe pas dans cette version du jeu :
-    -- un PostHook sur une méthode absente créerait une fonction fantôme.
+    -- Do not wrap anything if the method does not exist in this game version: a PostHook on an absent method would create a ghost function.
     if type(PlayerDamage[event]) == "function" then
         Hooks:PostHook(
             PlayerDamage,
@@ -191,16 +180,13 @@ for _, event in ipairs(PLAYER_DOWN_EVENTS) do
         )
     else
         pcall(function()
-            log("[KyoHUD][Streak] PlayerDamage:" .. event .. "() absent, reset non installé.")
+            log("[KyoHUD][Streak] PlayerDamage:" .. event .. "() missing, reset not installed.")
         end)
     end
 end
 
--- `set_health` est appelé en boucle (soins, dégâts, régénération). Ne rafraîchir
--- que lorsque l'état blessé/plein change réellement : les indicateurs de
--- régénération passive ne dépendent que de ce booléen, et le HUD fait lui-même
--- le compte à rebours. Le redémarrage du cycle reste couvert par
--- `_upd_health_regen`, et les otages par `PlayerManager:update_hostage_situation`.
+-- `set_health` is called in a loop (healing, damage, regeneration). Refresh only when the injured/full state actually changes: passive regeneration indicators depend only on that boolean, and the HUD handles its own countdown. The cycle restart remains covered by
+-- `_upd_health_regen`, and hostages by `PlayerManager:update_hostage_situation`.
 Hooks:PostHook(PlayerDamage, "set_health", "KH_RefreshPassiveRegenOnHealth", function(player_damage)
     if KH._gameinfo_bridge_active or not player_damage then return end
 
@@ -219,8 +205,7 @@ Hooks:PostHook(PlayerDamage, "_upd_health_regen", "KH_RefreshPassiveRegenTimer",
     local current = tonumber(player_damage._health_regen_update_timer)
     player_damage._kh_previous_health_regen_timer = nil
 
-    -- Le HUD fait lui-même le compte à rebours. Une mise à jour n'est donc
-    -- nécessaire qu'au redémarrage du cycle de soin.
+    -- The HUD handles its own countdown. Therefore, an update is only necessary upon restarting the healing cycle.
     if current and current > previous then
         refresh_passive_regen(player_damage)
     end

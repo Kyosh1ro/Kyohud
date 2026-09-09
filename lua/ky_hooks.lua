@@ -1,4 +1,4 @@
--- ky_hooks.lua — Hooks sur PlayerManager pour détecter les buffs et les kills
+-- ky_hooks.lua — Hooks on PlayerManager to detect buffs and kills
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
 local KH = kyohud
@@ -7,7 +7,7 @@ local MY_MOD_PATH = ModPath
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
     pcall(function()
-        log("[KyoHUD][Hooks] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
+        log("[KyoHUD][Hooks] Buff catalog load error: " .. tostring(catalog_err))
     end)
 end
 
@@ -20,18 +20,18 @@ local DEFAULT_TEMPORARY_BUFF_DURATION = 5
 KH._unknown_temp_upgrades = KH._unknown_temp_upgrades or {}
 
 -- ═══════════════════════════════════════════════════
--- Récupération de la durée d'un upgrade temporaire
+-- Retrieve duration of a temporary upgrade
 -- ═══════════════════════════════════════════════════
 local function get_temp_duration(pm, upgrade)
-    -- Méthode 1 : lire l'expire_time écrit par activate_temporary_upgrade
-    -- (on est en PostHook, l'entrée existe déjà) → temps restant exact
+    -- Method 1: read expire_time written by activate_temporary_upgrade
+    -- (we are in PostHook, the entry already exists) → exact remaining time
     local ok1, remaining = pcall(function()
         local entry = pm._temporary_upgrades
             and pm._temporary_upgrades.temporary
             and pm._temporary_upgrades.temporary[upgrade]
         if entry and entry.expire_time then
-            -- PlayerManager écrit cette expiration avec Application:time().
-            -- Seule la durée résultante est ensuite convertie en timer HUD.
+            -- PlayerManager writes this expiration with Application:time().
+            -- Only the resulting duration is then converted to a HUD timer.
             return entry.expire_time - Application:time()
         end
         return nil
@@ -40,7 +40,7 @@ local function get_temp_duration(pm, upgrade)
         return remaining
     end
 
-    -- Méthode 2 : upgrade_value retourne un tableau { valeur, durée }
+    -- Method 2: upgrade_value returns an array { value, duration }
     local ok2, v2 = pcall(function()
         return pm:upgrade_value("temporary", upgrade, nil)
     end)
@@ -48,7 +48,7 @@ local function get_temp_duration(pm, upgrade)
         return tonumber(v2[2])
     end
 
-    -- Méthode 3 : durée de secours interne
+    -- Method 3: internal fallback duration
     return DEFAULT_TEMPORARY_BUFF_DURATION
 end
 
@@ -60,8 +60,8 @@ local function get_temp_value(pm, category, upgrade)
     end)
     if ok1 and tonumber(value) then return tonumber(value) end
 
-    -- Repli pour les versions où upgrade_value expose directement la
-    -- définition { valeur, durée } de l'upgrade temporaire.
+    -- Fallback for versions where upgrade_value exposes directly the
+    -- { value, duration } definition of the temporary upgrade.
     local ok2, definition = pcall(function()
         return pm:upgrade_value(category, upgrade, nil)
     end)
@@ -72,7 +72,7 @@ local function get_temp_value(pm, category, upgrade)
 end
 
 -- ═══════════════════════════════════════════════════
--- Hook : Activation de buff temporaire
+-- Hook: Temporary buff activation
 -- ═══════════════════════════════════════════════════
 local function on_temporary_upgrade_activated(pm, category, upgrade)
     if category ~= "temporary" or not upgrade then return end
@@ -82,7 +82,7 @@ local function on_temporary_upgrade_activated(pm, category, upgrade)
     if #targets == 0 then
         if not KH._unknown_temp_upgrades[upgrade] then
             KH._unknown_temp_upgrades[upgrade] = true
-            HLOG("Buff temporaire non catalogué (ignoré une seule fois): " .. tostring(upgrade))
+            HLOG("Uncatalogued temporary buff (ignored once): " .. tostring(upgrade))
         end
         return
     end
@@ -137,7 +137,7 @@ if PlayerManager.disable_cooldown_upgrade then
 end
 
 -- ═══════════════════════════════════════════════════
--- Hook : Désactivation de buff temporaire
+-- Hook: Deactivation of temporary buff
 -- ═══════════════════════════════════════════════════
 Hooks:PostHook(PlayerManager, "deactivate_temporary_upgrade", "KH_OnBuffOff", function(pm, category, upgrade)
     if category ~= "temporary" or not upgrade then return end
@@ -161,5 +161,5 @@ if PlayerManager.update_hostage_situation then
     end)
 end
 
--- Le killfeed (hook CopDamage:die) vit dans ky_killfeed.lua, accroché à
--- lib/units/enemies/cop/copdamage : CopDamage n'existe pas encore ici.
+-- The killfeed (hook CopDamage:die) lives in ky_killfeed.lua, hooked to
+-- lib/units/enemies/cop/copdamage: CopDamage does not exist here yet.

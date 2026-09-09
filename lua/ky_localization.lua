@@ -1,14 +1,13 @@
--- ky_localization.lua — Chargement des traductions + fallbacks
+-- ky_localization.lua — Translation loading + fallbacks
 local MOD_NAME = "KyoHUD"
 
--- IMPORTANT : capturer ModPath immédiatement à l'exécution du fichier,
--- car le global ModPath sera écrasé par BLT quand d'autres mods se chargent.
+-- IMPORTANT: capture ModPath immediately upon file execution, as the global ModPath will be overwritten by BLT when other mods load.
 local MY_MOD_PATH = ModPath
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
     pcall(function()
-        log("[" .. MOD_NAME .. "][Loc] Erreur chargement catalogue buffs: " .. tostring(catalog_err))
+        log("[" .. MOD_NAME .. "][Loc] Buff catalog loading error: " .. tostring(catalog_err))
     end)
 end
 
@@ -16,10 +15,10 @@ local function logi(msg)
     pcall(function() log("[" .. MOD_NAME .. "][Loc] " .. tostring(msg)) end)
 end
 
--- Fallbacks intégrés pour garantir aucun "ERROR:" dans les menus
+-- Built-in fallbacks to ensure no "ERROR:" appears in menus
 local function add_fallbacks(loc)
     loc:add_localized_strings({
-        -- Menu principal
+        -- Main menu
         ky_menu_title = "KyoHUD - Killfeed & Combat Score",
         ky_menu_desc  = "Customizable buffs, killfeed, kill streaks and combat score",
 
@@ -66,7 +65,7 @@ local function add_fallbacks(loc)
         ky_hud_score_best_streak = "BEST STREAK",
         ky_hud_score_best_short  = "BEST",
 
-        -- Libellés dessinés au-dessus de l'icône d'un buff
+        -- Labels drawn above a buff icon
         ky_hud_buff_label_inspire_cooldown = "Boost+",
         ky_hud_buff_label_inspire_revive   = "Revive",
         ky_hud_buff_label_damage_increase  = "Dmg+",
@@ -75,7 +74,7 @@ local function add_fallbacks(loc)
         ky_hud_buff_label_health_regen     = "HP+",
         ky_hud_buff_label_dodge_chance     = "Dodge",
 
-        -- Bandeau des séries de kills
+        -- Kill streak banner
         ky_hud_combo_2     = "CLEAN PAIR",
         ky_hud_combo_2_2   = "DOUBLE TAP",
         ky_hud_combo_2_3   = "TWO FOR ONE",
@@ -129,8 +128,7 @@ local function add_fallbacks(loc)
         ky_hud_sniper_scope_breaker  = "SCOPE BREAKER",
         ky_hud_sniper_longshot_denied = "LONGSHOT DENIED",
 
-        -- Paliers des séries par famille d'arme. Comme les autres libellés de
-        -- bandeau, ces médailles restent en anglais dans les deux langues.
+        -- Streak tiers by weapon family. Like other banner labels, these medals remain in English for both languages.
         ky_hud_streak_shotgun_5      = "SHOTGUN SPREE",
         ky_hud_streak_shotgun_10     = "OPEN SEASON",
         ky_hud_streak_shotgun_15     = "BUCK WILD",
@@ -154,17 +152,16 @@ local function add_fallbacks(loc)
         ky_hud_streak_explosive_5    = "DEMOLITION",
         ky_hud_streak_explosive_8    = "BLAST ZONE",
 
-        -- Médaille des kills cumulés du braquage. Une seule clé : l'icône du
-        -- buff de dégâts tient lieu de nom et le palier atteint la précède.
+        -- Heist cumulative kill medal. A single key: the damage buff icon serves as the name, and the tier reached precedes it.
         ky_hud_kill_medal_kills      = "KILLS",
 
-        -- Médailles d'évènement, décernées sur les conditions du kill lui-même.
+        -- Event medals, awarded based on the kill conditions themselves.
         ky_hud_event_medal_first_strike = "First Strike",
         ky_hud_event_medal_grave     = "Grave",
         ky_hud_event_medal_low_hp    = "Last Breath",
         ky_hud_event_medal_reload    = "Reload This",
         ky_hud_event_medal_through_shield = "Through the Shield",
-        ky_hud_event_medal_one_shot_two_kills = "One Shot Two Kills",
+        ky_hud_event_medal_one_shot_two_kills = "Collateral",
         ky_hud_event_medal_revenge   = "Revenge",
         ky_hud_event_medal_bulltrue  = "Bulltrue",
         ky_hud_event_medal_showstopper = "Showstopper",
@@ -177,8 +174,12 @@ local function add_fallbacks(loc)
         ky_hud_event_medal_overwatch = "Overwatch",
         ky_hud_event_medal_long_shot = "Long Shot",
         ky_hud_event_medal_spray_down = "Spray Down",
+        ky_hud_event_medal_no_flashbang = "No Flashbang",
+        ky_hud_event_medal_air_kill  = "Air Kill",
+        ky_hud_event_medal_wall_bang = "Wallbang",
+        ky_hud_event_medal_loot_carrier = "Hands Off",
 
-        -- Catégories
+        -- Categories
         ky_opt_cat_mastermind           = "Mastermind",
         ky_opt_cat_mastermind_desc      = "Show/hide all Mastermind buffs",
         ky_opt_cat_mastermind_buffs     = "Mastermind Buffs",
@@ -235,7 +236,7 @@ local function add_fallbacks(loc)
         ky_opt_cat_ai_buffs_desc        = "Toggle individual AI skill buffs",
     })
 
-    -- Fallbacks dynamiques pour les buffs individuels
+    -- Dynamic fallbacks for individual buffs
     if kyohud and kyohud.BUFF_MAP then
         local buff_fallbacks = {}
         for buff_id, _ in pairs(kyohud.BUFF_MAP) do
@@ -250,17 +251,16 @@ local function add_fallbacks(loc)
 end
 
 Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
-    -- Utiliser MY_MOD_PATH (capturé au chargement) et PAS le global ModPath
+    -- Use MY_MOD_PATH (captured at load) and NOT the global ModPath
     local base = MY_MOD_PATH .. "loc/"
     local loaded = false
 
-    logi("Recherche des fichiers dans: " .. tostring(base))
+    logi("Searching for files in: " .. tostring(base))
 
-    -- Fallbacks EN PREMIER : add_localized_strings ÉCRASE les clés existantes,
-    -- donc les fichiers chargés ensuite (english puis french) ont priorité.
+    -- Fallbacks FIRST: add_localized_strings OVERWRITES existing keys, so files loaded subsequently (english then french) take priority.
     add_fallbacks(loc)
 
-    -- Lire ce réglage ici car le hook de localisation précède ky_options.lua.
+    -- Read this setting here because the localization hook precedes ky_options.lua.
     local language = 1
     local settings_paths = {
         SavePath .. "kyohud_settings.json",
@@ -282,19 +282,19 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
         end
     end
 
-    -- Détecter la langue BLT pour le mode automatique.
+    -- Detect BLT language for automatic mode.
     local blt_lang = ""
     if BLT and BLT.Localization and BLT.Localization._current then
         blt_lang = tostring(BLT.Localization._current):lower()
     end
 
-    -- Détecter la langue du jeu
+    -- Detect game language
     local game_french = false
     pcall(function()
         game_french = (SystemInfo:language():key() == Idstring("french"):key())
     end)
 
-    -- Charger le fichier de langue approprié
+    -- Load the appropriate language file
     local try_files = {}
     local auto_french = blt_lang:match("^fr") or blt_lang:match("french") or game_french
     local wants_french = language == 3 or (language == 1 and auto_french)
@@ -311,7 +311,7 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
         elseif file and file.FileExists then
             readable = file.FileExists(path)
         else
-            -- Tenter d'ouvrir pour vérifier
+            -- Attempt to open to verify
             local test = io.open(path, "r")
             if test then
                 test:close()
@@ -321,14 +321,14 @@ Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)
 
         if readable then
             loc:load_localization_file(path)
-            logi("Chargé: " .. path)
+            logi("Loaded: " .. path)
             loaded = true
         else
-            logi("Non trouvé: " .. path)
+            logi("Not found: " .. path)
         end
     end
 
     if not loaded then
-        logi("Aucun fichier de localisation trouvé, utilisation des fallbacks internes.")
+        logi("No localization file found, using internal fallbacks.")
     end
 end)
