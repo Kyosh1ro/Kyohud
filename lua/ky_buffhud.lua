@@ -1,6 +1,6 @@
--- ky_buffhud.lua — Affichage horizontal des buffs + killfeed
--- Buffs affichés côte à côte sur une rangée horizontale configurable
--- Descripteurs d'icônes locaux inspirés de HUDList/VanillaHUD Plus ; voir CREDITS.md.
+-- ky_buffhud.lua — Horizontal buff display + killfeed
+-- Buffs displayed side-by-side on a configurable horizontal row.
+-- Local icon descriptors inspired by HUDList/VanillaHUD Plus; see CREDITS.md.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -9,11 +9,11 @@ local MY_MOD_PATH = ModPath
 
 local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
 if not catalog_ok then
-    log("[KyoHUD] Erreur chargement catalogue buffs (HUD): " .. tostring(catalog_err))
+    log("[KyoHUD] Buff catalog load error (HUD): " .. tostring(catalog_err))
 end
 
 -- ═══════════════════════════════════════════════════
--- Utilitaires
+-- Utilities
 -- ═══════════════════════════════════════════════════
 local function clamp(x, lo, hi)
     if x < lo then return lo end
@@ -28,7 +28,7 @@ end
 local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 
 -- ═══════════════════════════════════════════════════
--- État interne
+-- Internal State
 -- ═══════════════════════════════════════════════════
 KH._panel       = nil
 KH._buffs       = {}           -- { [id] = {id, icon, color, value_text?, stack_text?, start_t, duration, t_end?, is_debuff} }
@@ -36,21 +36,23 @@ KH._buff_sources = {}          -- { [buff_id] = { [source_key] = source_data } }
 KH._source_targets = {}        -- { [source_key] = { buff_id, ... } }
 KH._kills       = {}           -- { {name, score?, score_text?, start_t, t_end?} }
 KH._kill_combo  = { count = 0, last_t = nil, updated_t = nil }
-KH._killfeed_score_total = 0     -- score de la rafale de killfeed en cours
+KH._killfeed_score_total = 0     -- current killfeed burst score
 KH._killfeed_score_has_value = false
 KH._heist_score_total = 0
 KH._heist_score_best_streak = 0
 KH._heist_score_recorded = false
 KH._special_kill_banner = nil
-KH._banner_queue = {}          -- FIFO bornée : annonces en attente d'affichage
+KH._banner_queue = {}          -- Bounded FIFO: announcements awaiting display
 KH._weapon_streaks = {}        -- { [family] = { count, tier_index, last_t } }
-KH._heist_kill_count = 0       -- kills ennemis cumulés depuis le début du braquage
-KH._heist_kill_medal_index = 0 -- dernier palier de kills cumulés déjà annoncé
-KH._medal_card = nil           -- médaille affichée dans la rangée du killfeed
-KH._medal_queue = {}           -- FIFO bornée, indépendante du bandeau supérieur
-KH._spray_down_kills = 0       -- kills par balle depuis le dernier rechargement
-KH._spray_down_awarded = false -- palier de quatre déjà annoncé pour ce chargeur
-KH._spray_down_started_t = nil -- début de la fenêtre courante de quatre kills
+KH._heist_kill_count = 0       -- cumulative enemy kills since heist start
+KH._heist_kill_medal_index = 0 -- last cumulative kill tier already announced
+KH._sentry_kill_count = 0
+KH._sentry_kill_medal_index = 0
+KH._medal_card = nil           -- medal displayed in the killfeed row
+KH._medal_queue = {}           -- Bounded FIFO, independent of the top banner
+KH._spray_down_kills = 0       -- bullet kills since last reload
+KH._spray_down_awarded = false -- four-kill threshold already announced for this magazine
+KH._spray_down_started_t = nil -- start of current four-kill window
 KH._combo_label_variant_index = KH._combo_label_variant_index or 0
 KH._dozer_banner_index = KH._dozer_banner_index or 0
 KH._debug_banner_preview_index = KH._debug_banner_preview_index or 0
@@ -66,8 +68,7 @@ local KILL_SCROLL_TIME  = 0.2
 local KILLFEED_FRAME_CLEARANCE = 1.5
 local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
--- La médaille vit dans le killfeed et reste un peu plus longtemps que les
--- annonces prioritaires afin que son palier soit lisible pendant l'action.
+-- The medal lives in the killfeed and stays visible a bit longer than priority announcements so its tier remains readable during action.
 local MEDAL_CARD_DURATION = 1.75
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
 local PRIORITY_TARGET_COLOR = Color(1, 0.38, 0.08)
@@ -151,14 +152,14 @@ local BANNER_FRAME_STYLE = {
     brackets = { extension = BANNER_FRAME_EXTENSION },
 }
 -- ═══════════════════════════════════════════════════
--- Résolution d'icônes — conventions HUDList adaptées localement
+-- Icon Resolution — Locally adapted HUDList conventions
 -- ═══════════════════════════════════════════════════
 local function has_texture(path)
     return path and DB and DB:has(Idstring("texture"), Idstring(path))
 end
 
---- Résout une icône à partir d'une table de description compatible HUDList.
---- Supporte : skills_new, skills, perks, hud_tweak, hud_icons, hudtabs, hudpickups, waypoints, texture direct
+--- Resolves an icon from a HUDList-compatible description table.
+--- Supports: skills_new, skills, perks, hud_tweak, hud_icons, hudtabs, hudpickups, waypoints, direct texture
 local function get_icon_data(icon)
     if not icon then return FALLBACK_TEXTURE, nil end
 
@@ -167,9 +168,7 @@ local function get_icon_data(icon)
     local skills = icon.skills
     local skills_new = icon.skills_new
 
-    -- Les coordonnées de l'atlas ont changé au fil des mises à jour. Quand le
-    -- catalogue connaît le nom interne du skill, demander sa position au jeu
-    -- et conserver les coordonnées statiques uniquement comme repli.
+    -- Atlas coordinates have changed over updates. When the catalog knows the skill's internal name, request its position from the game and keep static coordinates only as a fallback.
     if icon.skill_id then
         local ok, icon_xy = pcall(function()
             local skills_tweak = tweak_data and tweak_data.skilltree and tweak_data.skilltree.skills
@@ -228,8 +227,7 @@ local function get_icon_data(icon)
     return texture, texture_rect
 end
 
--- Descripteur partagé par toutes les cartes Headshot. La résolution du nom HUD
--- et de sa découpe d'atlas se fait au premier kill concerné, jamais dans draw.
+-- Shared descriptor for all Headshot cards. HUD name resolution and atlas cutout occur on the first relevant kill, never in draw.
 local HEADSHOT_ICON_DESCRIPTOR
 local function headshot_icon_descriptor()
     if not HEADSHOT_ICON_DESCRIPTOR then
@@ -239,10 +237,19 @@ local function headshot_icon_descriptor()
     return HEADSHOT_ICON_DESCRIPTOR
 end
 
--- Le catalogue partagé des buffs est chargé depuis ky_buff_catalog.lua.
+local SENTRY_ICON_DESCRIPTOR
+local function sentry_icon_descriptor()
+    if not SENTRY_ICON_DESCRIPTOR then
+        local texture, rect = get_icon_data({ hud_tweak = "equipment_sentry" })
+        SENTRY_ICON_DESCRIPTOR = { texture = texture, rect = rect }
+    end
+    return SENTRY_ICON_DESCRIPTOR
+end
+
+-- The shared buff catalog is loaded from ky_buff_catalog.lua.
 
 -- ═══════════════════════════════════════════════════
--- Résolution d'icône pour un buff_id
+-- Icon Resolution for a buff_id
 -- ═══════════════════════════════════════════════════
 local function icon_for_buff(buff_id)
     local vhud_map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
@@ -282,8 +289,7 @@ local function icon_for_equipped_perk_deck()
         return KH._equipped_perk_deck_icon
     end
 
-    -- Cette API du jeu résout elle-même l'atlas correct, y compris pour les
-    -- decks DLC. Conserver l'icône générique du catalogue comme repli.
+    -- This game API resolves the correct atlas itself, including for DLC decks. Keep the generic catalog icon as a fallback.
     local icon_ok, texture, rect = pcall(function()
         local skilltree_tweak = tweak_data and tweak_data.skilltree
         return skilltree_tweak:get_specialization_icon_data(specialization_id)
@@ -311,8 +317,8 @@ local function color_from_catalog(value)
     return ok and color or nil
 end
 
--- VanillaHUD+ peut fournir les icônes et les évènements, jamais la teinte.
--- La palette visible reste exclusivement celle du catalogue KyoHUD.
+-- VanillaHUD+ can provide icons and events, never the tint.
+-- The visible palette remains exclusively that of the KyoHUD catalog.
 local function color_for_buff(buff_id, is_debuff)
     if is_debuff then
         return color_from_catalog("debuff")
@@ -325,15 +331,15 @@ local function color_for_buff(buff_id, is_debuff)
 end
 
 -- ═══════════════════════════════════════════════════
--- Vérifie si un buff doit être affiché (settings)
+-- Checks if a buff should be displayed (settings)
 -- ═══════════════════════════════════════════════════
 function KH:is_buff_visible(buff_id)
     if not self.settings or not self.settings.enable_buffs then return false end
 
     local map_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
-    if not map_entry then return true end -- buff inconnu, on l'affiche
+    if not map_entry then return true end -- unknown buff, display it
 
-    -- Vérifier le toggle de catégorie
+    -- Check category toggle
     local cat = map_entry.category
     if cat and self.settings.buff_categories then
         if self.settings.buff_categories[cat] == false then
@@ -341,7 +347,7 @@ function KH:is_buff_visible(buff_id)
         end
     end
 
-    -- Vérifier le toggle individuel
+    -- Check individual toggle
     if self.settings.buff_toggles then
         if self.settings.buff_toggles[buff_id] == false then
             return false
@@ -351,8 +357,7 @@ function KH:is_buff_visible(buff_id)
     return true
 end
 
--- Ces indicateurs actifs conservent toujours le même ordre au début de la
--- rangée. Un indicateur absent ne réserve aucun emplacement vide.
+-- These active indicators always maintain the same order at the row start. An absent indicator reserves no empty slot.
 local STATIC_BUFF_SLOTS = {
     "equipped_perk_deck",
     "pocket_ecm_jammer_debuff",
@@ -412,12 +417,7 @@ local function localized_text(id, fallback)
     return value
 end
 
--- Libellé optionnel d'une cellule, sans passer par value_text. Les buffs d'IA
--- conservent leur marqueur historique au-dessus de l'icône ; les autres n'en ont
--- un que si le catalogue déclare `label`, dont le champ `placement` choisit
--- entre BUFF_LABEL_TOP et BUFF_LABEL_TIMER. Le texte et le placement sont
--- renvoyés séparément : KH:draw n'alloue aucune table et la traduction est
--- résolue une seule fois par identifiant, pas à chaque image.
+-- Optional cell label, bypassing value_text. AI buffs retain their historical marker above the icon; others have one only if the catalog declares `label`, whose `placement` field chooses between BUFF_LABEL_TOP and BUFF_LABEL_TIMER. Text and placement are returned separately: KH:draw allocates no table and translation is resolved once per identifier, not per frame.
 local BUFF_LABEL_TOP = "top"
 local BUFF_LABEL_TIMER = "timer"
 local buff_label_cache = {}
@@ -527,11 +527,8 @@ local SPECIAL_KILL_BANNER_DEFINITIONS = {
     },
 }
 
--- ── Séries persistantes par famille de dégâts / d'arme ──
--- Chaque famille possède son propre compteur, indépendant des autres : un kill
--- au fusil à pompe n'interrompt pas une série au sniper. Les paliers sont
--- strictement croissants et chaque palier n'est franchi qu'une seule fois par
--- cycle ; après une pause temporelle, la famille repart de son premier palier.
+-- ── Persistent streaks by damage/weapon family ──
+-- Each family has its own counter, independent of others: a shotgun kill does not interrupt a sniper streak. Tiers are strictly increasing and each tier is crossed only once per cycle; after a time pause, the family restarts from its first tier.
 local WEAPON_STREAK_DEFINITIONS = {
     shotgun = {
         color = Color(1, 0.55, 0.12),               -- orange
@@ -542,7 +539,7 @@ local WEAPON_STREAK_DEFINITIONS = {
         },
     },
     sniper = {
-        color = Color(0.32, 0.66, 1),               -- bleu froid
+        color = Color(0.32, 0.66, 1),               -- cool blue
         tiers = {
             { count = 5,  id = "ky_hud_streak_sniper_5",  fallback = "SNIPER SPREE" },
             { count = 10, id = "ky_hud_streak_sniper_10", fallback = "SHARPSHOOTER" },
@@ -558,7 +555,7 @@ local WEAPON_STREAK_DEFINITIONS = {
         },
     },
     incendiary = {
-        color = Color(1, 0.3, 0.06),                -- orange-rouge
+        color = Color(1, 0.3, 0.06),                -- orange-red
         tiers = {
             { count = 3,  id = "ky_hud_streak_incendiary_3",  fallback = "BURN NOTICE" },
             { count = 6,  id = "ky_hud_streak_incendiary_6",  fallback = "INCINERATION" },
@@ -566,7 +563,7 @@ local WEAPON_STREAK_DEFINITIONS = {
         },
     },
     poison = {
-        color = Color(0.36, 0.85, 0.29),            -- vert toxique
+        color = Color(0.36, 0.85, 0.29),            -- toxic green
         tiers = {
             { count = 3,  id = "ky_hud_streak_poison_3",  fallback = "TOXIC" },
             { count = 6,  id = "ky_hud_streak_poison_6",  fallback = "VENOMOUS" },
@@ -574,7 +571,7 @@ local WEAPON_STREAK_DEFINITIONS = {
         },
     },
     melee = {
-        color = Color(0.78, 0.28, 1),               -- violet / magenta
+        color = Color(0.78, 0.28, 1),               -- purple / magenta
         tiers = {
             { count = 2, id = "ky_hud_streak_melee_2", fallback = "ONE-TWO" },
             { count = 3, id = "ky_hud_streak_melee_3", fallback = "BONE CRACKER" },
@@ -583,7 +580,7 @@ local WEAPON_STREAK_DEFINITIONS = {
         },
     },
     explosive = {
-        color = Color(1, 0.79, 0.16),               -- jaune ambre
+        color = Color(1, 0.79, 0.16),               -- amber yellow
         tiers = {
             { count = 3, id = "ky_hud_streak_explosive_3", fallback = "BOOM" },
             { count = 5, id = "ky_hud_streak_explosive_5", fallback = "DEMOLITION" },
@@ -592,74 +589,70 @@ local WEAPON_STREAK_DEFINITIONS = {
     },
 }
 
--- ── Médailles d'évènement ──
--- Les conditions sont lues au kill. Seules Première frappe (verrou par
--- assaut) et les paliers de rappel (fenêtre de 3 s) gardent un état temporaire.
--- Aucun de ces états n'est sauvegardé. Plusieurs médailles peuvent tomber
--- sur le même kill.
+-- ── Event Medals ──
+-- Conditions are read on kill. Only First Strike (assault lock) and rappel tiers (3 s window) retain temporary state.
+-- None of these states is saved. Multiple medals can be awarded for the same kill.
 --
--- Le descripteur d'icône ne porte qu'un nom `hud_tweak` : `get_icon_data`
--- demande au jeu la texture et la découpe d'atlas correspondantes, exactement
--- comme pour un buff du catalogue. Aucune coordonnée n'est écrite à la main.
+-- The icon descriptor carries only a `hud_tweak` name: `get_icon_data` requests the corresponding texture and atlas cutout from the game, exactly like a catalog buff. No coordinates are written by hand.
 local EVENT_MEDAL_DEFINITIONS = {
     first_strike = {
         id       = "ky_hud_event_medal_first_strike",
         fallback = "First Strike",
-        color    = Color(1, 0.32, 0.26),             -- rouge orangé
+        color    = Color(1, 0.32, 0.26),             -- orange-red
         icon     = { hud_tweak = "pd2_kill" },
     },
     grave = {
         id       = "ky_hud_event_medal_grave",
         fallback = "Grave",
-        color    = Color(0.68, 0.44, 0.92),          -- violet
+        color    = Color(0.68, 0.44, 0.92),          -- purple
         icon     = { hud_tweak = "mugshot_downed" },
     },
     low_hp = {
         id       = "ky_hud_event_medal_low_hp",
         fallback = "Last Breath",
-        color    = Color(1, 0.18, 0.34),             -- rouge sang
+        color    = Color(1, 0.18, 0.34),             -- blood red
         icon     = { hud_tweak = "csb_health" },
     },
     reload = {
         id       = "ky_hud_event_medal_reload",
         fallback = "Reload This",
-        color    = Color(0.98, 0.78, 0.22),          -- ambre
+        color    = Color(0.98, 0.78, 0.22),          -- amber
         icon     = { hud_tweak = "csb_reload" },
     },
     through_shield = {
         id       = "ky_hud_event_medal_through_shield",
         fallback = "Through the Shield",
-        color    = Color(1, 0.72, 0.16),             -- orange bouclier
+        color    = Color(1, 0.72, 0.16),             -- shield orange
         icon     = { hud_tweak = "csb_armor" },
     },
     one_shot_two_kills = {
         id       = "ky_hud_event_medal_one_shot_two_kills",
-        fallback = "One Shot Two Kills",
-        color    = Color(1, 0.48, 0.12),             -- rouge-or
+        fallback = "Collateral",
+        color    = Color(1, 0.48, 0.12),             -- red-gold
         icon     = { hud_tweak = "pd2_kill" },
     },
     revenge = {
         id       = "ky_hud_event_medal_revenge",
         fallback = "Revenge",
-        color    = Color(0.82, 0.28, 1),             -- violet électrique
+        color    = Color(0.82, 0.28, 1),             -- electric violet
         icon     = { hud_tweak = "csb_absorb" },
     },
     bulltrue = {
         id       = "ky_hud_event_medal_bulltrue",
         fallback = "Bulltrue",
-        color    = Color(0.35, 1, 0.18),             -- vert Cloaker
+        color    = Color(0.35, 1, 0.18),             -- Cloaker green
         icon     = { hud_tweak = "crime_spree_cloaker_smoke" },
     },
     showstopper = {
         id       = "ky_hud_event_medal_showstopper",
         fallback = "Showstopper",
-        color    = Color(0.35, 1, 0.18),             -- vert Cloaker
+        color    = Color(0.35, 1, 0.18),             -- Cloaker green
         icon     = { hud_tweak = "crime_spree_cloaker_smoke" },
     },
     rope = {
         id       = "ky_hud_event_medal_rope",
         fallback = "Pull!",
-        color    = Color(0.36, 0.72, 1),             -- bleu
+        color    = Color(0.36, 0.72, 1),             -- blue
         icon     = { hud_tweak = "csb_lives" },
         tiers = {
             { count = 1, id = "ky_hud_event_medal_rope", fallback = "Pull!" },
@@ -670,19 +663,19 @@ local EVENT_MEDAL_DEFINITIONS = {
     blindfire = {
         id       = "ky_hud_event_medal_blindfire",
         fallback = "BlindFire",
-        color    = Color(1, 0.95, 0.6),              -- flash jaune-blanc
+        color    = Color(1, 0.95, 0.6),              -- yellow-white flash
         icon     = { hud_tweak = "csb_panic" },
     },
     first_blood = {
         id       = "ky_hud_event_medal_first_blood",
         fallback = "First Blood",
-        color    = Color(0.85, 0.1, 0.12),           -- rouge sang
+        color    = Color(0.85, 0.1, 0.12),           -- blood red
         icon     = { hud_tweak = "pd2_kill" },
     },
     hotswap = {
         id       = "ky_hud_event_medal_hotswap",
         fallback = "Hot Swap",
-        color    = Color(0.3, 0.85, 0.8),            -- bleu-vert
+        color    = Color(0.3, 0.85, 0.8),            -- blue-green
         icon     = { hud_tweak = "csb_switch" },
     },
     overwatch = {
@@ -703,61 +696,72 @@ local EVENT_MEDAL_DEFINITIONS = {
         color    = Color(1, 0.48, 0.16),
         icon     = { hud_tweak = "csb_switch" },
     },
+    no_flashbang = {
+        id       = "ky_hud_event_medal_no_flashbang",
+        fallback = "No Flashbang",
+        color    = Color(1, 0.9, 0.4),                -- flash yellow
+        icon     = { hud_tweak = "csb_throwables" },
+    },
+    air_kill = {
+        id       = "ky_hud_event_medal_air_kill",
+        fallback = "Air Kill",
+        color    = Color(0.5, 0.8, 1),                -- sky blue
+        icon     = { hud_tweak = "csb_stamina" },
+    },
+    wall_bang = {
+        id       = "ky_hud_event_medal_wall_bang",
+        fallback = "Wallbang",
+        color    = Color(0.7, 0.72, 0.75),            -- concrete gray
+        icon     = { hud_tweak = "pd2_kill" },
+    },
+    loot_carrier = {
+        id       = "ky_hud_event_medal_loot_carrier",
+        fallback = "Hands Off",
+        color    = Color(0.95, 0.8, 0.3),             -- gold/loot green
+        icon     = { hud_tweak = "pd2_lootdrop" },
+    },
 }
 
--- Une table Lua indexée par clé n'a pas d'ordre de parcours stable. Cette liste
--- fige donc l'ordre d'émission : deux kills portant les mêmes évènements
--- produisent toujours exactement la même suite de médailles.
+-- A Lua table indexed by key has no stable iteration order. This list freezes the emission order: two kills with the same events always produce exactly the same medal sequence.
+--
+-- Only medals carried by `event_info` appear here. `no_flashbang` and `wall_bang` are emitted directly via their engine hook through `KH:ShowEventMedal`, bypassing the kill path; listing them here would only search for a boolean that never exists.
 local EVENT_MEDAL_ORDER = {
     "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
     "showstopper", "rope", "blindfire", "first_blood", "hotswap",
-    "overwatch", "long_shot", "spray_down",
+    "overwatch", "long_shot", "air_kill", "loot_carrier", "spray_down",
 }
 
--- Dernier souffle reste un signal critique, mais ne doit pas remplir la file
--- pendant une rafale de kills à basse santé. La première carte est immédiate et
--- la borne est inclusive : une nouvelle carte est permise exactement à 30 s.
+-- Last Breath remains a critical signal but must not fill the queue during a low-health kill burst. The first card is immediate and the bound is inclusive: a new card is allowed exactly at 30 s.
 local LAST_BREATH_MEDAL_COOLDOWN = 30
 local SPRAY_DOWN_WINDOW = 4
 
--- ── Paliers de kills cumulés du braquage ──
--- Compteur unique, indépendant de l'arme, du score et des fenêtres de temps :
--- tout kill ennemi non civil le fait avancer, il survit à une chute et ne
--- retombe à zéro qu'avec `KH:ResetHeistCombatState`. Les paliers sont
--- strictement croissants et chacun n'est annoncé qu'une fois par braquage.
+-- ── Cumulative Heist Kill Tiers ──
+-- Single counter, independent of weapon, score, and time windows: any non-civilian enemy kill advances it, it survives a fall, and resets to zero only with `KH:ResetHeistCombatState`. Tiers are strictly increasing and each is announced once per heist.
 local KILL_MEDAL_THRESHOLDS = { 50, 75, 100, 150, 200, 300, 400, 500 }
+local SENTRY_KILL_MEDAL_THRESHOLDS = { 50, 100, 150 }
 
--- Or : la médaille cumulée se distingue des couleurs de famille d'arme.
+-- Gold: the cumulative medal distinguishes itself from weapon family colors.
 local KILL_MEDAL_COLOR = Color(1, 0.84, 0.35)
 
--- La médaille cumulée n'écrit pas son nom : elle affiche le pictogramme du buff
--- de dégâts, celui déjà montré sous le libellé « Dmg+ » dans la rangée de buffs.
+-- The cumulative medal does not write its name: it displays the damage buff pictogram, the one already shown under the « Dmg+ » label in the buff row.
 local KILL_MEDAL_ICON_BUFF = "damage_increase"
 
--- Familles de médailles partageant la rangée du killfeed. Le `kind` d'une carte
--- décide seulement de ce qu'un reset efface : le rendu, la durée et la file sont
--- identiques pour toutes.
+-- Medal families sharing the killfeed row. A card's `kind` decides only what a reset clears: rendering, duration, and queue are identical for all.
 local MEDAL_KIND_WEAPON_STREAK = "weapon_streak"
 local MEDAL_KIND_KILL_TOTAL = "kill_total"
 local MEDAL_KIND_EVENT = "event"
+local MEDAL_KIND_SENTRY_KILL = "sentry_kill"
 
--- Le bandeau supérieur est exclusivement réservé au multikill, au boss et au
--- Dozer. Priorité d'affichage : boss > dozer. Le multikill n'entre pas dans la
--- file : il reste le repli affiché quand aucune annonce prioritaire n'occupe le
--- bandeau. Les médailles ont leur propre rangée dans le killfeed et
--- n'apparaissent jamais ici.
+-- The top banner is exclusively reserved for multikill, boss, and Dozer. Display priority: boss > dozer. Multikill does not enter the queue: it remains the fallback displayed when no priority announcement occupies the banner. Medals have their own row in the killfeed and never appear here.
 local BANNER_PRIORITIES = {
     boss  = 2,
     dozer = 1,
 }
 
--- Bornée : quelques annonces suffisent à couvrir une salve, et la file ne doit
--- jamais croître sans limite pendant un assaut.
+-- Bounded: a few announcements suffice to cover a salvo, and the queue must never grow without limit during an assault.
 local MAX_BANNER_QUEUE = 4
 
--- Toutes les médailles sont de même mérite, quelle que soit leur famille : leur
--- file est strictement FIFO et n'interagit jamais avec celle du bandeau. Une
--- borne courte suffit, les paliers étant rares même pendant une salve.
+-- All medals share equal merit regardless of family: their queue is strictly FIFO and never interacts with the banner's. A short bound suffices, as tiers are rare even during a salvo.
 local MAX_MEDAL_QUEUE = 3
 
 local SPECIAL_ENEMY_DEFINITIONS = {
@@ -830,12 +834,12 @@ local function combo_color(count)
     if count == 2 then return Color(1, 0.85, 0.2) end
     if count == 3 then return Color(1, 0.55, 0.1) end
     if count == 4 then return Color(1, 0.2, 0.1) end
-    return Color(0.208, 0.906, 1) -- cyan électrique #35E7FF dès 5 kills
+    return Color(0.208, 0.906, 1) -- electric cyan #35E7FF starting at 5 kills
 end
 
--- Un bandeau porte directement son libellé et sa couleur. `KH:draw` n'a donc
--- aucune table de définitions à parcourir, et une nouvelle famille d'annonce se
--- branche sans toucher au rendu.
+-- A banner directly carries its label and color. `KH:draw` therefore
+-- has no definitions table to traverse, and a new announcement family
+-- branches without touching the renderer.
 local function make_special_kill_banner(kind, label_index)
     local definition = kind and SPECIAL_KILL_BANNER_DEFINITIONS[kind]
     if not definition then return nil end
@@ -855,9 +859,9 @@ local function weapon_streak_definition(family)
     return family and WEAPON_STREAK_DEFINITIONS[family] or nil
 end
 
---- Médaille de palier : elle porte directement son libellé et sa couleur, comme
---- un bandeau, mais elle est rendue dans le killfeed et n'a ni nom d'unité ni
---- score à afficher.
+--- Tier medal: it directly carries its label and color, like a banner,
+--- but it is rendered in the killfeed and has neither unit name nor
+--- score to display.
 local function make_weapon_streak_card(family, tier_index)
     local definition = weapon_streak_definition(family)
     local tier = definition and definition.tiers[tier_index]
@@ -871,10 +875,10 @@ local function make_weapon_streak_card(family, tier_index)
     }
 end
 
---- Médaille de kills cumulés. Le nom de la médaille est porté par l'icône du
---- buff de dégâts ; il ne reste que le palier atteint et une seule clé, commune
---- aux huit paliers. Texture, découpe d'atlas et teinte sont résolues ici, une
---- fois par médaille : `KH:draw` n'a plus qu'à poser la bitmap.
+--- Cumulative kills medal. The medal's name is carried by the damage buff's
+--- icon; only the tier reached and a single key remain, common to all eight
+--- tiers. Texture, atlas cutout, and tint are resolved here once per medal:
+--- `KH:draw` then just places the bitmap.
 local function make_kill_medal_card(kill_count)
     if type(kill_count) ~= "number" then return nil end
 
@@ -888,10 +892,23 @@ local function make_kill_medal_card(kill_count)
     }
 end
 
---- Médaille d'évènement. `id` est la clé d'`EVENT_MEDAL_DEFINITIONS`, jamais un
---- libellé. Comme la médaille cumulée, la carte porte un pictogramme : texture,
---- découpe d'atlas, libellé traduit et teinte sont résolus ici, une seule fois
---- par médaille, afin que `KH:draw` n'ait plus qu'à poser la bitmap.
+local function make_sentry_kill_medal_card(kill_count)
+    if type(kill_count) ~= "number" then return nil end
+
+    return {
+        kind = MEDAL_KIND_SENTRY_KILL,
+        icon = sentry_icon_descriptor(),
+        icon_color = Color.white,
+        label = tostring(kill_count) .. " "
+            .. localized_text("ky_hud_kill_medal_kills", "KILLS"),
+        color = Color.white,
+    }
+end
+
+--- Event medal. `id` is the key of `EVENT_MEDAL_DEFINITIONS`, never a
+--- label. Like the cumulative medal, the card carries a pictogram: texture,
+--- atlas cutout, translated label, and tint are resolved here once per
+--- medal so that `KH:draw` only needs to place the bitmap.
 local function make_event_medal_card(id, tier_index)
     local definition = id and EVENT_MEDAL_DEFINITIONS[id]
     if not definition then return nil end
@@ -911,14 +928,35 @@ local function make_event_medal_card(id, tier_index)
     }
 end
 
---- Émet directement une carte d'évènement sans enregistrer de kill ni de score.
---- Réservé aux hooks moteur qui agrègent déjà les victimes d'un même tir.
-function KH:ShowEventMedal(id)
-    self:_show_medal_card(now(), make_event_medal_card(id), false)
+local function set_event_medal_count(card, count)
+    count = tonumber(count)
+    if not card or not count then return card end
+
+    count = math.max(1, math.floor(count))
+    card._count_label_base = card._count_label_base or card.label
+    card.label = count > 1
+        and card._count_label_base .. " x" .. tostring(count)
+        or card._count_label_base
+    return card
 end
 
---- Un rechargement ouvre un nouveau chargeur pour Spray Down. L'appelant
---- garantit qu'il s'agit de l'arme du joueur local.
+--- Directly emits an event card without recording a kill or score.
+--- Reserved for engine hooks that already aggregate victims from the same shot.
+function KH:ShowEventMedal(id, count)
+    local card = set_event_medal_count(make_event_medal_card(id), count)
+    self:_show_medal_card(now(), card, false)
+    return card
+end
+
+--- Updates the counter of a card already emitted during the same shot. The
+--- active or FIFO-placed card is the same table: the visible label evolves
+--- up to the final total without adding a second medal.
+function KH:UpdateEventMedalCount(card, count)
+    return set_event_medal_count(card, count)
+end
+
+--- A reload opens a new magazine for Spray Down. The caller guarantees it
+--- is the local player's weapon.
 function KH:ResetSprayDownMagazine()
     self._spray_down_kills = 0
     self._spray_down_awarded = false
@@ -947,8 +985,8 @@ local function special_enemy_color(kind)
     return definition and definition.color or HUD_ACCENT_COLOR
 end
 
--- Cadre tactique inspiré des notifications Battlefield : traits asymétriques,
--- quatre crochets détachés et chevrons qui convergent vers le contenu.
+-- Tactical frame inspired by Battlefield notifications: asymmetric strokes,
+-- four detached brackets, and chevrons converging toward the content.
 local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer, style)
     local extension = style and style.extension or 4
     local arm_x = style and style.arm_x or math.min(18, w * 0.08)
@@ -992,10 +1030,10 @@ local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer, styl
     end
 end
 
--- ── Chevrons du bandeau ──
--- Deux banques miroir encadrent le texte. Les annonces spéciales gardent trois
--- flèches purement décoratives ; le multikill utilise une banque compacte et
--- fixe de cinq encoches par côté, remplies d'un cran par kill supplémentaire.
+-- ── Banner Chevrons ──
+-- Two mirrored banks frame the text. Special announcements keep three
+-- purely decorative arrows; multikills use a compact, fixed bank of five
+-- notches per side, filled one notch per additional kill.
 local SPECIAL_CHEVRON_SLOTS = 3
 local SPECIAL_CHEVRON_W = 7
 local SPECIAL_CHEVRON_H = 12
@@ -1010,16 +1048,16 @@ local MULTIKILL_CHEVRON_H = 12
 local MULTIKILL_CHEVRON_GAP = 2
 local MULTIKILL_CHEVRON_GROUP_W = MULTIKILL_CHEVRON_SLOTS * MULTIKILL_CHEVRON_W
     + (MULTIKILL_CHEVRON_SLOTS - 1) * MULTIKILL_CHEVRON_GAP
--- La banque multikill est plus large que les trois flèches décoratives : sa
--- marge est réduite d'autant pour que les deux bandeaux réservent exactement la
--- même place et que le texte reste centré, même à la largeur minimale.
+-- The multikill bank is wider than the three decorative arrows: its margin
+-- is reduced accordingly so that both banners reserve exactly the same space
+-- and text remains centered, even at minimum width.
 local MULTIKILL_CHEVRON_MARGIN = SPECIAL_CHEVRON_MARGIN
     + SPECIAL_CHEVRON_GROUP_W
     - MULTIKILL_CHEVRON_GROUP_W
 local BANNER_CHEVRON_TEXT_GAP = 5
 
--- Dimensions paires et halo entier : les pointes restent sur la grille de
--- pixels au lieu de tomber à 5,5 px ou dans une boîte mise à l'échelle.
+-- Even dimensions and whole halo: tips stay on the pixel grid instead of
+-- falling to 5.5 px or into a scaled box.
 local MULTIKILL_CHEVRON_GLOW_W = MULTIKILL_CHEVRON_W + 2
 local MULTIKILL_CHEVRON_GLOW_H = MULTIKILL_CHEVRON_H + 2
 local MULTIKILL_CHEVRON_GLOW_DX = 1
@@ -1028,7 +1066,7 @@ local MULTIKILL_CHEVRON_OUTLINE_ALPHA = 0.26
 local MULTIKILL_CHEVRON_HOLE_ALPHA = 0.7
 local MULTIKILL_CHEVRON_GLOW_ALPHA = 0.18
 
---- Sommets d'un chevron inscrit dans la boîte `w * h`, pointe vers l'intérieur.
+--- Chevrons' peaks inscribed in the `w * h` box point inward.
 local function chevron_triangles(w, h, direction)
     if direction > 0 then
         return {
@@ -1044,8 +1082,8 @@ local function chevron_triangles(w, h, direction)
     }
 end
 
---- Chevron intérieur simple. À cette taille, des coordonnées entières donnent
---- un contour plus régulier que la réduction géométrique à base de racine.
+--- Simple inner chevron. At this size, integer coordinates yield a more
+--- regular outline than geometric reduction based on square root.
 local function inset_chevron_triangles(w, h, direction, inset)
     if direction > 0 then
         return {
@@ -1061,7 +1099,7 @@ local function inset_chevron_triangles(w, h, direction, inset)
     }
 end
 
--- Formes figées une seule fois : `KH:draw` n'alloue aucun point par encoche.
+-- Shapes frozen once: `KH:draw` allocates no points per notch.
 local MULTIKILL_CHEVRON_SHAPES = {}
 for _, direction in ipairs({ 1, -1 }) do
     MULTIKILL_CHEVRON_SHAPES[direction] = {
@@ -1076,15 +1114,14 @@ for _, direction in ipairs({ 1, -1 }) do
     }
 end
 
---- Nombre d'encoches allumées pour une série : x2 = 1/5 ... x6 et plus = 5/5.
+--- Number of lit notches for a streak: x2 = 1/5 ... x6 and more = 5/5.
 local function multikill_chevron_fill(count)
     return clamp((tonumber(count) or 2) - 1, 1, MULTIKILL_CHEVRON_SLOTS)
 end
 
---- Banque de progression multikill.
---- `direction > 0` dessine le groupe gauche (encoches pointant vers le texte,
---- la plus proche du texte étant la dernière) ; `direction < 0` son miroir.
---- Le remplissage part donc du texte vers l'extérieur, symétriquement.
+--- Multikill progression bank. `direction > 0` draws the left group (notches
+--- pointing toward text, closest to text being last); `direction < 0` its
+--- mirror. Filling thus starts from text outward, symmetrically.
 local function draw_multikill_chevrons(panel, x, y, direction, color, alpha, layer, filled)
     local shapes = MULTIKILL_CHEVRON_SHAPES[direction > 0 and 1 or -1]
     local start_x = math.floor(x + 0.5)
@@ -1094,12 +1131,12 @@ local function draw_multikill_chevrons(panel, x, y, direction, color, alpha, lay
 
     for slot = 1, MULTIKILL_CHEVRON_SLOTS do
         local arrow_x = start_x + (slot - 1) * (MULTIKILL_CHEVRON_W + MULTIKILL_CHEVRON_GAP)
-        -- `rank` = distance au texte, 1 pour l'encoche la plus proche.
+        -- `rank` = distance to text, 1 for the closest notch.
         local rank = direction > 0 and (MULTIKILL_CHEVRON_SLOTS - slot + 1) or slot
 
         if rank <= filled then
-            -- Dégradé retenu vers l'extérieur : la progression reste lisible
-            -- sans que la banque saturée n'écrase le texte.
+            -- Gradient retained outward: progression remains readable
+            -- without the saturated bank crushing the text.
             local prominence = 1 - (rank - 1) / (MULTIKILL_CHEVRON_SLOTS - 1)
             local slot_alpha = alpha * (0.72 + 0.28 * prominence)
 
@@ -1124,8 +1161,8 @@ local function draw_multikill_chevrons(panel, x, y, direction, color, alpha, lay
                 layer = layer + 1,
             })
         else
-            -- Encoche libre : chevron évidé, assez discret pour ne pas être
-            -- confondu avec un cran acquis, assez net pour rester lisible.
+            -- Free notch: hollow chevron, subtle enough not to be confused with an
+            -- acquired notch, clear enough to stay readable.
             panel:polygon({
                 x = arrow_x,
                 y = top,
@@ -1150,7 +1187,7 @@ local function draw_multikill_chevrons(panel, x, y, direction, color, alpha, lay
     end
 end
 
--- Chevrons décoratifs pleins, réservés aux annonces spéciales (dozer, boss).
+-- Solid decorative chevrons, reserved for special announcements (dozer, boss).
 local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
     local count = SPECIAL_CHEVRON_SLOTS
     local arrow_w = style and style.arrow_w or SPECIAL_CHEVRON_W
@@ -1223,7 +1260,7 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
         layer = layer,
     })
 
-    -- Trois segments sur chaque bord, volontairement décalés et inégaux.
+    -- Three segments per edge, deliberately offset and unequal.
     for _, segment in ipairs(TACTICAL_FRAME_SEGMENTS) do
         local segment_x = x + w * segment[1]
         local segment_y = y + (segment[2] == 1 and h - 1 or 0)
@@ -1244,32 +1281,34 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
     )
 end
 
--- Cellule volontairement sobre pour laisser l'icône et son timer dominer.
--- Le cadre tactique complet reste réservé aux annonces du killfeed.
+-- Deliberately sober cell to let the icon and its timer dominate.
+-- The full tactical frame remains reserved for killfeed announcements.
 --
--- Le fond est un dégradé noir vertical : dense en bas, effacé en haut, afin
--- d'asseoir la cellule sans masquer la rangée. Le contour statique n'a que
--- trois côtés — montant gauche, barre inférieure, montant droit — et jamais
--- de bord supérieur. Sa teinte est fixée ici à `HUD_ACCENT_COLOR` et n'est
--- donc volontairement pas paramétrable : aucun état de buff ne peut la
--- modifier. Seule son opacité est modelée, afin que le contour périmétrique
--- animé reste le seul élément du cadre coloré par l'état du buff.
+
+-- Background is a vertical black gradient: dense at bottom, erased at top,
+-- to anchor the cell without masking the row. The static outline has only
+-- three sides — left riser, bottom bar, right riser — and never a top edge.
+-- Its tint is fixed here to `HUD_ACCENT_COLOR` and is thus deliberately
+-- unparameterizable: no buff state can modify it. Only its opacity is
+-- modeled so the animated perimeter outline remains the only frame element
+-- colored by the buff's state.
 --
--- Un seul pixel suffit : le trait reste net à toutes les tailles de buffs et
--- laisse le contour animé, plus épais, se lire clairement au-dessus.
+
+-- A single pixel suffices: the stroke stays crisp at all buff sizes and
+-- lets the thicker animated outline read clearly above.
 local BUFF_CELL_LINE_WIDTH = 1
 
--- Les montants se renforcent doucement du haut vers le bas, dans le sens du
--- dégradé de fond. La barre inférieure ne s'allège qu'à ses extrémités : le
--- bas reste ancré et les deux jonctions avec les montants restent visibles.
+-- Risers reinforce gently from top to bottom, following the background
+-- gradient. The bottom bar lightens only at its ends: the base remains
+-- anchored and both junctions with the risers stay visible.
 local BUFF_CELL_EDGE_ALPHA_TOP    = 0.34
 local BUFF_CELL_EDGE_ALPHA_MID    = 0.66
 local BUFF_CELL_EDGE_ALPHA_BOTTOM = 1
 local BUFF_CELL_FOOTER_ALPHA_END  = 0.8
 
--- Les positions de rangée sont fractionnaires. Le cadre statique et le
--- contour animé doivent être arrondis exactement de la même façon, sinon les
--- deux tracés se décalent d'un demi-pixel et paraissent délavés.
+-- Row positions are fractional. The static frame and animated outline must
+-- be rounded exactly the same way, or the two traces offset by half a pixel
+-- and appear washed out.
 local function align_buff_cell_rect(x, y, w, h)
     local left = math.floor(x + 0.5)
     local top  = math.floor(y + 0.5)
@@ -1297,8 +1336,8 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
         layer = layer,
     })
 
-    -- Une seule table de points partagée par les deux montants : ils portent
-    -- exactement le même dégradé et `KH:draw` ne doit pas allouer deux fois.
+    -- A single point table shared by both risers: they carry exactly the same
+    -- gradient and `KH:draw` must not allocate twice.
     local edge_points = {
         0,    HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
         0.55, HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
@@ -1337,11 +1376,11 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
     })
 end
 
--- Trace la partie encore active du contour d'un buff temporaire. Le parcours
--- commence au milieu du bord supérieur et avance dans le sens horaire ; son
--- extrémité recule donc continûment à mesure que le timer approche de zéro.
--- Ce contour est le seul trait autorisé à franchir le haut de la cellule :
--- le cadre statique, lui, reste à trois côtés.
+-- Traces the still-active part of a temporary buff's outline. The path
+-- starts at the top edge midpoint and advances clockwise; its end thus
+-- recedes continuously as the timer approaches zero.
+-- This outline is the only stroke allowed to cross the cell's top:
+-- the static frame, meanwhile, stays at three sides.
 local function append_progress_segment(points, remaining_length, x1, y1, x2, y2, segment_length)
     if remaining_length <= 0 or segment_length <= 0 then return remaining_length end
 
@@ -1362,7 +1401,7 @@ local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alph
     progress = clamp(tonumber(progress) or 0, 0, 1)
     if progress <= 0 then return end
 
-    -- Même arrondi que le cadre statique : les deux contours se superposent.
+    -- Same rounding as the static frame: the two outlines overlap.
     x, y, w, h = align_buff_cell_rect(x, y, w, h)
 
     local line_width = clamp(math.min(w, h) * 0.055, 2, 3)
@@ -1385,7 +1424,7 @@ local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alph
         points, remaining_length, x, y, x + half_w, y, half_w
     )
 
-    -- Deux polylignes seulement par buff : un halo discret et le trait net.
+    -- Only two polylines per buff: a subtle halo and the crisp stroke.
     panel:polyline({
         points = points,
         line_width = line_width + 2,
@@ -1403,26 +1442,29 @@ local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alph
 end
 
 -- ═══════════════════════════════════════════════════
--- État visuel adaptatif d'une cellule de buff
+-- Adaptive visual state of a buff cell
 -- ═══════════════════════════════════════════════════
--- Quatre états seulement, résolus une seule fois par buff rendu :
+-- Only four states, resolved once per rendered buff:
 --
---   persistent : aucun timer connu. Teinte stable, aucune progression
---                simulée, aucune pulsation.
---   normal     : buff temporaire loin de son expiration. Il conserve sa
---                propre couleur de catalogue, y compris la teinte de debuff.
---   warning    : approche de l'expiration. Ambre, opacité relevée.
---   critical   : expiration imminente. Rouge, opacité relevée et pulsation
---                retenue.
+
+--   persistent: no known timer. Stable tint, no simulated progression,
+--                no pulsing.
+--   normal     : temporary buff far from expiry. It keeps its catalog
+--                color, including debuff tint.
+--   warning    : approaching expiry. Amber, increased opacity.
+--   critical   : imminent expiry. Red, increased opacity and retained
+--                pulsing.
 --
--- `accent_color` teinte le contour périmétrique animé et n'est renseigné que
--- pour un buff temporaire : un indicateur permanent n'en reçoit jamais. Le
--- cadre statique de la cellule, lui, ne fait pas partie de cet état — il
--- garde toujours `HUD_ACCENT_COLOR` et sa silhouette à trois côtés.
+
+-- `accent_color` tints the animated perimeter outline and is set only for
+-- a temporary buff: a permanent indicator never receives it. The cell's
+-- static frame is not part of this state — it always keeps `HUD_ACCENT_COLOR`
+-- and its three-sided silhouette.
 --
--- Les seuils combinent une fraction de la durée et des bornes en secondes :
--- un buff de 60 s ne devient donc pas ambre pendant vingt secondes, et un
--- buff de 3 s garde malgré tout une phase d'alerte lisible.
+
+-- Thresholds combine a fraction of duration and second bounds:
+-- a 60 s buff thus does not turn amber for twenty seconds, and a
+-- 3 s buff still retains a readable warning phase.
 local BUFF_WARNING_RATIO        = 0.35
 local BUFF_WARNING_MIN_SECONDS  = 1.5
 local BUFF_WARNING_MAX_SECONDS  = 5
@@ -1430,17 +1472,17 @@ local BUFF_CRITICAL_RATIO       = 0.15
 local BUFF_CRITICAL_MIN_SECONDS = 0.75
 local BUFF_CRITICAL_MAX_SECONDS = 2
 
--- `math.sin` reçoit des radians. Une fréquence de 1,6 Hz reste perceptible
--- sans produire le clignotement agressif d'une alerte à haute fréquence.
+-- `math.sin` receives radians. A frequency of 1.6 Hz remains perceptible
+-- without producing the aggressive flicker of a high-frequency alert.
 local BUFF_CRITICAL_PULSE_HZ    = 1.6
 local BUFF_CRITICAL_PULSE_DEPTH = 0.16
 
 local BUFF_WARNING_COLOR  = Color(1, 0.68, 0.16)
 local BUFF_CRITICAL_COLOR = Color(1, 0.26, 0.22)
 
--- Table de travail réutilisée : `KH:draw` reconstruit le panneau vingt fois
--- par seconde et ne doit pas allouer une table par buff affiché. Sa durée de
--- vie se limite à une itération de la boucle de rendu.
+-- Reused work table: `KH:draw` rebuilds the panel twenty times per second
+-- and must not allocate a table per displayed buff. Its lifetime limits to
+-- one render loop iteration.
 local buff_state = {
     remaining    = nil,
     progress     = nil,
@@ -1454,8 +1496,8 @@ local function resolve_buff_state(buff, t)
     local state = buff_state
     local duration = tonumber(buff.duration)
 
-    -- L'aperçu de debug fige un temps restant afin de présenter chaque état
-    -- assez longtemps pour l'inspecter ; le jeu n'utilise que `t_end`.
+    -- Debug preview freezes remaining time to present each state long enough
+    -- to inspect; the game uses only `t_end`.
     local remaining = tonumber(buff.preview_remaining)
     if not remaining and buff.t_end then
         remaining = math.max(0, buff.t_end - t)
@@ -1469,14 +1511,14 @@ local function resolve_buff_state(buff, t)
     state.alpha_scale  = 1
 
     if not remaining or not duration or duration <= 0 then
-        -- Indicateur permanent : ni progression, ni contour périmétrique, ni
-        -- urgence inventées.
+        -- Permanent indicator: no progression, no perimeter outline, no
+        -- invented urgency.
         return state
     end
 
     state.progress = clamp(remaining / duration, 0, 1)
-    -- Un debuff temporaire reste identifiable par sa propre couleur tant
-    -- qu'aucune urgence ne doit primer.
+    -- A temporary debuff remains identifiable by its own color as long as
+    -- no urgency must take precedence.
     state.accent_color = buff.color or HUD_ACCENT_COLOR
 
     local critical_at = clamp(
@@ -1537,23 +1579,23 @@ local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
     })
 end
 
--- ── Médaille du killfeed ──
--- Silhouette volontairement distincte des cartes de kills et du bandeau
--- supérieur : montants latéraux pleine hauteur et ruban centré sur les deux
--- bords, au lieu des trois segments décalés du cadre tactique. Elle occupe la
--- largeur du bandeau mais reste à la hauteur d'une rangée de killfeed.
--- Ce cadre est partagé par toutes les familles de médailles : seul le contenu de
--- la zone intérieure change, une carte pouvant précéder son texte d'une icône.
+-- ── Killfeed Medal ──
+-- Deliberately distinct silhouette from kill cards and the top banner:
+-- full-height side risers and centered ribbon on both edges, instead of the
+-- three offset segments of the tactical frame. It spans the banner's width
+-- but stays at one killfeed row's height.
+-- This frame is shared by all medal families: only the inner zone's content
+-- changes, a card possibly preceding its text with an icon.
 local MEDAL_POST_W = 3
 local MEDAL_RIBBON_RATIO = 0.52
--- Écart entre la médaille et la rangée des noms qui la suit.
+-- Gap between the medal and the name row following it.
 local MEDAL_ROW_GAP = 6
--- Séparer d'un demi-pixel la médaille du prolongement inférieur du bandeau :
--- les deux accents ne se confondent plus lorsque les deux niveaux sont actifs.
+-- Separate the medal from the banner's bottom extension by half a pixel:
+-- the two accents no longer merge when both levels are active.
 local MEDAL_TOP_GAP = 0.5
--- Les séries d'arme conservent leurs trois flèches de chaque côté. Les autres
--- familles de médailles utilisent seulement une marge intérieure afin que leur
--- contenu ne dépasse pas du cadre pendant l'animation.
+-- Weapon streak medals keep their three arrows per side. Other medal families use
+-- only an inner margin so their content does not overflow the frame during
+-- animation.
 local MEDAL_CHEVRON_STYLE = { arrow_w = 6, arrow_h = 9, gap = 3 }
 local MEDAL_CHEVRON_GROUP_W = SPECIAL_CHEVRON_SLOTS
     * MEDAL_CHEVRON_STYLE.arrow_w
@@ -1561,16 +1603,16 @@ local MEDAL_CHEVRON_GROUP_W = SPECIAL_CHEVRON_SLOTS
 local MEDAL_CHEVRON_MARGIN = 13
 local MEDAL_CHEVRON_TEXT_GAP = 6
 local MEDAL_CONTENT_PADDING = 13
--- Icône optionnelle précédant le texte, dimensionnée sur la hauteur réelle de la
--- carte pour rester à l'intérieur du ruban quelle que soit la taille du HUD.
+-- Optional icon preceding text, sized to the card's actual height to stay
+-- inside the ribbon regardless of HUD size.
 local MEDAL_ICON_TEXT_GAP = 6
 local MEDAL_ICON_H_RATIO = 0.6
 local MEDAL_ICON_MIN = 12
 local MEDAL_ICON_MAX = 24
 
---- Un bord de la médaille : ruban lumineux au centre, prolongé par un filet
---- discret jusqu'aux montants. Le contraste centre/bords donne la lecture
---- « ruban » sans refermer la carte comme un cadre plein.
+--- One medal edge: luminous ribbon at center, extended by a subtle line to
+--- the risers. Center/edge contrast yields the «ribbon» readout without
+--- closing the card like a solid frame.
 local function draw_medal_edge(panel, x, y, w, color, alpha, layer)
     local ribbon_w = w * MEDAL_RIBBON_RATIO
     local ribbon_x = x + (w - ribbon_w) * 0.5
@@ -1600,8 +1642,8 @@ local function draw_medal_edge(panel, x, y, w, color, alpha, layer)
 end
 
 local function draw_medal_frame(panel, x, y, w, h, color, alpha, layer)
-    -- Fond symétrique : la médaille se lit d'un bloc, alors que les cartes de
-    -- kills gardent leur dégradé asymétrique orienté vers la droite.
+    -- Symmetric background: the medal reads as a block, while kill cards keep
+    -- their right-oriented asymmetric gradient.
     panel:gradient({
         x = x, y = y + 1, w = w, h = h - 2,
         orientation = "horizontal",
@@ -1680,18 +1722,18 @@ local function draw_glowing_text(panel, label, font, font_size, color, x, y, w, 
 end
 
 -- ═══════════════════════════════════════════════════
--- API publique : ajouter/retirer des buffs
+-- Public API: add/remove buffs
 -- ═══════════════════════════════════════════════════
 function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, is_debuff, value_text, stack_text)
     if not self.settings or not self.settings.enable_buffs then return end
 
-    -- Résoudre le vrai buff_id depuis l'upgrade
+    -- Resolve the real buff_id from the upgrade
     local resolved_id = buff_id
     if raw_upgrade_id and KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[raw_upgrade_id] then
         resolved_id = KH.UPGRADE_TO_BUFF[raw_upgrade_id]
     end
 
-    -- Vérifier si ce buff est visible dans les settings
+    -- Check if this buff is visible in settings
     if not self:is_buff_visible(resolved_id) then return end
 
     local dur = tonumber(duration)
@@ -1701,8 +1743,8 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
     local t = now()
     local definition = KH.BUFF_MAP and KH.BUFF_MAP[resolved_id]
 
-    -- Un buff rafraîchi garde sa position dans la rangée (order_t d'origine),
-    -- seuls son timer et son fondu (start_t) repartent de zéro
+    -- A refreshed buff keeps its row position (original order_t),
+    -- only its timer and fade (start_t) restart from zero
     local existing = self._buffs[resolved_id]
 
     self._buffs[resolved_id] = {
@@ -1722,7 +1764,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
 end
 
 function KH:remove_buff(buff_id)
-    -- Essayer aussi le buff résolu
+    -- Try the resolved buff too
     self._buffs[buff_id] = nil
     if KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[buff_id] then
         self._buffs[KH.UPGRADE_TO_BUFF[buff_id]] = nil
@@ -1730,7 +1772,7 @@ function KH:remove_buff(buff_id)
 end
 
 -- ═══════════════════════════════════════════════════
--- Sources de buffs et pont optionnel VanillaHUD+
+-- Buff sources and optional VanillaHUD+ bridge
 -- ═══════════════════════════════════════════════════
 local function application_time()
     local ok, t = pcall(function()
@@ -1831,8 +1873,8 @@ local function passive_health_regen_source_value(source)
     local value = source and tonumber(source.value)
     if not value then return nil end
 
-    -- VanillaHUD+ exprime la régénération de l'équipier en points de santé
-    -- internes, contrairement aux autres sources qui utilisent déjà un ratio.
+    -- VanillaHUD+ expresses teammate regeneration in health points
+    -- internally, unlike other sources that already use a ratio.
     if source.source_id == "crew_health_regen" then
         local player_damage = current_player_damage()
         local ok, max_health = pcall(function()
@@ -2141,8 +2183,8 @@ local function equipped_skill_counter_text(definition)
     end)
     skill_step = ok_step and tonumber(skill_step) or nil
     if skill_step == nil then
-        -- L'état n'est pas encore disponible : conserver l'entrée précédente
-        -- plutôt que de faire clignoter l'icône pendant le chargement.
+        -- The status is not yet available: keep the previous entry
+        -- instead of flashing the icon during loading.
         return nil, nil
     end
     if skill_step < 1 then
@@ -2188,8 +2230,8 @@ function KH:RefreshEquippedSkillCounters()
                 existing = self._buffs[buff_id]
             end
             if existing then
-                -- L'indicateur représente l'état équipé, pas une durée : un
-                -- évènement actif ne doit donc pas lui ajouter de timer.
+                -- The indicator represents equipped status, not a duration: an
+                -- active event should therefore not add a timer to it.
                 existing.value_text = value_text
                 existing.duration = nil
                 existing.t_end = nil
@@ -2256,9 +2298,9 @@ function KH:RefreshHackerPocketECMStatus()
         return
     end
 
-    -- Une nouvelle recharge peut démarrer immédiatement après la précédente
-    -- lorsqu'il manque encore une charge. Réinitialiser alors la progression,
-    -- mais conserver la position fixe de la cellule.
+    -- A new recharge can start immediately after the previous one
+    -- if there is still charge remaining. Reset the progression,
+    -- but keep the fixed position of the cell.
     local previous_remaining = existing.t_end and math.max(0, existing.t_end - t) or 0
     if remaining > previous_remaining + 1 then
         existing.start_t = t
@@ -2297,9 +2339,9 @@ function KH:RefreshCalculatedBuffValues()
         self:_refresh_source_target(buff_id)
     end
 
-    -- Ces valeurs dépendent aussi de l'arme équipée, de la santé ou de
-    -- l'armure. Les recalculer à faible fréquence sans recréer les entrées
-    -- conserve leur ordre et leur timer.
+    -- These values also depend on the equipped weapon, health, or
+    -- armor. Recalculating them at a low frequency without recreating entries
+    -- preserves their order and timer.
     for _, dynamic_buff_id in ipairs(DYNAMIC_VALUE_BUFFS) do
         local dynamic_sources = self._buff_sources[dynamic_buff_id]
         local buff = self._buffs[dynamic_buff_id]
@@ -2423,20 +2465,20 @@ function KH:TryRegisterGameInfoBridge()
     if not ok then
         if not self._gameinfo_bridge_error_logged then
             self._gameinfo_bridge_error_logged = true
-            log("[KyoHUD] Pont VanillaHUD+ indisponible: " .. tostring(err))
+            log("[KyoHUD] VanillaHUD+ bridge unavailable: " .. tostring(err))
         end
         return false
     end
 
-    -- Remplacer les sources locales déjà observées par l'état de référence du
-    -- gestionnaire afin qu'une désactivation future ne laisse rien bloqué.
+    -- Replace the already observed local sources with the reference status of the
+    -- manager so that future deactivation leaves nothing blocked.
     self._buff_sources = {}
     self._source_targets = {}
     self._buffs = {}
     self._gameinfo_bridge_active = true
     self._gameinfo_bridge_callbacks = { buff_callback, action_callback }
     self:SyncGameInfoBuffs()
-    log("[KyoHUD] Détection complète reliée au gestionnaire de buffs VanillaHUD+.")
+    log("[KyoHUD] Full detection linked to VanillaHUD+ buff manager.")
     return true
 end
 
@@ -2452,7 +2494,7 @@ function KH:RefreshDetectedBuffs()
 end
 
 -- ═══════════════════════════════════════════════════
--- Bandeau prioritaire : affichage courant et file d'attente
+-- Priority banner: current display and queue
 -- ═══════════════════════════════════════════════════
 local function banner_priority(banner)
     return banner and BANNER_PRIORITIES[banner.kind] or 0
@@ -2465,9 +2507,9 @@ function KH:_start_special_banner(t, banner, preview)
     self._special_kill_banner = banner
 end
 
---- Rang d'insertion respectant l'ordre décroissant de priorité : la nouvelle
---- annonce se place derrière toutes celles de priorité supérieure ou égale.
---- À priorité égale l'ordre d'arrivée est donc conservé (FIFO stable).
+--- Insertion rank respecting descending priority order: the new
+--- announcement is placed behind all those of equal or higher priority.
+--- At equal priority, arrival order is therefore preserved (stable FIFO).
 local function banner_queue_insert_index(queue, priority)
     for index = 1, #queue do
         if banner_priority(queue[index]) < priority then
@@ -2477,10 +2519,10 @@ local function banner_queue_insert_index(queue, priority)
     return #queue + 1
 end
 
---- Insertion dans la file bornée, maintenue triée boss > dozer. Quand elle est
---- pleine, seule une annonce plus prioritaire entre, à la place de la dernière
---- des moins prioritaires ; une annonce de priorité inférieure ou égale à la
---- plus faible en attente est simplement abandonnée.
+--- Insertion into the bounded queue, kept sorted boss > dozer. When it is
+--- full, only a more prioritized announcement enters, replacing the last
+--- of the less prioritized ones; an announcement of equal or lower priority than the
+--- lowest pending one is simply discarded.
 function KH:_enqueue_special_banner(banner)
     if not banner then return end
 
@@ -2493,8 +2535,8 @@ function KH:_enqueue_special_banner(banner)
     local priority = banner_priority(banner)
 
     while #queue >= MAX_BANNER_QUEUE do
-        -- La file reste triée : sa dernière entrée est toujours la moins
-        -- prioritaire et, à priorité égale, la plus récemment ajoutée.
+        -- The queue remains sorted: its last entry is always the least
+        -- prioritized and, at equal priority, the most recently added.
         if banner_priority(queue[#queue]) >= priority then return end
         table.remove(queue)
     end
@@ -2502,8 +2544,8 @@ function KH:_enqueue_special_banner(banner)
     table.insert(queue, banner_queue_insert_index(queue, priority), banner)
 end
 
---- Présente une annonce. Une cible prioritaire prend immédiatement le bandeau
---- et renvoie l'annonce en cours dans la file : rien n'est perdu.
+--- Presents an announcement. A prioritized target immediately takes the banner
+--- and returns the current announcement to the queue: nothing is lost.
 function KH:_show_special_banner(t, banner, preview)
     if not banner then return end
 
@@ -2513,7 +2555,7 @@ function KH:_show_special_banner(t, banner, preview)
     end
 
     local current = self._special_kill_banner
-    -- Un aperçu de debug ne bloque jamais une vraie annonce.
+    -- A debug preview never blocks a real announcement.
     if current and not current.preview then
         if banner_priority(banner) > banner_priority(current) then
             self:_enqueue_special_banner(current)
@@ -2540,16 +2582,15 @@ function KH:_show_boss_banner(t, preview)
 end
 
 -- ═══════════════════════════════════════════════════
--- Médailles : rangée dédiée du killfeed
+-- Medals: dedicated row in the killfeed
 -- ═══════════════════════════════════════════════════
--- État strictement séparé du bandeau supérieur : une médaille n'entre jamais en
--- concurrence avec un boss ou un Dozer, et les deux peuvent être visibles en
--- même temps sur deux niveaux distincts.
+-- Strictly separated from the top banner: a medal never competes with a boss or a Dozer, and both can be visible at the same time on two distinct levels.
 --
--- Toutes les familles de médailles — séries d'arme, médailles d'évènement et
--- paliers de kills cumulés — partagent ce même niveau, ce même rendu, cette même
--- durée et cette même file FIFO bornée. Seule la construction de la carte
--- diffère.
+-- All medal families — weapon streak medals, event medals,
+--
+-- cumulative kill tiers, and sentry tiers — share this same level, this
+-- same rendering, this same duration, and this same bounded FIFO queue. Only the
+-- card construction differs.
 function KH:_start_medal_card(t, card, preview)
     card.preview = preview == true
     card.started_t = t
@@ -2557,16 +2598,17 @@ function KH:_start_medal_card(t, card, preview)
     self._medal_card = card
 end
 
---- Présente une médaille déjà construite. Toutes ont le même mérite : celle déjà
---- affichée garde sa place et les suivantes s'enchaînent dans l'ordre d'arrivée.
---- Une médaille de trop est abandonnée plutôt que d'allonger la file : le palier
---- reste acquis, seule son annonce est perdue.
+--- Presents a medal already constructed. All have the same merit: the one already
+--- displayed keeps its place and the following ones chain in arrival order.
+--- An extra medal is discarded rather than lengthening the queue: the tier
+--- remains earned, only its announcement is lost.
 ---
---- Un seul kill peut en produire plusieurs — jusqu'à une série d'arme, quelques
---- évènements et un palier cumulé. La borne reste volontairement basse : carte
---- active plus `MAX_MEDAL_QUEUE` places, soit au plus quatre annonces enchaînées
---- d'environ 1,75 s. Allonger la file ferait défiler la rangée bien après le
---- kill qui l'a déclenchée.
+
+--- A single kill can produce several — up to one weapon streak medal, a few
+--- events, and a cumulative tier. The limit remains intentionally low: active
+--- card plus `MAX_MEDAL_QUEUE` places, so at most four chained announcements
+--- of about 1.75 s. Lengthening the queue would scroll the row well after the
+--- kill that triggered it.
 function KH:_show_medal_card(t, card, preview)
     if not card then return end
 
@@ -2577,14 +2619,14 @@ function KH:_show_medal_card(t, card, preview)
     end
 
     local current = self._medal_card
-    -- Un aperçu de debug remplace tout et ne s'accumule jamais.
+    -- A debug preview replaces everything and never accumulates.
     if preview then
         for index = #queue, 1, -1 do queue[index] = nil end
         self:_start_medal_card(t, card, true)
         return
     end
 
-    -- Un aperçu ne bloque pas une vraie médaille.
+    -- A preview does not block a real medal.
     if current and not current.preview then
         if #queue < MAX_MEDAL_QUEUE then
             table.insert(queue, card)
@@ -2595,9 +2637,9 @@ function KH:_show_medal_card(t, card, preview)
     self:_start_medal_card(t, card, false)
 end
 
---- Efface les médailles de la rangée partagée. Sans `kind`, tout disparaît ;
---- avec un `kind`, les autres familles gardent leur carte active et leur place
---- dans la file. Une médaille cumulée survit donc à un reset de séries d'arme.
+--- Clears medals from the shared row. Without `kind`, everything disappears;
+--- with a `kind`, other families keep their active card and their place
+--- in the queue. Cumulative and sentry medals therefore survive a weapon streak reset.
 function KH:_clear_medal_cards(kind)
     local card = self._medal_card
     if card and (not kind or card.kind == kind) then
@@ -2617,10 +2659,10 @@ function KH:_clear_medal_cards(kind)
     end
 end
 
---- Compte un kill pour sa famille et renvoie l'indice du palier franchi.
---- `t` est le temps du kill, déjà calculé par `KH:add_kill` : chaque famille
---- entretient son propre timer, calqué sur celui du multikill, et aucune
---- horloge n'est relue ici.
+--- Counts a kill for its family and returns the index of the tier crossed.
+--- `t` is the kill time, already calculated by `KH:add_kill`: each family
+--- maintains its own timer, based on the multikill one, and no
+--- clock is read here.
 function KH:_register_weapon_family_kill(family, t)
     local definition = weapon_streak_definition(family)
     if not definition then return nil end
@@ -2640,13 +2682,12 @@ function KH:_register_weapon_family_kill(family, t)
         streaks[family] = streak
     end
 
-    -- Repli défensif : un appelant sans temps ne doit pas figer le timer de la
-    -- famille. `add_kill` passe toujours son `t` ; `now()` ne sert qu'à ce repli.
+    -- Defensive fallback: a caller without time should not freeze the family timer. `add_kill` always passes its `t`; `now()` serves only for this fallback.
     t = tonumber(t) or now()
 
-    -- Timer strictement propre à cette famille : les kills des autres familles
-    -- ne le rafraîchissent ni ne le réinitialisent. La borne reste inclusive,
-    -- exactement comme la fenêtre du multikill.
+    -- Timer strictly specific to this family: kills from other families
+    -- do not refresh nor reset it. The limit remains inclusive,
+    -- exactly like the multikill window.
     if streak.last_t and (t - streak.last_t) > KILL_COMBO_WINDOW then
         streak.count = 0
         streak.tier_index = 0
@@ -2654,9 +2695,9 @@ function KH:_register_weapon_family_kill(family, t)
     streak.last_t = t
     streak.count = streak.count + 1
 
-    -- Un seul palier peut tomber par kill : on ne compare qu'au palier suivant.
-    -- Une fois le maximum annoncé, `next_tier` est nil et la chaîne reste
-    -- silencieuse jusqu'à son expiration, qui réarme le premier palier.
+    -- Only one tier can be awarded per kill: compare only with the next tier.
+    -- Once the maximum is announced, `next_tier` is nil and the streak remains
+    -- silent until its expiration, which rearms the first tier.
     local next_tier = tiers[streak.tier_index + 1]
     if not next_tier or streak.count < next_tier.count then
         return nil
@@ -2666,10 +2707,10 @@ function KH:_register_weapon_family_kill(family, t)
     return streak.tier_index
 end
 
---- Compte un kill ennemi dans le total du braquage et renvoie le palier franchi,
---- ou `nil`. Aucun timer n'intervient : le compteur ne fait qu'augmenter et
---- survit à une chute. Le total avançant d'une unité par kill, chaque palier est
---- atteint exactement, et un seul peut tomber par kill.
+--- Counts an enemy kill in the heist total and returns the crossed tier,
+--- or `nil`. No timer intervenes: the counter only increases and
+--- survives a player down. Since the total advances by one per kill, each tier is
+--- reached exactly, and only one can be awarded per kill.
 function KH:_register_heist_kill()
     local count = (self._heist_kill_count or 0) + 1
     self._heist_kill_count = count
@@ -2682,12 +2723,23 @@ function KH:_register_heist_kill()
     return threshold
 end
 
---- Remise à zéro des séries d'arme : les compteurs repartent de zéro et toute
---- médaille de série encore affichée ou en attente disparaît, car elle ne
---- récompense plus une série vivante. Les annonces de boss et de Dozer restent
---- intactes : elles saluent un kill déjà acquis, indépendant des séries. Les
---- médailles de kills cumulés aussi : leur palier est définitivement acquis pour
---- le braquage et seul `KH:ResetHeistCombatState` les efface.
+function KH:_register_sentry_kill()
+    local count = (self._sentry_kill_count or 0) + 1
+    self._sentry_kill_count = count
+
+    local next_index = (self._sentry_kill_medal_index or 0) + 1
+    local threshold = SENTRY_KILL_MEDAL_THRESHOLDS[next_index]
+    if not threshold or count < threshold then return nil end
+
+    self._sentry_kill_medal_index = next_index
+    return threshold
+end
+
+--- Weapon streak reset: counters restart from zero and any
+--- streak medal still displayed or pending disappears, as it no longer
+--- rewards an active streak. Boss and Dozer announcements remain
+--- intact: they celebrate an already earned kill, independent of streaks. Cumulative
+--- kill medals also remain: their tier is permanently earned for the heist and only `KH:ResetHeistCombatState` clears them.
 function KH:ResetWeaponStreaks()
     self._rope_streak = nil
     self._weapon_streaks = {}
@@ -2695,14 +2747,13 @@ function KH:ResetWeaponStreaks()
 end
 
 -- ═══════════════════════════════════════════════════
--- Remise à zéro de l'état de combat d'une partie
+-- Reset of a heist's combat state
 -- ═══════════════════════════════════════════════════
 
---- Vide sur place la table de déduplication des kills tenue par
---- `ky_killfeed.lua`. Elle peut ne pas exister encore selon l'ordre de
---- chargement des scripts. Elle n'est jamais remplacée : son métatable à clés
---- faibles doit survivre au reset, sans quoi les unités enregistrées seraient
---- retenues en mémoire jusqu'au prochain rechargement du mod.
+--- Clears in place the kill deduplication table held by
+--- `ky_killfeed.lua`. It may not exist yet depending on script load order.
+--- It is never replaced: its weak-key metatable must survive the reset, otherwise
+--- registered units would be retained in memory until the next mod reload.
 local function clear_recorded_kill_units(hud)
     local recorded = hud._recorded_kill_units
     if type(recorded) ~= "table" then return end
@@ -2712,17 +2763,18 @@ local function clear_recorded_kill_units(hud)
     end
 end
 
---- Remet à zéro tout l'état de combat propre à une partie : buffs affichés et
---- leurs sources, killfeed et son score, multikill, bandeaux prioritaires,
---- séries d'arme et combos de spéciaux. Une partie ne doit jamais hériter de
---- l'état de la précédente, ni d'un aperçu de debug resté affiché.
+--- Resets all heist-specific combat state: displayed buffs and
+--- their sources, killfeed and its score, multikill, priority banners,
+--- weapon streaks, sentry tiers, and special combos. A heist should never
+--- inherit the state of the previous one, nor a debug preview left
+--- displayed.
 ---
---- Ce qui n'appartient pas à une partie est volontairement conservé : les
---- réglages, le catalogue, le panneau KyoHUD et les listeners du pont
---- VanillaHUD+. Lors d'un nouveau braquage, `rearm_bridge_sync` réarme la
---- synchronisation différée afin de repeupler les buffs réels sans réenregistrer
---- les listeners. Un simple effacement d'aperçu conserve au contraire le latch
---- courant pour ne pas injecter des buffs réels dans les cellules de démo.
+
+--- What does not belong to a heist is intentionally preserved: settings,
+--- catalog, KyoHUD panel, and VanillaHUD+ bridge listeners. During a new heist,
+--- `rearm_bridge_sync` rearms deferred synchronization to repopulate real buffs without
+--- re-registering listeners. A simple preview clear instead preserves the current latch
+--- to avoid injecting real buffs into demo cells.
 function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._debug_preview_active = false
     self._event_assault_active = false
@@ -2750,10 +2802,12 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._special_kill_banner = nil
     self._banner_queue = {}
     self:ResetWeaponStreaks()
-    -- Le total de kills du braquage et ses paliers n'appartiennent qu'à la
-    -- partie : ils survivent aux chutes, mais jamais à un nouveau braquage.
+    -- The heist kill total and its tiers belong only to the current heist:
+    -- they survive player downs, but never a new heist.
     self._heist_kill_count = 0
     self._heist_kill_medal_index = 0
+    self._sentry_kill_count = 0
+    self._sentry_kill_medal_index = 0
     self:ResetSprayDownMagazine()
     self:_clear_medal_cards()
     self._special_enemy_combos = {}
@@ -2776,10 +2830,10 @@ function KH:_record_heist_score(score)
 end
 
 -- ═══════════════════════════════════════════════════
--- API publique : ajouter un kill au killfeed
+-- Public API: add a kill to the killfeed
 -- ═══════════════════════════════════════════════════
--- Série de rappel indépendante des familles d'armes. Seuls ses propres kills
--- rafraîchissent la fenêtre ; un palier ne s'annonce qu'une fois par série.
+-- Rappel streak independent of weapon families. Only its own kills
+-- refresh the window; a tier is announced only once per streak.
 function KH:_register_rope_kill(t)
     local streak = self._rope_streak
     if not streak or t < streak.last_t or t - streak.last_t > KILL_COMBO_WINDOW then
@@ -2796,23 +2850,25 @@ function KH:_register_rope_kill(t)
     end
 end
 
-function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family, event_info)
-    -- enable_killfeed contrôle uniquement le rendu : scores, séries et états de
-    -- médailles continuent d'avancer pendant qu'il est masqué, comme sur dev.
+function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family, event_info, kill_source)
+    -- enable_killfeed controls rendering only: scores, streaks, and medal states
+    -- continue advancing while masked, as on dev.
     if not self.settings then return end
 
-    local first_strike = contributes_to_combo ~= false
+    local is_sentry = kill_source == "sentry"
+    local first_strike = not is_sentry and contributes_to_combo ~= false
         and self._event_assault_active and not self._event_first_strike_awarded
     if first_strike then self._event_first_strike_awarded = true end
-    local first_blood = contributes_to_combo ~= false
+    local first_blood = not is_sentry and contributes_to_combo ~= false
         and not self._first_blood_done and (self._heist_kill_count or 0) == 0
     if first_blood then self._first_blood_done = true end
     local t = now()
-    local rope_tier = contributes_to_combo ~= false and event_info and event_info.rope
+    local rope_tier = not is_sentry and contributes_to_combo ~= false
+        and event_info and event_info.rope
         and self:_register_rope_kill(t) or nil
 
     local dur = KILLFEED_ENTRY_DURATION
-    if contributes_to_combo ~= false then
+    if contributes_to_combo ~= false and not is_sentry then
         local combo = self._kill_combo or { count = 0 }
         if combo.preview then
             combo = { count = 0 }
@@ -2832,19 +2888,19 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
             or nil
         self._kill_combo = combo
     end
-    if special_banner == "dozer" then
+    if not is_sentry and special_banner == "dozer" then
         self:_show_dozer_banner(t, false)
-    elseif special_banner == "boss" then
+    elseif not is_sentry and special_banner == "boss" then
         self:_show_boss_banner(t, false)
     end
 
-    -- Les médailles vivent dans le killfeed : elles ne disputent jamais le
-    -- bandeau supérieur à une cible prioritaire, les deux peuvent coexister.
-    -- Un même kill peut en produire plusieurs ; l'ordre d'émission ci-dessous
-    -- est donc figé, et c'est lui qui décide de la carte affichée en premier et
-    -- de l'ordre de la file FIFO commune :
-    --   série d'arme -> médailles d'évènement -> palier de kills cumulés.
-    local streak_tier_index = weapon_family
+    -- Medals live in the killfeed: they never compete with a prioritized target for the
+    -- top banner; both can coexist.
+    -- A single kill can produce several; the emission order below
+    -- is therefore fixed, and it decides which card is displayed first and
+    -- the order of the common FIFO queue:
+    --   weapon streak medal -> event medals -> cumulative kill tier.
+    local streak_tier_index = not is_sentry and weapon_family
         and self:_register_weapon_family_kill(weapon_family, t)
         or nil
     if streak_tier_index then
@@ -2853,12 +2909,12 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         )
     end
 
-    -- `event_info` porte les états moteur déjà lus par `ky_killfeed.lua`.
-    -- Première frappe et le palier de rappel sont résolus plus haut, même HUD
-    -- masqué. Les cartes suivent l'ordre figé d'`EVENT_MEDAL_ORDER`. Au-delà de la
-    -- carte active et des `MAX_MEDAL_QUEUE` places de la file, les médailles
-    -- suivantes sont abandonnées : elles n'ouvrent aucun palier à rattraper.
-    if contributes_to_combo ~= false then
+    -- `event_info` carries engine states already read by `ky_killfeed.lua`.
+    -- First Strike and rappel tiers are resolved above, even while the HUD is hidden.
+    -- Cards follow the fixed order of `EVENT_MEDAL_ORDER`. Beyond the
+    -- active card and `MAX_MEDAL_QUEUE` queue places, subsequent medals
+    -- are discarded: they open no tier to catch up.
+    if contributes_to_combo ~= false and not is_sentry then
         if event_info then event_info.spray_down = false end
         if event_info and event_info.magazine_kill and not self._spray_down_awarded then
             local started_t = tonumber(self._spray_down_started_t)
@@ -2897,22 +2953,30 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         end
     end
 
-    -- Kills cumulés du braquage : ils ne dépendent ni de l'arme, ni du score, ni
-    -- d'une fenêtre de temps. Seul un kill ennemi compte ; `RecordScoredKill`
-    -- marque les civils avec `contributes_to_combo == false`, et sa
-    -- déduplication par unité garantit qu'un kill n'est compté qu'une fois.
-    -- Le palier passe en dernier : il est rare, et le compteur l'acquiert même
-    -- si la file déborde et que son annonce est perdue.
+    -- Holdup cumulative kills: they depend neither on weapon, nor score, nor
+    -- a time window. Only an enemy kill counts; `RecordScoredKill`
+    -- marks civilians with `contributes_to_combo == false`, and its
+    -- unit deduplication guarantees a kill is counted only once.
+    -- The tier comes last: it is rare, and the counter earns it even
+    -- if the queue overflows and its announcement is lost.
     if contributes_to_combo ~= false then
         local kill_medal_count = self:_register_heist_kill()
         if kill_medal_count then
             self:_show_medal_card(t, make_kill_medal_card(kill_medal_count), false)
         end
+        if is_sentry then
+            local sentry_medal_count = self:_register_sentry_kill()
+            if sentry_medal_count then
+                self:_show_medal_card(
+                    t, make_sentry_kill_medal_card(sentry_medal_count), false
+                )
+            end
+        end
     end
 
-    -- Le score représente tous les points produits pendant une apparition
-    -- continue du killfeed. Une carte retirée par la limite de 1 à 5 entrées
-    -- conserve donc ses points jusqu'à l'expiration de la dernière carte.
+    -- The score represents all points produced during a continuous
+    -- killfeed appearance. A card removed by the 1 to 5 entry limit
+    -- therefore keeps its points until the last card expires.
     if not has_active_killfeed_entry(self._kills, t) then
         self._killfeed_score_total = 0
         self._killfeed_score_has_value = false
@@ -2925,7 +2989,8 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
 
     local special_count
     local special_label_index
-    local special_definition = special_enemy_definition(special_enemy_kind)
+    local special_definition = not is_sentry
+        and special_enemy_definition(special_enemy_kind) or nil
     if special_definition then
         local special_combo = self._special_enemy_combos[special_enemy_kind]
             or { count = 0 }
@@ -2948,7 +3013,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         name       = enemy_name or "Enemy",
         score      = score,
         score_text = format_kill_score(score),
-        headshot   = event_info ~= nil and event_info.headshot == true,
+        headshot   = not is_sentry and event_info ~= nil and event_info.headshot == true,
+        sentry     = is_sentry,
+        sentry_icon = is_sentry and sentry_icon_descriptor() or nil,
         special_kind = special_definition and special_enemy_kind or nil,
         display_text = special_enemy_label(
             special_enemy_kind,
@@ -2969,7 +3036,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
 end
 
 -- ═══════════════════════════════════════════════════
--- Panneau HUD
+-- HUD Panel
 -- ═══════════════════════════════════════════════════
 local function get_hud_panel()
     if not managers.hud then return nil end
@@ -3014,44 +3081,129 @@ function KH:ensure_panel(force)
 end
 
 -- ═══════════════════════════════════════════════════
--- Layout : rangée horizontale centrée sur une position en pourcentage d'écran
--- L'espacement se resserre si nécessaire pour ne masquer aucun buff.
+-- Layout: horizontal row centered on a screen percentage position.
+-- The gap closes first, then every buff metric scales together. If the row
+-- still cannot fit at the readable minimum, its last slot becomes a +N cell.
 -- ═══════════════════════════════════════════════════
-local function compute_horizontal_positions(
+local BUFF_ROW_EDGE_MARGIN = 4
+local BUFF_ROW_MIN_ICON_SIZE = 20
+
+function KH.compute_buff_row_layout(
         count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y,
         top_label_height)
+    count = math.max(0, math.floor(tonumber(count) or 0))
+    panel_w = math.max(0, tonumber(panel_w) or 0)
+    panel_h = math.max(0, tonumber(panel_h) or 0)
+    icon_size = math.max(1, tonumber(icon_size) or 32)
+    frame_pad_x = math.max(0, tonumber(frame_pad_x) or 0)
+    frame_pad_y = math.max(0, tonumber(frame_pad_y) or 0)
+
     local positions = {}
-    if count == 0 then return positions end
+    local preferred_cell_w = icon_size + frame_pad_x * 2
+    local preferred_gap = clamp(icon_size * 0.25, 4, 12)
+    local available_w = math.max(0, panel_w - BUFF_ROW_EDGE_MARGIN * 2)
+    local effective_size = icon_size
+    local scale = 1
+    local cell_w = preferred_cell_w
+    local gap = preferred_gap
+    local visible_count = count
+    local hidden_count = 0
+    local slot_count = count
 
-    local edge_margin = 4
-    local frame_w = icon_size + frame_pad_x * 2
-    local desired_pitch = frame_w + clamp(icon_size * 0.25, 4, 12)
-    local available_w = math.max(frame_w, panel_w - edge_margin * 2)
-    local pitch = desired_pitch
-
-    if count > 1 and frame_w + pitch * (count - 1) > available_w then
-        pitch = math.max(0, (available_w - frame_w) / (count - 1))
+    if count == 0 then
+        return {
+            positions = positions,
+            effective_size = effective_size,
+            frame_pad_x = frame_pad_x,
+            frame_pad_y = frame_pad_y,
+            cell_w = cell_w,
+            gap = gap,
+            pitch = cell_w + gap,
+            scale = scale,
+            visible_count = 0,
+            hidden_count = 0,
+            slot_count = 0,
+        }
     end
 
-    local row_w = frame_w + pitch * (count - 1)
+    local preferred_row_w = preferred_cell_w * count
+        + preferred_gap * math.max(0, count - 1)
+    if preferred_row_w > available_w then
+        gap = count > 1
+            and math.max(0, (available_w - preferred_cell_w * count) / (count - 1))
+            or 0
+    end
+
+    if preferred_cell_w * count > available_w then
+        local fit_scale = available_w / (preferred_cell_w * count)
+        local minimum_scale = math.min(1, BUFF_ROW_MIN_ICON_SIZE / icon_size)
+
+        if fit_scale >= minimum_scale then
+            scale = fit_scale
+        else
+            scale = minimum_scale
+            cell_w = preferred_cell_w * scale
+            local capacity = math.floor(available_w / cell_w + 0.000001)
+
+            -- A pathologically narrow panel still gets one complete explicit
+            -- slot. This emergency branch may go below the readable minimum,
+            -- because staying inside KyoHUD's panel is the stronger invariant.
+            if capacity < 1 then
+                capacity = 1
+                scale = available_w / preferred_cell_w
+                cell_w = available_w
+            end
+
+            slot_count = math.min(count, capacity)
+            if slot_count < count then
+                visible_count = math.max(0, slot_count - 1)
+                hidden_count = count - visible_count
+            end
+        end
+
+        effective_size = icon_size * scale
+        frame_pad_x = frame_pad_x * scale
+        frame_pad_y = frame_pad_y * scale
+        cell_w = effective_size + frame_pad_x * 2
+        gap = 0
+    end
+
+    local pitch = cell_w + gap
+    local row_w = slot_count > 0
+        and cell_w + pitch * (slot_count - 1)
+        or 0
     local anchor_x = panel_w * clamp(x_percent, 0, 100) / 100
     local row_left = clamp(
         anchor_x - row_w * 0.5,
-        edge_margin,
-        math.max(edge_margin, panel_w - edge_margin - row_w)
+        BUFF_ROW_EDGE_MARGIN,
+        math.max(BUFF_ROW_EDGE_MARGIN, panel_w - BUFF_ROW_EDGE_MARGIN - row_w)
     )
 
-    -- Garder la valeur au-dessus, le cadre et le timer sous l'icône dans le panneau.
-    local min_y = icon_size * 0.5 + frame_pad_y + (top_label_height or 18) + edge_margin
-    local max_y = panel_h - icon_size * 0.5 - 22
+    -- Keep the value above, the frame and timer below the icon in the panel.
+    local min_y = effective_size * 0.5 + frame_pad_y
+        + (top_label_height or 18) * scale + BUFF_ROW_EDGE_MARGIN
+    local max_y = panel_h - effective_size * 0.5 - 22 * scale
     local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
-    local first_x = row_left + frame_w * 0.5
+    local first_x = row_left + cell_w * 0.5
 
-    for i = 0, count - 1 do
+    for i = 0, slot_count - 1 do
         positions[#positions + 1] = { x = first_x + pitch * i, y = y }
     end
 
-    return positions
+    return {
+        positions = positions,
+        effective_size = effective_size,
+        frame_pad_x = frame_pad_x,
+        frame_pad_y = frame_pad_y,
+        cell_w = cell_w,
+        gap = gap,
+        pitch = pitch,
+        scale = scale,
+        visible_count = visible_count,
+        hidden_count = hidden_count,
+        slot_count = slot_count,
+        overflow_text = hidden_count > 0 and ("+" .. tostring(hidden_count)) or nil,
+    }
 end
 
 local function compare_buff_arrival(a, b)
@@ -3168,9 +3320,9 @@ local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha
 
     draw_heist_score_frame(panel, x, y, block_w, block_h, total_color, alpha, 101)
 
-    -- Quand le panneau est plus étroit que la largeur naturelle du bloc,
-    -- réduire les zones de texte de droite à gauche plutôt que de les laisser
-    -- se chevaucher ou sortir du cadre.
+    -- When the panel is narrower than the block's natural width,
+    -- reduce right-to-left text areas rather than letting them
+    -- overlap or exit the frame.
     local content_left = math.min(x + pad_x, x + block_w)
     local content_right = math.max(content_left, x + block_w - pad_x)
     local label_x = content_left
@@ -3269,14 +3421,14 @@ function KH:draw()
 
     local t = now()
 
-    -- Purger les buffs expirés
+    -- Purge expired buffs
     for id, b in pairs(self._buffs) do
         if b.t_end and b.t_end <= t then
             self._buffs[id] = nil
         end
     end
 
-    -- Purger les kills expirés
+    -- Purge expired kills
     local i = 1
     while i <= #self._kills do
         if self._kills[i].t_end and self._kills[i].t_end <= t then
@@ -3285,15 +3437,15 @@ function KH:draw()
             i = i + 1
         end
     end
-    -- Fin de la rafale continue : le score de la rangée repart de zéro. Le total
-    -- et le meilleur total de rafale du braquage, eux, survivent — ils ne sont
-    -- effacés que par ResetHeistCombatState.
+    -- End of continuous burst: the row score restarts from zero. The total
+    -- and best burst total of the heist, however, survive — they are
+    -- cleared only by ResetHeistCombatState.
     if #self._kills == 0 then
         self._killfeed_score_total = 0
         self._killfeed_score_has_value = false
     end
 
-    -- Une série se termine après quelques secondes sans nouveau kill.
+    -- A streak ends after a few seconds without a new kill.
     local combo = self._kill_combo
     if combo and not combo.preview and combo.last_t
             and (t - combo.last_t) > KILL_COMBO_WINDOW then
@@ -3303,9 +3455,9 @@ function KH:draw()
         combo.label = nil
     end
 
-    -- L'annonce spéciale masque brièvement le multikill, qui reprend ensuite
-    -- tant que sa propre fenêtre de trois secondes reste active. À l'expiration,
-    -- l'annonce suivante de la file enchaîne immédiatement.
+    -- The special announcement briefly masks the multikill, which resumes
+    -- as long as its own three-second window remains active. Upon expiration,
+    -- the next queue announcement chains immediately.
     local special_banner = self._special_kill_banner
     if special_banner and not special_banner.preview and special_banner.t_end <= t then
         self._special_kill_banner = nil
@@ -3319,9 +3471,9 @@ function KH:draw()
         end
     end
 
-    -- La médaille suit le même cycle, sur son propre état : elle expire seule et
-    -- laisse la place à la suivante s'il y en a une en attente, quelle que soit
-    -- sa famille. La file n'est parcourue qu'à cette expiration.
+    -- The medal follows the same cycle on its own state: it expires alone and
+    -- makes room for the next one if pending, regardless of family. The queue is
+    -- scanned only at this expiration.
     local medal_card = self._medal_card
     if medal_card and not medal_card.preview and medal_card.t_end <= t then
         self._medal_card = nil
@@ -3335,7 +3487,7 @@ function KH:draw()
         end
     end
 
-    -- Nettoyer le panneau pour redessiner
+    -- Clean the panel to redraw
     self._panel:clear()
 
     local w = self._panel:w()
@@ -3346,14 +3498,14 @@ function KH:draw()
     local size      = clamp(s.icon_size or 32, 32, 40)
     local alpha     = clamp(s.opacity or 0.9, 0.1, 1.0)
 
-    -- ── Dessiner les buffs ──
+    -- ── Draw buffs ──
     if s.enable_buffs then
         local buff_list = {}
         local promoted_perk_buff_id
 
-        -- Les indicateurs prioritaires ouvrent la rangée dans l'ordre choisi,
-        -- mais seuls le deck équipé et les buffs réellement actifs apparaissent.
-        -- Un buff actif associé au deck remplace son placeholder en position 1.
+        -- Priority indicators open the row in chosen order,
+        -- but only the equipped deck and actually active buffs appear.
+        -- An active buff associated with the deck replaces its placeholder at position 1.
         for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
             if self:is_buff_visible(buff_id) then
                 local buff
@@ -3376,19 +3528,18 @@ function KH:draw()
                 table.insert(extra_buffs, b)
             end
         end
-        -- Tri par ordre d'arrivée : les nouveaux buffs s'ajoutent à la suite
-        -- des emplacements fixes, sans réordonner les icônes existantes.
+        -- Sort by arrival order: new buffs are added after
+        -- fixed slots, without reordering existing icons.
         table.sort(extra_buffs, compare_buff_arrival)
         for _, buff in ipairs(extra_buffs) do
             table.insert(buff_list, buff)
         end
 
-        local frame_pad_x = clamp(size * 0.16, 4, 9)
-        local frame_pad_y = clamp(size * 0.08, 2, 4)
-        -- Une seule rangée suffit tant qu'un libellé haut et une valeur ne
-        -- coexistent pas ; dès qu'une cellule porte les deux, la marge haute
-        -- passe à deux lignes. Un libellé placé dans le timer reste sous
-        -- l'icône et ne consomme jamais cette marge.
+        local preferred_frame_pad_x = clamp(size * 0.16, 4, 9)
+        local preferred_frame_pad_y = clamp(size * 0.08, 2, 4)
+        -- A single row suffices as long as a top label and value do not
+        -- coexist; once a cell carries both, the top margin becomes two lines. A label placed in the timer remains under
+        -- the icon and never consumes this margin.
         local top_label_height = 18
         for _, buff in ipairs(buff_list) do
             if buff.value_text then
@@ -3399,38 +3550,46 @@ function KH:draw()
                 end
             end
         end
-        local positions = compute_horizontal_positions(
+        local layout = self.compute_buff_row_layout(
             #buff_list,
             tonumber(s.buff_position_x) or 50,
             tonumber(s.buff_position_y) or 85,
             w,
             h,
             size,
-            frame_pad_x,
-            frame_pad_y,
+            preferred_frame_pad_x,
+            preferred_frame_pad_y,
             top_label_height
         )
-        for idx, buff in ipairs(buff_list) do
-            local pos = positions[idx]
+        local buff_size = layout.effective_size
+        local frame_pad_x = layout.frame_pad_x
+        local frame_pad_y = layout.frame_pad_y
+        local buff_text_scale = layout.scale
+        local buff_text_h = math.max(10, 16 * buff_text_scale)
+        local buff_text_gap = 2 * buff_text_scale
+
+        for idx = 1, layout.visible_count do
+            local buff = buff_list[idx]
+            local pos = layout.positions[idx]
             if pos then
-                -- L'état visuel est résolu une seule fois par buff rendu : il
-                -- pilote l'opacité de la cellule, le contour périmétrique et
-                -- la couleur du timer. Le cadre statique, lui, reste
-                -- identique pour tous les états.
+                -- The visual state is resolved once per rendered buff: it
+                -- controls the cell's opacity, perimeter outline, and
+                -- timer color. The static frame, however, remains
+                -- identical for all states.
                 local state = resolve_buff_state(buff, t)
 
-                -- Alpha dynamique : diminue quand le buff expire, mais un état
-                -- d'alerte remonte vers l'opacité pleine pour rester visible.
+                -- Dynamic alpha: decreases as the buff expires, but an alert state
+                -- rises to full opacity to remain visible.
                 local buff_alpha = alpha * (0.4 + 0.6 * (state.progress or 1))
                 buff_alpha = buff_alpha + (alpha - buff_alpha) * state.emphasis
                 buff_alpha = buff_alpha * state.alpha_scale
 
-                -- Chaque buff conserve sa propre cellule, assez discrète pour que
-                -- l'icône et le timer restent les informations dominantes.
-                local frame_x = pos.x - size * 0.5 - frame_pad_x
-                local frame_y = pos.y - size * 0.5 - frame_pad_y
-                local frame_w = size + frame_pad_x * 2
-                local frame_h = size + frame_pad_y * 2
+                -- Each buff retains its own cell, subtle enough that
+                -- the icon and timer remain the dominant information.
+                local frame_x = pos.x - buff_size * 0.5 - frame_pad_x
+                local frame_y = pos.y - buff_size * 0.5 - frame_pad_y
+                local frame_w = buff_size + frame_pad_x * 2
+                local frame_h = buff_size + frame_pad_y * 2
 
                 draw_buff_cell_frame(
                     self._panel,
@@ -3442,9 +3601,8 @@ function KH:draw()
                     98
                 )
 
-                -- Contour périmétrique horaire, réservé aux buffs temporaires :
-                -- un indicateur permanent n'a pas de `progress` et n'en reçoit
-                -- donc jamais.
+                -- Hourly perimeter outline, reserved for temporary buffs:
+                -- a permanent indicator has no `progress` and thus never receives one.
                 if state.progress then
                     draw_timed_buff_progress(
                         self._panel,
@@ -3463,10 +3621,10 @@ function KH:draw()
 
                 local params = {
                     layer = 101,
-                    w     = size,
-                    h     = size,
-                    x     = pos.x - size / 2,
-                    y     = pos.y - size / 2,
+                    w     = buff_size,
+                    h     = buff_size,
+                    x     = pos.x - buff_size / 2,
+                    y     = pos.y - buff_size / 2,
                 }
 
                 if buff.icon.rect then
@@ -3480,10 +3638,10 @@ function KH:draw()
                 bmp:set_color(buff.color or Color.white)
                 bmp:set_alpha(buff_alpha)
 
-                -- Un libellé haut occupe la ligne juste au-dessus du cadre et
-                -- décale la valeur d'une ligne supplémentaire. Un libellé de
-                -- placement « timer » descend sous l'icône : la valeur garde
-                -- alors sa ligne unique au-dessus du cadre.
+                -- A top label occupies the line just above the frame and
+                -- shifts the value down by an additional line. A placement
+                -- label « timer » drops below the icon: the value then keeps
+                -- its single line above the frame.
                 local label_text, label_placement = buff_label(buff)
                 local top_label = label_text and label_placement == BUFF_LABEL_TOP and label_text or nil
                 local timer_label = label_text and label_placement == BUFF_LABEL_TIMER and label_text or nil
@@ -3491,14 +3649,14 @@ function KH:draw()
                     self._panel:text({
                         text      = buff.value_text,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = clamp(size * 0.38, 11, 15),
+                        font_size = math.max(8, clamp(size * 0.38, 11, 15) * buff_text_scale),
                         color     = buff.color or Color.white,
                         align     = "center",
                         vertical  = "center",
                         x         = frame_x,
-                        y         = frame_y - (top_label and 34 or 17),
+                        y         = frame_y - (top_label and 34 or 17) * buff_text_scale,
                         w         = frame_w,
-                        h         = 16,
+                        h         = buff_text_h,
                         layer     = 102,
                         alpha     = buff_alpha,
                     })
@@ -3508,24 +3666,24 @@ function KH:draw()
                     self._panel:text({
                         text      = top_label,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = clamp(size * 0.3, 9, 12),
+                        font_size = math.max(8, clamp(size * 0.3, 9, 12) * buff_text_scale),
                         color     = HUD_ACCENT_COLOR,
                         align     = "center",
                         vertical  = "center",
                         x         = frame_x,
-                        y         = frame_y - 17,
+                        y         = frame_y - 17 * buff_text_scale,
                         w         = frame_w,
-                        h         = 16,
+                        h         = buff_text_h,
                         layer     = 102,
                         alpha     = buff_alpha,
                     })
                 end
 
                 if buff.stack_text then
-                    local badge_w = clamp(size * 0.55, 15, 26)
-                    local badge_h = clamp(size * 0.36, 10, 16)
-                    local badge_x = pos.x + size * 0.5 - badge_w
-                    local badge_y = pos.y + size * 0.5 - badge_h
+                    local badge_w = clamp(size * 0.55, 15, 26) * buff_text_scale
+                    local badge_h = clamp(size * 0.36, 10, 16) * buff_text_scale
+                    local badge_x = pos.x + buff_size * 0.5 - badge_w
+                    local badge_y = pos.y + buff_size * 0.5 - badge_h
                     self._panel:rect({
                         x = badge_x,
                         y = badge_y,
@@ -3538,7 +3696,7 @@ function KH:draw()
                     self._panel:text({
                         text = buff.stack_text,
                         font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = clamp(size * 0.3, 9, 12),
+                        font_size = math.max(8, clamp(size * 0.3, 9, 12) * buff_text_scale),
                         color = Color.white,
                         align = "center",
                         vertical = "center",
@@ -3551,22 +3709,22 @@ function KH:draw()
                     })
                 end
 
-                -- Sous l'icône : un libellé de placement « timer » occupe seul
-                -- l'emplacement et remplace le compte à rebours, dont la durée
-                -- n'apporte rien sur ces indicateurs composites. Sinon, timer
-                -- texte teinté par l'état d'urgence.
+                -- Below the icon: a placement label « timer » occupies alone
+                -- the slot and replaces the countdown, whose duration
+                -- contributes nothing to these composite indicators. Otherwise, timer
+                -- text is tinted by the emergency state.
                 if timer_label then
                     self._panel:text({
                         text      = timer_label,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = clamp(size * 0.3, 9, 12),
+                        font_size = math.max(8, clamp(size * 0.3, 9, 12) * buff_text_scale),
                         color     = HUD_ACCENT_COLOR,
                         align     = "center",
                         vertical  = "center",
                         x         = frame_x,
-                        y         = pos.y + size / 2 + 2,
+                        y         = pos.y + buff_size / 2 + buff_text_gap,
                         w         = frame_w,
-                        h         = 16,
+                        h         = buff_text_h,
                         layer     = 102,
                         alpha     = buff_alpha,
                     })
@@ -3574,22 +3732,54 @@ function KH:draw()
                     self._panel:text({
                         text      = string.format("%.1f", remaining),
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
-                        font_size = 14,
+                        font_size = math.max(8, 14 * buff_text_scale),
                         color     = state.timer_color or Color.white,
                         align     = "center",
-                        x         = pos.x - size / 2,
-                        y         = pos.y + size / 2 + 2,
-                        w         = size,
-                        h         = 16,
+                        x         = pos.x - buff_size / 2,
+                        y         = pos.y + buff_size / 2 + buff_text_gap,
+                        w         = buff_size,
+                        h         = buff_text_h,
                         layer     = 102,
                         alpha     = alpha * (0.8 + 0.2 * state.emphasis) * state.alpha_scale,
                     })
                 end
             end
         end
+
+        if layout.hidden_count > 0 then
+            local pos = layout.positions[layout.slot_count]
+            local frame_x = pos.x - buff_size * 0.5 - frame_pad_x
+            local frame_y = pos.y - buff_size * 0.5 - frame_pad_y
+            local frame_w = buff_size + frame_pad_x * 2
+            local frame_h = buff_size + frame_pad_y * 2
+
+            draw_buff_cell_frame(
+                self._panel,
+                frame_x,
+                frame_y,
+                frame_w,
+                frame_h,
+                alpha,
+                98
+            )
+            self._panel:text({
+                text = layout.overflow_text,
+                font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",
+                font_size = math.max(9, 16 * buff_text_scale),
+                color = HUD_ACCENT_COLOR,
+                align = "center",
+                vertical = "center",
+                x = frame_x,
+                y = frame_y,
+                w = frame_w,
+                h = frame_h,
+                layer = 102,
+                alpha = alpha,
+            })
+        end
     end
 
-    -- ── Dessiner le bandeau de série et le killfeed horizontal ──
+    -- ── Draw streak banner and horizontal killfeed ──
     local combo_active = combo and combo.count and combo.count >= 2 and combo.last_t
     local special_banner_active = special_banner ~= nil
     local banner_active = special_banner_active or combo_active
@@ -3642,7 +3832,9 @@ function KH:draw()
                 and (kill._measured_score_w or approximate_text_width(kill.score_text, kill_font_size))
                 or 0
             local content_gap = kill.score_text and text_gap or 0
-            local icon_reserved = kill.headshot and kill.headshot_icon
+            local leading_icon = kill.sentry_icon
+                or (kill.headshot and kill.headshot_icon)
+            local icon_reserved = leading_icon
                 and (headshot_icon_size + headshot_icon_gap)
                 or 0
             local item_w = math.ceil(
@@ -3682,10 +3874,10 @@ function KH:draw()
         local banner_h = math.max(38, size + 8)
         local banner_feed_gap = BANNER_FRAME_EXTENSION
             + KILLFEED_FRAME_CLEARANCE
-        -- Le bloc conserve l'emplacement historique du bandeau supérieur, puis
-        -- ajoute dynamiquement la médaille et la rangée des noms. Seule la
-        -- médaille ajoute un niveau : les noms remontent dès qu'elle expire,
-        -- sans laisser d'espace vide entre le bandeau et le killfeed.
+        -- The block retains the historical location of the top banner, then
+        -- dynamically adds the medal and the name row. Only the
+        -- medal adds a level: names rise as soon as it expires,
+        -- without leaving empty space between the banner and the killfeed.
         local medal_h = medal_card_active and clamp(item_h + 6, 34, 46) or 0
         local medal_top_gap = medal_card_active and MEDAL_TOP_GAP or 0
         local medal_feed_gap = (medal_card_active and visible_count > 0)
@@ -3776,8 +3968,8 @@ function KH:draw()
                     BANNER_FRAME_STYLE
                 )
 
-                -- Les deux banques réservent la même largeur, quel que soit le
-                -- bandeau : le texte reste centré et ne les chevauche jamais.
+                -- Both banks reserve the same width, regardless of the
+                -- banner: text remains centered and never overlaps them.
                 local arrow_group_w = special_banner_active
                     and SPECIAL_CHEVRON_GROUP_W
                     or MULTIKILL_CHEVRON_GROUP_W
@@ -3793,7 +3985,7 @@ function KH:draw()
                     draw_chevrons(self._panel, left_arrow_x, arrow_y, 1, color, banner_alpha, 106)
                     draw_chevrons(self._panel, right_arrow_x, arrow_y, -1, color, banner_alpha, 106)
                 else
-                    -- Un cran de plus par kill supplémentaire de la série.
+                    -- One step up per additional kill in the streak.
                     local filled = multikill_chevron_fill(combo.count)
                     draw_multikill_chevrons(
                         self._panel, left_arrow_x, arrow_y, 1, color, banner_alpha, 106, filled
@@ -3826,10 +4018,10 @@ function KH:draw()
             end
         end
 
-        -- ── Médaille : rangée propre au killfeed ──
-        -- Même largeur que le bandeau, mais hauteur de rangée de killfeed, sans
-        -- nom d'unité ni score. Elle pousse simplement les noms d'un cran, quelle
-        -- que soit la famille de médaille qui occupe la rangée.
+        -- ── Medal: dedicated row for killfeed ──
+        -- Same width as the banner, but killfeed row height, without
+        -- unit name or score. It simply pushes names up a step, whatever
+        -- the medal family occupying the row.
         if medal_card_active then
             local remaining = medal_card.preview
                 and MEDAL_CARD_DURATION
@@ -3881,13 +4073,13 @@ function KH:draw()
                 local text_x = mx + content_padding
                 local text_w = math.max(1, mw - content_padding * 2)
 
-                -- Médaille à icône : le pictogramme remplace le nom écrit et
-                -- précède le palier, les deux restant centrés ensemble dans la
-                -- zone intérieure. Le texte est simplement décalé de la largeur
-                -- réservée à l'icône, ce qui recentre le couple sans dépendre
-                -- d'une mesure : seule la position de l'icône suit la largeur
-                -- estimée du texte, donc une estimation imprécise la décale un
-                -- peu au lieu de tronquer le palier.
+                -- Medal with icon: the pictogram replaces the written name and
+                -- precedes the tier, both remaining centered together in the
+                -- inner area. Text is simply shifted by the width
+                -- reserved for the icon, which recenters the pair without depending
+                -- on a measurement: only the icon's position follows the estimated
+                -- text width, so an imprecise estimate shifts it slightly instead of
+                -- truncating the tier.
                 local icon = medal_card.icon
                 if icon and icon.texture then
                     local icon_size = clamp(
@@ -3939,8 +4131,8 @@ function KH:draw()
 
         local feed_x = card_row_x + score_w + score_gap
         for slot = 1, visible_count do
-            -- Ordre chronologique : le kill le plus ancien est à gauche,
-            -- le plus récent s'ajoute à droite.
+            -- Chronological order: the oldest kill is on the left,
+            -- the newest adds to the right.
             local kill = self._kills[first_kill + slot - 1]
             local item_w = item_widths[slot]
             local item_x = feed_x + item_offsets[slot]
@@ -3959,8 +4151,8 @@ function KH:draw()
                 item_x = item_x + 18 * (1 - scroll)
             end
 
-            local item_color = kill.special_kind
-                and special_enemy_color(kill.special_kind)
+            local item_color = kill.sentry and Color.white
+                or (kill.special_kind and special_enemy_color(kill.special_kind))
                 or feed_color
             draw_killfeed_card_frame(
                 self._panel,
@@ -3975,10 +4167,11 @@ function KH:draw()
 
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
-            local headshot_icon = kill.headshot and kill.headshot_icon or nil
+            local leading_icon = kill.sentry_icon
+                or (kill.headshot and kill.headshot_icon)
             local minimum_text_w = 1 + (score_text and (text_gap + 1) or 0)
             local icon_available_w = math.max(0, inner_w - minimum_text_w)
-            local icon_size = headshot_icon
+            local icon_size = leading_icon
                 and math.min(
                     headshot_icon_size,
                     math.max(0, icon_available_w - headshot_icon_gap)
@@ -4013,10 +4206,10 @@ function KH:draw()
                     h = icon_size,
                     x = content_x,
                     y = feed_y + (item_h - icon_size) * 0.5,
-                    texture = headshot_icon.texture,
+                    texture = leading_icon.texture,
                 }
-                if headshot_icon.rect then
-                    params.texture_rect = headshot_icon.rect
+                if leading_icon.rect then
+                    params.texture_rect = leading_icon.rect
                 end
                 local bitmap = self._panel:bitmap(params)
                 bitmap:set_color(item_color)
@@ -4067,7 +4260,7 @@ function KH:draw()
 end
 
 -- ═══════════════════════════════════════════════════
--- Rafraîchissement
+-- Refresh
 -- ═══════════════════════════════════════════════════
 function KH:RefreshHUD()
     self:RefreshDetectedBuffs()
@@ -4078,27 +4271,29 @@ function KH:RefreshHUD()
 end
 
 -- ═══════════════════════════════════════════════════
--- Debug : simulation
+-- Debug: simulation
 -- ═══════════════════════════════════════════════════
--- Cas parcourus par appels successifs à Debug: Simulate :
---   multikill partiel, 3 encoches allumées sur 5 ;
---   banque saturée et repli dynamique « KILL CHAIN xN » ;
---   annonce de cible prioritaire (chevrons décoratifs pleins) ;
---   médaille de série d'arme dans le killfeed, avec les noms sous celle-ci ;
---   médaille de kills cumulés « icône Dmg+ + 100 KILLS », dans cette même
---   rangée partagée ;
---   les dix-huit cartes de médailles d'évènement, paliers de rappel compris,
---   une par appel, avec leur icône `hud_tweak`.
--- Le premier appel montre directement l'exemple demandé, partiellement rempli.
--- `combo` reste à 0 pour les cas d'annonce afin que seul le bandeau spécial soit
--- visible ; l'aperçu ne compte aucun kill, ni dans les séries d'arme ni dans le
--- total du braquage : chaque carte est construite depuis ces valeurs littérales.
+-- Cases traversed by successive calls to Debug: Simulate :
+--   partial multikill, 3 notches lit out of 5;
+--   saturated bank and dynamic fallback "KILL CHAIN xN";
+--   priority target announcement (solid decorative chevrons);
+--   weapon streak medal in the killfeed, with names below it;
+--   cumulative kills medal « Dmg+ icon + 100 KILLS », in this same
+--   shared row;
+--   white sentry card and medal with `equipment_sentry` icon;
+--   the twenty-two event medals, including rappel tiers,
+--   one per call, with their `hud_tweak` icon.
+-- The first call shows the requested example directly, partially filled.
+-- `combo` remains at 0 for announcement cases so only the special banner is
+-- visible; the preview counts no kills, neither in weapon streaks nor in the
+-- heist total: each card is built from these literal values.
 local DEBUG_BANNER_PREVIEWS = {
     { combo = 4 },
     { combo = 11 },
     { combo = 0, banner = "boss" },
     { combo = 0, medal = "weapon_streak", family = "shotgun", tier_index = 2 },
     { combo = 0, medal = "kill_total", kills = 100 },
+    { combo = 0, medal = "sentry_kill", kills = 100 },
     { combo = 0, medal = "event", event = "first_strike" },
     { combo = 0, medal = "event", event = "grave" },
     { combo = 0, medal = "event", event = "low_hp" },
@@ -4117,11 +4312,15 @@ local DEBUG_BANNER_PREVIEWS = {
     { combo = 0, medal = "event", event = "overwatch" },
     { combo = 0, medal = "event", event = "long_shot" },
     { combo = 0, medal = "event", event = "spray_down" },
+    { combo = 0, medal = "event", event = "no_flashbang" },
+    { combo = 0, medal = "event", event = "air_kill" },
+    { combo = 0, medal = "event", event = "wall_bang", event_count = 3 },
+    { combo = 0, medal = "event", event = "loot_carrier" },
 }
 
 function KH:DebugSimulate(n)
-    -- L'aperçu utilise les tables du HUD : il n'est sûr qu'au menu principal,
-    -- jamais pendant un braquage (y compris briefing, garde à vue et pause).
+    -- The preview uses HUD tables: it is safe only in the main menu,
+    -- never during an assault (including briefing, arrest, and pause).
     local ok, in_menu = pcall(function()
         return game_state_machine:last_queued_state_name() == "menu_main"
     end)
@@ -4159,8 +4358,8 @@ function KH:DebugSimulate(n)
         }
     end
 
-    -- Si le deck équipé possède un buff de deck activé dans les options, la
-    -- simulation l'active afin de vérifier le remplacement de la position 1.
+    -- If the equipped deck has a deck buff enabled in options, the
+    -- simulation activates it to verify replacement of position 1.
     local _, base_specialization_id = current_perk_deck_ids()
     equipped_perk_deck_entry(self).value_text = base_specialization_id == HACKER_SPECIALIZATION_ID
         and "x2" or nil
@@ -4206,18 +4405,18 @@ function KH:DebugSimulate(n)
             value_text = demo.value_text,
             stack_text = demo.stack_text,
             is_debuff = demo.is_debuff == true,
-            order_t  = t_now + i * 0.001, -- ordre d'affichage 1..n dans la rangée
+            order_t  = t_now + i * 0.001, -- display order 1..n in the row
             start_t  = t_now,
             duration = 30 + i * 2,
             t_end    = t_now + 30 + i * 2,
         }
     end
 
-    -- Vitrine des états adaptatifs. `preview_remaining` fige le temps restant
-    -- pour que les états normal, warning et critical restent affichés côte à
-    -- côte jusqu'à Debug: Clear, au lieu d'expirer en quelques secondes.
-    -- Avec une durée de 20 s, le seuil warning tombe à 5 s et le seuil
-    -- critical à 2 s : les valeurs choisies encadrent donc chaque état.
+    -- Adaptive states showcase. `preview_remaining` freezes remaining time
+    -- so normal, warning, and critical states remain displayed side by
+    -- side until Debug: Clear, instead of expiring in a few seconds.
+    -- With a duration of 20 s, the warning threshold drops to 5 s and the
+    -- critical threshold to 2 s: chosen values thus frame each state.
     local demo_state_buffs = {
         { id = "inspire",        remaining = 14 },
         { id = "uppers",         remaining = 3.4 },
@@ -4237,16 +4436,24 @@ function KH:DebugSimulate(n)
             order_t  = t_now + 0.1 + i * 0.001,
             start_t  = t_now,
             duration = demo_state_duration,
-            -- Aucun t_end : l'aperçu ne doit pas être purgé par KH:draw.
+            -- No t_end: the preview must not be purged by KH:draw.
             preview_remaining = demo.remaining,
         }
     end
 
-    -- Simuler quelques kills
+    local next_preview_index = (self._debug_banner_preview_index
+        % #DEBUG_BANNER_PREVIEWS) + 1
+    local next_preview = DEBUG_BANNER_PREVIEWS[next_preview_index]
+    local third_demo_kill = next_preview.medal == "sentry_kill"
+        and { name = "SWAT", score = 1, sentry = true }
+        or { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 }
+
+    -- Simulate a few kills. The sentry card temporarily replaces the Shield
+    -- only during its own preview case to keep both tests.
     local demo_kills = {
         { name = "Medic", score = 6, headshot = true, special_kind = "medic", special_count = 2, label_index = 1 },
         { name = "Captain Winters", score = 100, special_kind = "boss", special_count = 1, label_index = 1 },
-        { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 },
+        third_demo_kill,
         { name = "Cloaker", score = 8, special_kind = "cloaker", special_count = 2, label_index = 1 },
         { name = "Taser", score = 7, special_kind = "taser", special_count = 2, label_index = 1 },
     }
@@ -4264,6 +4471,8 @@ function KH:DebugSimulate(n)
             score_text = format_kill_score(demo.score),
             headshot   = demo.headshot == true,
             headshot_icon = demo.headshot and headshot_icon_descriptor() or nil,
+            sentry     = demo.sentry == true,
+            sentry_icon = demo.sentry and sentry_icon_descriptor() or nil,
             special_kind = demo.special_kind,
             display_text = special_enemy_label(
                 demo.special_kind,
@@ -4271,7 +4480,7 @@ function KH:DebugSimulate(n)
                 demo.special_count
             ),
             start_t    = t_now,
-            -- Pas de t_end : les kills de debug restent visibles jusqu'à DebugClear.
+            -- No t_end: debug kills remain visible until DebugClear.
         })
         if type(demo.score) == "number" then
             self._killfeed_score_total = self._killfeed_score_total + demo.score
@@ -4281,9 +4490,9 @@ function KH:DebugSimulate(n)
     end
     self._heist_score_total = (self._heist_score_total or 0) + 137
     self._heist_score_best_streak = (self._killfeed_score_total or 0) + 50
-    -- Une annonce spéciale d'aperçu ne s'éteint jamais et masquerait toujours
-    -- le multikill : chaque Debug: Simulate avance donc d'un cas de bandeau,
-    -- et chacun reste affiché jusqu'au suivant ou jusqu'à Debug: Clear.
+    -- A special preview announcement never turns off and would always
+    -- mask the multikill: each Debug: Simulate advances by one banner case,
+    -- and each remains displayed until the next or until Debug: Clear.
     self._debug_banner_preview_index = (self._debug_banner_preview_index
         % #DEBUG_BANNER_PREVIEWS) + 1
     local preview = DEBUG_BANNER_PREVIEWS[self._debug_banner_preview_index]
@@ -4306,13 +4515,16 @@ function KH:DebugSimulate(n)
         )
     elseif preview.medal == "kill_total" then
         self:_show_medal_card(t_now, make_kill_medal_card(preview.kills), true)
+    elseif preview.medal == "sentry_kill" then
+        self:_show_medal_card(t_now, make_sentry_kill_medal_card(preview.kills), true)
     elseif preview.medal == "event" then
-        self:_show_medal_card(t_now, make_event_medal_card(preview.event, preview.tier_index), true)
+        local card = make_event_medal_card(preview.event, preview.tier_index)
+        self:_show_medal_card(t_now, set_event_medal_count(card, preview.event_count), true)
     end
 end
 
 function KH:DebugClear()
-    -- Sans aperçu, ne toucher ni aux compteurs réels ni au panneau courant.
+    -- Without preview, do not touch real counters or the current panel.
     if not self._debug_preview_active then return end
     self:ResetHeistCombatState()
     if self._panel and alive(self._panel) then
@@ -4321,10 +4533,10 @@ function KH:DebugClear()
 end
 
 -- ═══════════════════════════════════════════════════
--- Hooks HUD : initialisation et mise à jour
+-- HUD Hooks: initialization and update
 -- ═══════════════════════════════════════════════════
--- HUDManager relaie ces deux évènements sur l'hôte ET le client. Aucun accès
--- à HUDAssaultCorner : un HUD tiers peut remplacer ou masquer ce panneau.
+-- HUDManager relays these two events to the host AND client. No access
+-- to HUDAssaultCorner: a third-party HUD can replace or hide this panel.
 if HUDManager.sync_start_assault then
     Hooks:PostHook(HUDManager, "sync_start_assault", "KH_EventAssaultStart", function(self, assault_number)
         if not KH._event_assault_active or KH._event_assault_number ~= assault_number then
@@ -4341,13 +4553,13 @@ if HUDManager.sync_end_assault then
 end
 
 Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
-    -- Un nouveau HUD correspond à une nouvelle partie : aucun buff, kill,
-    -- score, bandeau ni série d'arme de la partie précédente ne doit survivre.
+    -- A new HUD corresponds to a new heist: no buff, kill,
+    -- score, banner, or weapon streak from the previous heist must survive.
     KH:ResetHeistCombatState(true)
     KH:ensure_panel(true)
     KH:TryRegisterGameInfoBridge()
     KH:RefreshDetectedBuffs()
-    log("[KyoHUD] Panneau HUD initialisé.")
+    log("[KyoHUD] HUD panel initialized.")
 end)
 
 Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
