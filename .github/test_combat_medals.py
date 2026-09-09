@@ -139,6 +139,24 @@ class CombatMedalTests(unittest.TestCase):
                 'preview headshot icon unresolved')
         ''')
 
+    def test_get_kill_unit_id_fails_closed_when_alive_raises(self):
+        self.lua.execute('''
+            local victim = enemy('cop')
+            local original_alive = alive
+            alive = function(unit)
+                if unit == victim then error('engine') end
+                return original_alive(unit)
+            end
+
+            local ok, unit_id = pcall(function()
+                return kyohud:GetKillUnitId(victim)
+            end)
+            alive = original_alive
+
+            assert(ok, 'alive error escaped GetKillUnitId')
+            assert(unit_id == nil, 'failed alive check returned a unit id')
+        ''')
+
     def test_first_strike_once_per_assault_after_dedup(self):
         self.lua.execute('''
             assert(Hooks.callbacks.KH_EventAssaultStart, 'assault start hook missing')
