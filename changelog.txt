@@ -1,3 +1,11 @@
+r21 (10.09.2026):
+-Prevented kill detection errors when an enemy unit's alive check fails;
+-Fixed Sicario smoke dodge being counted twice;
+-Restored settings from the backup when the primary settings file is missing;
+-Corrected temporary buff expiration with safe application-clock fallbacks;
+-Hardened texture lookup against database errors;
+-Removed stale buff targets when a source's catalog mapping changes.
+
 r20 (09.09.2026):
 -New combat medals: Air kill, Wallbang, No Flashbang, Hands off;
 -Support for sentry kills;
