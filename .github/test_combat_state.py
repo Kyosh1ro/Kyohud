@@ -85,6 +85,33 @@ class CombatStateTests(unittest.TestCase):
                 'normal Application conversion changed: ' .. tostring(buff and buff.duration))
         ''')
 
+    def test_changed_source_targets_remove_former_composite(self):
+        self.lua.execute('''
+            kyohud.settings.enable_buffs = true
+            local targets = {'source_a', 'source_b'}
+            kyohud.GetBuffTargets = function() return targets end
+
+            kyohud:handle_buff_event('activate', 'dynamic_source', {}, 'gameinfo_buff')
+            assert(kyohud._buffs.source_a and kyohud._buffs.source_b,
+                'initial source targets were not activated')
+            local source_b_order = kyohud._buffs.source_b.order_t
+
+            targets = {'source_b', 'source_c'}
+            kyohud:handle_buff_event('set_value', 'dynamic_source', {value = 1}, 'gameinfo_buff')
+            assert(kyohud._buffs.source_a == nil,
+                'former composite source_a remained active after target migration')
+            assert(kyohud._buffs.source_b and kyohud._buffs.source_c,
+                'current source targets were not active after migration')
+            assert(kyohud._buffs.source_b.order_t == source_b_order,
+                'retained target lost its original buff order')
+
+            kyohud:handle_buff_event('deactivate', 'dynamic_source', nil, 'gameinfo_buff')
+            assert(kyohud._buffs.source_a == nil
+                and kyohud._buffs.source_b == nil
+                and kyohud._buffs.source_c == nil,
+                'source target remained active after deactivation')
+        ''')
+
     def test_hidden_killfeed_preserves_heist_accounting(self):
         self.lua.execute('''
             kyohud:add_kill('Enemy', 10, true)
