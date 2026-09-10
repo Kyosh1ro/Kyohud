@@ -162,6 +162,11 @@ function KH.Load()
     local f = io.open(KH._settings_path, "r")
     local loaded_legacy_settings = false
     if not f then
+        local backup_path = KH._settings_path .. ".bak"
+        os.rename(backup_path, KH._settings_path)
+        f = io.open(KH._settings_path, "r") or io.open(backup_path, "r")
+    end
+    if not f then
         f = io.open(KH._legacy_settings_path, "r")
         loaded_legacy_settings = f ~= nil
     end
