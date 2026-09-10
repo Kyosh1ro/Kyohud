@@ -155,7 +155,12 @@ local BANNER_FRAME_STYLE = {
 -- Icon Resolution — Locally adapted HUDList conventions
 -- ═══════════════════════════════════════════════════
 local function has_texture(path)
-    return path and DB and DB:has(Idstring("texture"), Idstring(path))
+    if not path or not DB then return false end
+
+    local ok, exists = pcall(function()
+        return DB:has(Idstring("texture"), Idstring(path))
+    end)
+    return ok and exists or false
 end
 
 --- Resolves an icon from a HUDList-compatible description table.
