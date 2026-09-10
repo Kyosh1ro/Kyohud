@@ -385,7 +385,10 @@ function KH:ReadEnemyKillState(unit, out)
 end
 
 function KH:GetKillUnitId(unit)
-    if not unit or not alive(unit) then return nil end
+    if not unit then return nil end
+
+    local alive_ok, is_alive = pcall(alive, unit)
+    if not alive_ok or not is_alive then return nil end
 
     local ok, unit_id = pcall(function()
         local base = unit:base()
