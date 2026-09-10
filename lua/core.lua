@@ -77,7 +77,8 @@ local KILLFEED_SCORE_PENALTY_COLOR = Color(1, 0.22, 0.12)
 local HACKER_SPECIALIZATION_ID = 21
 local POCKET_ECM_GRENADE_ID = "pocket_ecm_jammer"
 local POCKET_ECM_COOLDOWN_ID = "pocket_ecm_jammer_debuff"
-local KYO_BUFF_CONFIG = dofile(MY_MOD_PATH .. "lua/ky_buff_presentation.lua")
+dofile(MY_MOD_PATH .. "lua/ky_buff_presentation.lua")
+local KYO_BUFF_CONFIG = assert(KH.KYO_BUFF_CONFIG, "KyoHUD buff presentation config is missing")
 local KYO_BUFF_COLORS = assert(KYO_BUFF_CONFIG.colors, "KyoHUD buff colors are missing")
 local KYO_BUFF_PRESENTATION = assert(KYO_BUFF_CONFIG.buffs, "KyoHUD buff presentation is missing")
 KH.KYO_BUFF_PRESENTATION = KYO_BUFF_PRESENTATION

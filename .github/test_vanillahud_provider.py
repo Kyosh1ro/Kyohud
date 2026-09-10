@@ -53,6 +53,42 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
             assert(kyohud.KYO_BUFF_PRESENTATION.pocket_ecm_jammer_debuff.separate_source == true)
         ''')
 
+    def test_presentation_load_does_not_depend_on_dofile_return_value(self):
+        lua = LuaRuntime(unpack_returned_tuples=True)
+        lua.globals().ModPath = ROOT.as_posix() + "/"
+        lua.execute('''
+            Hooks = {callbacks = {}}
+            function Hooks:PostHook(class, method, id, fn) self.callbacks[id] = fn end
+            function Hooks:PreHook(class, method, id, fn) self.callbacks[id] = fn end
+            function Hooks:Add(...) end
+            HUDManager = {}; PlayerManager = {}; managers = {}; tweak_data = {}
+            function Vector3(...) return {...} end
+            function log(...) end
+            function alive(x) return x ~= nil end
+            local function color()
+                return {with_alpha = function(self) return self end}
+            end
+            Color = setmetatable({white = color(), black = color()}, {
+                __call = function(...) return color() end
+            })
+            TimerManager = {
+                game = function()
+                    return {time = function() return 100 end}
+                end
+            }
+
+            local native_dofile = dofile
+            function dofile(path)
+                native_dofile(path)
+                return nil
+            end
+        ''')
+
+        lua.execute((ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig"))
+        lua.execute('''
+            assert(kyohud.KYO_BUFF_PRESENTATION.damage_increase.fixed_slot == 6)
+        ''')
+
     def test_definition_is_resolved_lazily_from_vanillahud_map(self):
         self.lua.execute('''
             HUDList = nil

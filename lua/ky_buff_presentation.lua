@@ -4,7 +4,12 @@
 -- This module contains only KyoHUD-specific colors, labels, aggregate formats,
 -- fixed row placement, and equipped-deck presentation behavior.
 
-return {
+if not kyohud then kyohud = Kyosh1roHUD or {} end
+Kyosh1roHUD = kyohud
+
+if kyohud.KYO_BUFF_CONFIG then return end
+
+kyohud.KYO_BUFF_CONFIG = {
     colors = {
         debuff = "FF5F78",
         team = "52D6FF",
