@@ -1778,7 +1778,7 @@ local function application_time()
     local ok, t = pcall(function()
         return Application:time()
     end)
-    return ok and tonumber(t) or now()
+    return ok and tonumber(t) or nil
 end
 
 local function source_remaining(data)
@@ -1789,13 +1789,17 @@ local function source_remaining(data)
     local app_t = application_time()
     local expire_t = tonumber(data.expire_t)
     if expire_t then
-        return math.max(0, expire_t - app_t), true
+        if app_t then
+            return math.max(0, expire_t - app_t), true
+        end
+        local duration = tonumber(data.duration)
+        return duration and math.max(0, duration) or 0, true
     end
 
     local duration = tonumber(data.duration)
     if duration then
         local start_t = tonumber(data.t)
-        if start_t then
+        if start_t and app_t then
             return math.max(0, start_t + duration - app_t), true
         end
         return math.max(0, duration), true
@@ -1810,7 +1814,7 @@ local function source_remaining(data)
             end
         end
         if latest_expire_t then
-            return math.max(0, latest_expire_t - app_t), true
+            return app_t and math.max(0, latest_expire_t - app_t) or 0, true
         end
     end
 

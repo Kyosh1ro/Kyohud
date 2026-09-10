@@ -53,6 +53,38 @@ class CombatStateTests(unittest.TestCase):
             assert(captured == 20, 'expected 20 seconds remaining, got ' .. tostring(captured))
         ''')
 
+    def test_absolute_expiry_does_not_fall_back_to_game_clock(self):
+        self.lua.execute('''
+            kyohud.settings.enable_buffs = true
+            kyohud.GetBuffTargets = function() return {'overkill'} end
+            Application.time = function() error('application clock unavailable') end
+            kyohud:handle_buff_event('activate', 'overkill_damage_multiplier', {
+                expire_t = 1020,
+                duration = 20,
+            })
+            local buff = kyohud._buffs.overkill
+            assert(buff and buff.duration == 20,
+                'expected supplied duration, got ' .. tostring(buff and buff.duration))
+
+            kyohud._buffs = {}
+            kyohud._buff_sources = {}
+            kyohud._source_targets = {}
+            kyohud:handle_buff_event('activate', 'overkill_damage_multiplier', {
+                expire_t = 1020,
+            })
+            assert(kyohud._buffs.overkill == nil,
+                'absolute expiry without a safe clock or duration should be suppressed')
+
+            Application.time = function() return app_t end
+            kyohud:handle_buff_event('activate', 'overkill_damage_multiplier', {
+                expire_t = 1020,
+                duration = 50,
+            })
+            buff = kyohud._buffs.overkill
+            assert(buff and buff.duration == 20,
+                'normal Application conversion changed: ' .. tostring(buff and buff.duration))
+        ''')
+
     def test_hidden_killfeed_preserves_heist_accounting(self):
         self.lua.execute('''
             kyohud:add_kill('Enemy', 10, true)
