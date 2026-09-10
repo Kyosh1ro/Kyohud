@@ -43,7 +43,7 @@ KH.BUFF_COLORS = {
     total_dodge_chance = "F5D547",
 }
 
--- value_format selects the conversion of the engine value in ky_buffhud.lua. show_stack_count adds a badge without replacing the value.
+-- value_format selects the conversion of the engine value in core.lua. show_stack_count adds a badge without replacing the value.
 -- persistent_counter retains the icon of an equipped skill and describes the dynamic value the HUD must display even when its buff is inactive.
 -- label describes a targeted label that never borrows from value_text: it carries its own localization key, fallback, and placement. `placement = "top"` (default) draws it above the icon; `placement = "timer"` installs it below the icon in the timer slot, replacing the countdown.
 KH.BUFF_MAP = {

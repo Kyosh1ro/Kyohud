@@ -58,7 +58,7 @@ class BuffRowLayoutTests(unittest.TestCase):
             end
         ''')
         self.lua.execute(
-            (ROOT / "lua" / "ky_buffhud.lua").read_text(encoding="utf-8-sig")
+            (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
         )
 
     def test_zero_buffs_returns_empty_layout(self):
@@ -280,7 +280,7 @@ class BuffRowLayoutTests(unittest.TestCase):
         ''')
 
     def test_buff_scale_is_local_to_buff_rendering(self):
-        source = (ROOT / "lua" / "ky_buffhud.lua").read_text(encoding="utf-8-sig")
+        source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
         buff_block = source.split("-- ── Draw buffs ──", 1)[1].split(
             "-- ── Draw streak banner and horizontal killfeed ──", 1
         )[0]

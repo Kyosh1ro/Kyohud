@@ -1,4 +1,4 @@
--- ky_buffhud.lua — Horizontal buff display + killfeed
+-- core.lua — KyoHUD state, combat HUD and buff rendering
 -- Buffs displayed side-by-side on a configurable horizontal row.
 -- Local icon descriptors inspired by HUDList/VanillaHUD Plus; see CREDITS.md.
 
@@ -256,6 +256,49 @@ end
 -- ═══════════════════════════════════════════════════
 -- Icon Resolution for a buff_id
 -- ═══════════════════════════════════════════════════
+function KH:GetVanillaHUDBuffDefinition(buff_id)
+    local map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
+    return map and map[buff_id] or nil
+end
+
+function KH:HasVanillaHUDBuffProvider()
+    return managers and managers.gameinfo
+        and managers.gameinfo.register_listener
+        and managers.gameinfo.get_buffs
+        and managers.gameinfo.get_player_actions
+        and HUDList and HUDList.BuffItemBase
+        and type(HUDList.BuffItemBase.MAP) == "table"
+        and HUDListManager
+        and type(HUDListManager.BUFFS) == "table"
+        or false
+end
+
+function KH:GetVanillaHUDBuffTargets(source_id)
+    local targets = {}
+    local groups = HUDListManager and HUDListManager.BUFFS
+    local mapped = groups and groups[source_id]
+    if type(mapped) ~= "table" then
+        local composite_parent = groups
+            and groups.composite_debuffs
+            and groups.composite_debuffs[source_id]
+        if composite_parent and self:GetVanillaHUDBuffDefinition(composite_parent) then
+            targets[1] = composite_parent
+            return targets
+        end
+        if self:GetVanillaHUDBuffDefinition(source_id) then
+            targets[1] = source_id
+        end
+        return targets
+    end
+
+    for _, buff_id in ipairs(mapped) do
+        if self:GetVanillaHUDBuffDefinition(buff_id) then
+            table.insert(targets, buff_id)
+        end
+    end
+    return targets
+end
+
 local function icon_for_buff(buff_id)
     local vhud_map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
     local map_entry = (vhud_map and vhud_map[buff_id])
@@ -2368,9 +2411,16 @@ function KH:RefreshCalculatedBuffValues()
 end
 
 function KH:handle_buff_event(event, source_id, data, source_type)
-    if not source_id or not KH.GetBuffTargets then return end
+    if not source_id then return end
 
-    local targets = KH.GetBuffTargets(source_id)
+    local targets
+    if self._gameinfo_bridge_active then
+        targets = self:GetVanillaHUDBuffTargets(source_id)
+    elseif KH.GetBuffTargets then
+        targets = KH.GetBuffTargets(source_id)
+    else
+        return
+    end
     source_type = source_type or "buff"
     local source_key = tostring(source_type) .. ":" .. tostring(source_id)
 
@@ -2471,10 +2521,7 @@ end
 
 function KH:TryRegisterGameInfoBridge()
     if self._gameinfo_bridge_active then return true end
-    if not (managers and managers.gameinfo
-        and managers.gameinfo.register_listener
-        and managers.gameinfo.get_buffs
-        and managers.gameinfo.get_player_actions) then
+    if not self:HasVanillaHUDBuffProvider() then
         return false
     end
 

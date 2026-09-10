@@ -31,7 +31,7 @@ class CombatStateTests(unittest.TestCase):
             Application = {time = function() return app_t end}
             game_state_machine = {last_queued_state_name = function() return state_name end}
         ''')
-        for name in ("ky_buffhud.lua", "ky_hooks.lua"):
+        for name in ("core.lua", "ky_hooks.lua"):
             self.lua.execute((ROOT / "lua" / name).read_text(encoding="utf-8-sig"))
         self.lua.execute('''
             kyohud.settings = {enable_killfeed = true, killfeed_size = 3}

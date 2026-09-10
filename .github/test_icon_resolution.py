@@ -35,7 +35,7 @@ class IconResolutionTests(unittest.TestCase):
         ''')
         lua.execute(native_setup)
 
-        source = (ROOT / "lua" / "ky_buffhud.lua").read_text(encoding="utf-8-sig")
+        source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
         function_header = "local function get_icon_data(icon)"
         self.assertEqual(source.count(function_header), 1)
         source = source.replace(
