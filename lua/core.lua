@@ -78,6 +78,104 @@ local AI_BUFF_LABEL     = "[AI]"
 local HACKER_SPECIALIZATION_ID = 21
 local POCKET_ECM_GRENADE_ID = "pocket_ecm_jammer"
 local POCKET_ECM_COOLDOWN_ID = "pocket_ecm_jammer_debuff"
+local KYO_BUFF_COLORS = {
+    debuff = "FF5F78",
+    team = "52D6FF",
+    damage_increase = "FF8A3D",
+    damage_reduction = "6C8CFF",
+    melee_damage_increase = "D66BFF",
+    passive_health_regen = "4ADE9B",
+    total_dodge_chance = "F5D547",
+}
+
+-- KyoHUD-owned presentation only. Runtime state and general metadata remain
+-- sourced from VanillaHUD+; these entries preserve KyoHUD-specific labels,
+-- placement, aggregate text, and special row behavior.
+local KYO_BUFF_PRESENTATION = {
+    inspire_debuff = {
+        label = { id = "ky_hud_buff_label_inspire_cooldown", fallback = "Boost+", placement = "top" },
+    },
+    inspire_revive_debuff = {
+        label = { id = "ky_hud_buff_label_inspire_revive", fallback = "Revive", placement = "top" },
+    },
+    crew_inspire_debuff = { label = { fallback = AI_BUFF_LABEL, placement = "top" } },
+    crew_throwable_regen = { label = { fallback = AI_BUFF_LABEL, placement = "top" } },
+    crew_health_regen = { label = { fallback = AI_BUFF_LABEL, placement = "top" } },
+    damage_increase = {
+        fixed_slot = 6,
+        color = "damage_increase",
+        value_format = "damage_increase",
+        label = { id = "ky_hud_buff_label_damage_increase", fallback = "Dmg+", placement = "timer" },
+    },
+    damage_reduction = {
+        fixed_slot = 7,
+        color = "damage_reduction",
+        value_format = "damage_reduction",
+        label = { id = "ky_hud_buff_label_damage_reduction", fallback = "Dmg-", placement = "timer" },
+    },
+    melee_damage_increase = {
+        fixed_slot = 8,
+        color = "melee_damage_increase",
+        value_format = "melee_damage_increase",
+        label = { id = "ky_hud_buff_label_melee_damage", fallback = "M.Dmg+", placement = "timer" },
+    },
+    passive_health_regen = {
+        fixed_slot = 3,
+        color = "passive_health_regen",
+        value_format = "passive_health_regen",
+        label = { id = "ky_hud_buff_label_health_regen", fallback = "HP+", placement = "timer" },
+    },
+    total_dodge_chance = {
+        color = "total_dodge_chance",
+        value_format = "total_dodge_chance",
+        label = { id = "ky_hud_buff_label_dodge_chance", fallback = "Dodge", placement = "timer" },
+    },
+    biker = { stack_format = "biker_charges" },
+    partner_in_crime = {
+        persistent_counter = "local_minions",
+        skill_id = "control_freak",
+        counter_max_upgrade = {
+            category = "player",
+            upgrade = "convert_enemies_max_minions",
+            minimum = 1,
+        },
+    },
+    equipped_perk_deck = {
+        fixed_slot = 1,
+        equipped_deck = true,
+        perk_deck_buffs = {
+            [1] = { "hostage_situation" },
+            [2] = { "muscle_regen" },
+            [3] = { "armor_break_invulnerable" },
+            [8] = { "close_contact", "tooth_and_claw" },
+            [9] = { "overdog", "melee_stack_damage" },
+            [11] = { "grinder" },
+            [12] = { "yakuza" },
+            [14] = { "maniac" },
+            [15] = { "armor_break_invulnerable" },
+            [16] = { "biker" },
+            [17] = { "chico_injector" },
+            [18] = { "smoke_screen_grenade", "sicario_dodge" },
+            [19] = { "delayed_damage" },
+            [20] = { "tag_team" },
+            [22] = { "copr_ability" },
+            [23] = {
+                "copycat_health_invul", "copycat_health_shot", "hostage_situation",
+                "muscle_regen", "armor_break_invulnerable", "close_contact",
+                "tooth_and_claw", "overdog", "melee_stack_damage", "grinder",
+                "yakuza", "maniac", "biker", "chico_injector",
+                "smoke_screen_grenade", "sicario_dodge", "delayed_damage",
+                "tag_team", "pocket_ecm_jammer", "pocket_ecm_kill_dodge",
+                "copr_ability",
+            },
+        },
+    },
+    pocket_ecm_jammer_debuff = { fixed_slot = 2, separate_source = true },
+    standard_armor_regeneration = { fixed_slot = 4 },
+    armor_break_invulnerable_debuff = { fixed_slot = 5 },
+}
+KH.KYO_BUFF_PRESENTATION = KYO_BUFF_PRESENTATION
+local EMPTY_BUFF_CANDIDATES = {}
 
 local function killfeed_size(settings)
     local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
@@ -261,6 +359,11 @@ function KH:GetVanillaHUDBuffDefinition(buff_id)
     return map and map[buff_id] or nil
 end
 
+function KH:GetKyoEquippedPerkBuffCandidates(specialization_id)
+    local presentation = KYO_BUFF_PRESENTATION.equipped_perk_deck
+    return presentation.perk_deck_buffs[tonumber(specialization_id)] or EMPTY_BUFF_CANDIDATES
+end
+
 function KH:HasVanillaHUDBuffProvider()
     return managers and managers.gameinfo
         and managers.gameinfo.register_listener
@@ -275,6 +378,12 @@ end
 
 function KH:GetVanillaHUDBuffTargets(source_id)
     local targets = {}
+    local presentation = KYO_BUFF_PRESENTATION[source_id]
+    if presentation and presentation.separate_source
+            and self:GetVanillaHUDBuffDefinition(source_id) then
+        targets[1] = source_id
+        return targets
+    end
     local groups = HUDListManager and HUDListManager.BUFFS
     local mapped = groups and groups[source_id]
     if type(mapped) ~= "table" then
@@ -300,9 +409,7 @@ function KH:GetVanillaHUDBuffTargets(source_id)
 end
 
 local function icon_for_buff(buff_id)
-    local vhud_map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
-    local map_entry = (vhud_map and vhud_map[buff_id])
-        or (KH.BUFF_MAP and KH.BUFF_MAP[buff_id])
+    local map_entry = KH:GetVanillaHUDBuffDefinition(buff_id)
     if map_entry then
         local tex, rect = get_icon_data(map_entry)
         return { texture = tex, rect = rect }
@@ -355,7 +462,9 @@ local function color_from_catalog(value)
     if not value then return nil end
     if type(value) ~= "string" then return value end
 
-    local definition = (KH.BUFF_COLORS and KH.BUFF_COLORS[value]) or value
+    local definition = KYO_BUFF_COLORS[value]
+        or (KH.BUFF_COLORS and KH.BUFF_COLORS[value])
+        or value
     local ok, color = pcall(function()
         if type(definition) == "table" then
             return Color(unpack(definition))
@@ -373,8 +482,10 @@ local function color_for_buff(buff_id, is_debuff)
             or Color.white
     end
 
+    local presentation = KYO_BUFF_PRESENTATION[buff_id]
     local catalog_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
-    return color_from_catalog(catalog_entry and catalog_entry.color)
+    return color_from_catalog(presentation and presentation.color)
+        or color_from_catalog(catalog_entry and catalog_entry.color)
         or Color.white
 end
 
@@ -406,16 +517,12 @@ function KH:is_buff_visible(buff_id)
 end
 
 -- These active indicators always maintain the same order at the row start. An absent indicator reserves no empty slot.
-local STATIC_BUFF_SLOTS = {
-    "equipped_perk_deck",
-    "pocket_ecm_jammer_debuff",
-    "passive_health_regen",
-    "standard_armor_regeneration",
-    "armor_break_invulnerable_debuff",
-    "damage_increase",
-    "damage_reduction",
-    "melee_damage_increase",
-}
+local STATIC_BUFF_SLOTS = {}
+for buff_id, presentation in pairs(KYO_BUFF_PRESENTATION) do
+    if presentation.fixed_slot then
+        STATIC_BUFF_SLOTS[presentation.fixed_slot] = buff_id
+    end
+end
 
 local STATIC_BUFF_SLOT_SET = {}
 for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
@@ -436,15 +543,11 @@ end
 
 local function active_equipped_perk_buff(hud)
     local _, base_specialization_id = current_perk_deck_ids()
-    local candidates = base_specialization_id
-        and KH.PERK_DECK_BUFFS
-        and KH.PERK_DECK_BUFFS[base_specialization_id]
+    local candidates = KH:GetKyoEquippedPerkBuffCandidates(base_specialization_id)
 
-    for _, buff_id in ipairs(candidates or {}) do
+    for _, buff_id in ipairs(candidates) do
         local buff = hud._buffs[buff_id]
-        local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
-        if buff and buff.icon and definition and definition.category == "perk"
-                and hud:is_buff_visible(buff_id) then
+        if buff and buff.icon and hud:is_buff_visible(buff_id) then
             return buff, buff_id
         end
     end
@@ -465,29 +568,28 @@ local function localized_text(id, fallback)
     return value
 end
 
+local function title_for_buff(buff_id)
+    local definition = KH:GetVanillaHUDBuffDefinition(buff_id)
+    local title = definition and definition.title
+    if title == nil then return nil end
+    title = tostring(title)
+    return definition.localized and localized_text(title, title) or title
+end
+
+local function presentation_label_for_buff(buff_id)
+    local presentation = KYO_BUFF_PRESENTATION[buff_id]
+    local label = presentation and presentation.label
+    if not label then return nil, nil end
+    local text = label.id and localized_text(label.id, label.fallback) or label.fallback
+    return text, label.placement == "timer" and "timer" or "top"
+end
+
 -- Optional cell label, bypassing value_text. AI buffs retain their historical marker above the icon; others have one only if the catalog declares `label`, whose `placement` field chooses between BUFF_LABEL_TOP and BUFF_LABEL_TIMER. Text and placement are returned separately: KH:draw allocates no table and translation is resolved once per identifier, not per frame.
 local BUFF_LABEL_TOP = "top"
 local BUFF_LABEL_TIMER = "timer"
-local buff_label_cache = {}
 local function buff_label(buff)
-    if buff.category == "ai" then
-        return AI_BUFF_LABEL, BUFF_LABEL_TOP
-    end
-
-    local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff.id]
-    local label = definition and definition.label
-    if not label then return nil end
-
-    local placement = label.placement == BUFF_LABEL_TIMER and BUFF_LABEL_TIMER or BUFF_LABEL_TOP
-
-    local cached = buff_label_cache[buff.id]
-    if cached then return cached, placement end
-
-    local text = localized_text(label.id, label.fallback)
-    if managers and managers.localization then
-        buff_label_cache[buff.id] = text
-    end
-    return text, placement
+    return buff.label_text or buff.title_text,
+        buff.label_text and buff.label_placement or BUFF_LABEL_TOP
 end
 
 local heist_score_labels_cache = nil
@@ -1790,16 +1892,23 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
     end
     local t = now()
     local definition = KH.BUFF_MAP and KH.BUFF_MAP[resolved_id]
+    local runtime_definition = self:GetVanillaHUDBuffDefinition(resolved_id)
 
     -- A refreshed buff keeps its row position (original order_t),
     -- only its timer and fade (start_t) restart from zero
     local existing = self._buffs[resolved_id]
+    local label_text, label_placement = presentation_label_for_buff(resolved_id)
 
     self._buffs[resolved_id] = {
         id       = resolved_id,
         icon     = icon_data or icon_for_buff(resolved_id),
         color    = color_for_buff(resolved_id, is_debuff),
         category = definition and definition.category,
+        priority = tonumber(runtime_definition and runtime_definition.priority) or 0,
+        provider_class = runtime_definition and runtime_definition.class or nil,
+        title_text = title_for_buff(resolved_id),
+        label_text = label_text,
+        label_placement = label_placement,
         value_text = value_text,
         stack_text = stack_text,
         is_debuff = is_debuff == true,
@@ -1863,6 +1972,9 @@ local function source_remaining(data)
         end
         if latest_expire_t then
             return app_t and math.max(0, latest_expire_t - app_t) or 0, true
+        end
+        if data._timed_stacks then
+            return 0, true
         end
     end
 
@@ -2161,17 +2273,50 @@ local BUFF_VALUE_FORMATTERS = {
     total_dodge_chance = total_dodge_chance_text,
 }
 
+local function format_vanillahud_value(definition, sources)
+    local show_value = definition and definition.show_value
+    if show_value == nil or show_value == false then return nil end
+
+    local value = largest_source_value(sources)
+    if value == nil then return nil end
+
+    local ok, text = pcall(function()
+        if type(show_value) == "function" then
+            return show_value(value)
+        elseif type(show_value) == "string" then
+            return string.format(show_value, value)
+        end
+        return tostring(value)
+    end)
+    return ok and text ~= nil and tostring(text) or nil
+end
+
 local function format_buff_value(buff_id, sources)
-    local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
-    local formatter = definition and BUFF_VALUE_FORMATTERS[definition.value_format]
-    local value_text = formatter and formatter(sources) or nil
+    local runtime_definition = KH:GetVanillaHUDBuffDefinition(buff_id)
+    local catalog_definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
+    local presentation = KYO_BUFF_PRESENTATION[buff_id]
+    local value_format = presentation and presentation.value_format
+        or (catalog_definition and catalog_definition.value_format)
+    local formatter = value_format and BUFF_VALUE_FORMATTERS[value_format]
+    local value_text
+    if presentation and presentation.value_format then
+        value_text = formatter and formatter(sources) or nil
+    elseif runtime_definition and runtime_definition.show_value ~= nil then
+        value_text = format_vanillahud_value(runtime_definition, sources)
+    else
+        value_text = formatter and formatter(sources) or nil
+    end
     local stack_count = largest_stack_count(sources)
     local stack_text
-    if definition and definition.stack_format == "biker_charges" and stack_count then
+    local stack_format = presentation and presentation.stack_format
+        or (catalog_definition and catalog_definition.stack_format)
+    if stack_format == "biker_charges" and stack_count then
         local maximum = tonumber(tweak_data and tweak_data.upgrades
             and tweak_data.upgrades.wild_max_triggers_per_time) or 0
         stack_text = "x" .. tostring(math.max(0, maximum - stack_count))
-    elseif definition and definition.show_stack_count and stack_count and stack_count > 0 then
+    elseif runtime_definition and stack_count and stack_count > 0 then
+        stack_text = "x" .. tostring(stack_count)
+    elseif catalog_definition and catalog_definition.show_stack_count and stack_count and stack_count > 0 then
         stack_text = "x" .. tostring(stack_count)
     end
     return value_text, stack_text
@@ -2225,8 +2370,8 @@ local DYNAMIC_VALUE_BUFFS = {
 }
 
 local EQUIPPED_SKILL_COUNTER_BUFFS = {}
-for buff_id, definition in pairs(KH.BUFF_MAP or {}) do
-    if definition.persistent_counter then
+for buff_id, presentation in pairs(KYO_BUFF_PRESENTATION) do
+    if presentation.persistent_counter then
         table.insert(EQUIPPED_SKILL_COUNTER_BUFFS, buff_id)
     end
 end
@@ -2278,7 +2423,7 @@ function KH:RefreshEquippedSkillCounters()
     if self._debug_preview_active then return end
 
     for _, buff_id in ipairs(EQUIPPED_SKILL_COUNTER_BUFFS) do
-        local definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
+        local definition = KYO_BUFF_PRESENTATION[buff_id]
         local visible = self:is_buff_visible(buff_id)
         local equipped, value_text = equipped_skill_counter_text(definition)
         local existing = self._buffs[buff_id]
@@ -2488,6 +2633,9 @@ function KH:handle_buff_event(event, source_id, data, source_type)
             source.value = nil
         elseif event == "set_stack_count" and (not data or data.stack_count == nil) then
             source.stack_count = nil
+        end
+        if event == "add_timed_stack" or event == "remove_timed_stack" then
+            source._timed_stacks = true
         end
         source.source_id = source_id
         source.is_debuff = string.match(tostring(source_id), "_debuff$") ~= nil
@@ -3290,6 +3438,9 @@ function KH.compute_buff_row_layout(
 end
 
 local function compare_buff_arrival(a, b)
+    local pa = tonumber(a.priority) or 0
+    local pb = tonumber(b.priority) or 0
+    if pa ~= pb then return pa < pb end
     local oa = a.order_t or a.start_t or 0
     local ob = b.order_t or b.start_t or 0
     if oa ~= ob then return oa < ob end
@@ -4446,10 +4597,8 @@ function KH:DebugSimulate(n)
     local _, base_specialization_id = current_perk_deck_ids()
     equipped_perk_deck_entry(self).value_text = base_specialization_id == HACKER_SPECIALIZATION_ID
         and "x2" or nil
-    local perk_candidates = base_specialization_id
-        and KH.PERK_DECK_BUFFS
-        and KH.PERK_DECK_BUFFS[base_specialization_id]
-    for _, buff_id in ipairs(perk_candidates or {}) do
+    local perk_candidates = self:GetKyoEquippedPerkBuffCandidates(base_specialization_id)
+    for _, buff_id in ipairs(perk_candidates) do
         if self:is_buff_visible(buff_id) then
             self._buffs[buff_id] = {
                 id = buff_id,
