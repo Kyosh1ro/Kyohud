@@ -150,6 +150,67 @@ class CombatStateTests(unittest.TestCase):
             assert(captured == 5)
         ''')
 
+    def test_total_dodge_counts_smoke_once_for_native_and_bridge_sources(self):
+        self.lua.execute('''
+            kyohud.settings.enable_buffs = true
+            tweak_data.player = {damage = {DODGE_INIT = 0}}
+            tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0.5}}
+
+            local base_dodge = 0
+            local sicario_dodge = 0
+            managers.blackmarket = {equipped_armor = function() return nil end}
+            managers.player = {
+                body_armor_value = function(_, name)
+                    return name == 'dodge' and base_dodge or 0
+                end,
+                upgrade_value = function(_, category, upgrade, default)
+                    if category == 'player' and upgrade == 'sicario_multiplier' then
+                        return sicario_dodge
+                    end
+                    return default
+                end,
+                get_value_from_risk_upgrade = function() return 0 end,
+            }
+
+            local function source(id, value, calculated)
+                return {source_id = id, value = value, is_calculated = calculated == true}
+            end
+
+            local cases = {
+                {name = 'base-only', base = 0.2, sources = {
+                    base = source('base_dodge', nil, true),
+                }, expected = '20%'},
+                {name = 'smoke-only', base = 0, sources = {
+                    smoke = source('smoke_screen_grenade'),
+                }, expected = '50%'},
+                {name = 'base+smoke', base = 0.2, sources = {
+                    base = source('base_dodge', nil, true),
+                    smoke = source('smoke_screen_grenade'),
+                }, expected = '60%'},
+                {name = 'Sicario-only', base = 0.1, sicario = 0.25, sources = {
+                    base = source('base_dodge', nil, true),
+                    sicario = source('sicario_dodge', 0.25),
+                }, expected = '35%'},
+                {name = 'bridge source values', base = 0.2, sources = {
+                    base = source('base_dodge', nil, true),
+                    movement = source('movement_dodge', 0.1),
+                    smoke = source('smoke_screen_grenade', 0.3),
+                }, expected = '51%'},
+            }
+
+            for _, case in ipairs(cases) do
+                base_dodge = case.base or 0
+                sicario_dodge = case.sicario or 0
+                kyohud._buffs = {}
+                kyohud._buff_sources = {total_dodge_chance = case.sources}
+                kyohud:_refresh_source_target('total_dodge_chance')
+                local actual = kyohud._buffs.total_dodge_chance
+                    and kyohud._buffs.total_dodge_chance.value_text
+                assert(actual == case.expected,
+                    case.name .. ': expected ' .. case.expected .. ', got ' .. tostring(actual))
+            end
+        ''')
+
 
 if __name__ == "__main__":
     unittest.main()

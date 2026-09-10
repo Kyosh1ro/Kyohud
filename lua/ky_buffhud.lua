@@ -2039,20 +2039,27 @@ end
 local function total_dodge_chance_text(sources)
     local has_sicario_source = false
     local has_smoke_source = false
+    local smoke_dodge
     for _, source in pairs(sources) do
         has_sicario_source = has_sicario_source or source.source_id == "sicario_dodge"
-        has_smoke_source = has_smoke_source or source.source_id == "smoke_screen_grenade"
+        if source.source_id == "smoke_screen_grenade" then
+            has_smoke_source = true
+            local source_smoke_dodge = tonumber(source.value)
+            if source_smoke_dodge and (not smoke_dodge or source_smoke_dodge > smoke_dodge) then
+                smoke_dodge = source_smoke_dodge
+            end
+        end
     end
 
     local value = calculated_base_dodge(not has_sicario_source)
     for _, source in pairs(sources) do
-        if not source.is_calculated then
+        if not source.is_calculated and source.source_id ~= "smoke_screen_grenade" then
             value = value + (tonumber(source.value) or 0)
         end
     end
 
     if has_smoke_source then
-        local smoke_dodge = tonumber(tweak_data and tweak_data.projectiles
+        smoke_dodge = smoke_dodge or tonumber(tweak_data and tweak_data.projectiles
             and tweak_data.projectiles.smoke_screen_grenade
             and tweak_data.projectiles.smoke_screen_grenade.dodge_chance) or 0
         value = 1 - (1 - value) * (1 - smoke_dodge)
