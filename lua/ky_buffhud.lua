@@ -2371,8 +2371,6 @@ function KH:handle_buff_event(event, source_id, data, source_type)
     if not source_id or not KH.GetBuffTargets then return end
 
     local targets = KH.GetBuffTargets(source_id)
-    if #targets == 0 then return end
-
     source_type = source_type or "buff"
     local source_key = tostring(source_type) .. ":" .. tostring(source_id)
 
@@ -2392,16 +2390,38 @@ function KH:handle_buff_event(event, source_id, data, source_type)
         return
     end
 
+    local old_targets = self._source_targets[source_key]
+    if #targets == 0 and not old_targets then return end
+
     local activates = event == "activate"
         or event == "set_duration"
         or event == "add_timed_stack"
         or event == "set_data"
 
-    if not activates and not self._source_targets[source_key] then
+    if not activates and not old_targets then
         return
     end
 
-    self._source_targets[source_key] = targets
+    if old_targets then
+        local current_targets = {}
+        for _, buff_id in ipairs(targets) do
+            current_targets[buff_id] = true
+        end
+        for _, buff_id in ipairs(old_targets) do
+            if not current_targets[buff_id] then
+                local sources = self._buff_sources[buff_id]
+                if sources then
+                    sources[source_key] = nil
+                    if not next(sources) then
+                        self._buff_sources[buff_id] = nil
+                    end
+                end
+                self:_refresh_source_target(buff_id)
+            end
+        end
+    end
+
+    self._source_targets[source_key] = #targets > 0 and targets or nil
     for _, buff_id in ipairs(targets) do
         self._buff_sources[buff_id] = self._buff_sources[buff_id] or {}
         local source = self._buff_sources[buff_id][source_key] or {}
