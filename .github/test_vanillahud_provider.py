@@ -38,6 +38,21 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
         self.lua.execute((ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig"))
         self.lua.execute('kyohud.settings = {enable_buffs = true}')
 
+    def test_kyohud_presentation_is_loaded_from_its_own_module(self):
+        presentation_path = ROOT / "lua" / "ky_buff_presentation.lua"
+        self.assertTrue(presentation_path.is_file())
+
+        source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
+        self.assertIn('dofile(MY_MOD_PATH .. "lua/ky_buff_presentation.lua")', source)
+        self.assertNotIn("local KYO_BUFF_PRESENTATION = {", source)
+        self.assertNotIn("local KYO_BUFF_COLORS = {", source)
+
+        self.lua.execute('''
+            assert(kyohud.KYO_BUFF_PRESENTATION.damage_increase.fixed_slot == 6)
+            assert(kyohud.KYO_BUFF_PRESENTATION.damage_increase.label.placement == "timer")
+            assert(kyohud.KYO_BUFF_PRESENTATION.pocket_ecm_jammer_debuff.separate_source == true)
+        ''')
+
     def test_definition_is_resolved_lazily_from_vanillahud_map(self):
         self.lua.execute('''
             HUDList = nil
