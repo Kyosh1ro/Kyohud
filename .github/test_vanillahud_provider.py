@@ -100,6 +100,64 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
             assert(kyohud:GetVanillaHUDBuffDefinition("overkill") == definition)
         ''')
 
+    def test_runtime_ignore_controls_individual_buff_visibility(self):
+        self.lua.execute('''
+            HUDList = {BuffItemBase = {MAP = {
+                hidden = {ignore = true},
+                shown = {ignore = false},
+            }}}
+            kyohud._gameinfo_bridge_active = true
+            kyohud.settings.buff_categories = {mastermind = true}
+            kyohud.settings.buff_toggles = {hidden = true, shown = false}
+
+            assert(kyohud:is_buff_visible("hidden") == false)
+            assert(kyohud:is_buff_visible("shown") == true)
+        ''')
+
+    def test_draw_skips_the_buff_row_while_provider_is_inactive(self):
+        self.lua.execute('''
+            local panel = {bitmaps = {}, texts = {}}
+            function panel:clear() self.bitmaps = {}; self.texts = {} end
+            function panel:w() return 800 end
+            function panel:h() return 600 end
+            function panel:gradient(params) return params end
+            function panel:rect(params) return params end
+            function panel:polyline(params) return params end
+            function panel:bitmap(params)
+                self.bitmaps[#self.bitmaps + 1] = params
+                return {set_color = function() end, set_alpha = function() end}
+            end
+            function panel:text(params)
+                self.texts[#self.texts + 1] = params
+                return {text_rect = function() return 0, 0, 20, 12 end}
+            end
+
+            kyohud._panel = panel
+            kyohud._kills = {}
+            kyohud._buffs = {
+                stale_local = {
+                    id = "stale_local",
+                    icon = {texture = "fallback/gray"},
+                    persistent = true,
+                    order_t = 1,
+                },
+            }
+            kyohud._gameinfo_bridge_active = false
+            kyohud.settings = {
+                enable_buffs = true,
+                enable_killfeed = false,
+                icon_size = 32,
+                opacity = 0.9,
+                buff_position_x = 50,
+                buff_position_y = 85,
+                circle_radius = 250,
+            }
+
+            kyohud:draw()
+
+            assert(#panel.bitmaps == 0, "inactive provider rendered gray buff cells")
+        ''')
+
     def test_buff_icon_uses_only_the_exact_runtime_map_entry(self):
         self.lua.execute('''
             function Idstring(value) return value end
@@ -211,10 +269,12 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
                 return {text_rect = function() return 0, 0, 20, 12 end}
             end
             HUDList = {BuffItemBase = {MAP = {
+                equipped_perk_deck = {ignore = true},
                 late_priority = {priority = 8},
                 first_equal = {priority = 2},
                 second_equal = {priority = 2},
             }}}
+            kyohud._gameinfo_bridge_active = true
             kyohud._panel = panel
             kyohud._kills = {}
             kyohud.settings = {
@@ -225,7 +285,6 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
                 buff_position_x = 50,
                 buff_position_y = 85,
                 circle_radius = 250,
-                buff_toggles = {equipped_perk_deck = false},
             }
 
             kyohud:add_buff("late_priority", {texture = "p8"}, nil, nil, true)

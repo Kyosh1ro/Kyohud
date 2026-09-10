@@ -4,13 +4,6 @@ local MOD_NAME = "KyoHUD"
 -- IMPORTANT: capture ModPath immediately upon file execution, as the global ModPath will be overwritten by BLT when other mods load.
 local MY_MOD_PATH = ModPath
 
-local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
-if not catalog_ok then
-    pcall(function()
-        log("[" .. MOD_NAME .. "][Loc] Buff catalog loading error: " .. tostring(catalog_err))
-    end)
-end
-
 local function logi(msg)
     pcall(function() log("[" .. MOD_NAME .. "][Loc] " .. tostring(msg)) end)
 end
@@ -33,9 +26,8 @@ local function add_fallbacks(loc)
         ky_opt_killfeed_size        = "Killfeed Size",
         ky_opt_killfeed_size_desc   = "Number of kills shown in the killfeed (1-5). Default: 3",
         ky_opt_enable_buffs         = "Enable Buffs",
-        ky_opt_enable_buffs_desc    = "Show the equipped perk deck and active buffs in a horizontal row",
-        ky_opt_buffs_menu           = "Buffs Menu",
-        ky_opt_buffs_menu_desc      = "Choose which buff categories and individual buffs are displayed",
+        ky_opt_enable_buffs_desc    = "Show VanillaHUD+ buffs in KyoHUD's horizontal row; individual visibility follows VanillaHUD+ settings",
+        ky_opt_enable_buffs_unavailable_desc = "VanillaHUD+ buff data is unavailable; killfeed, score and medals remain active",
         ky_opt_radius               = "Killfeed Vertical Offset",
         ky_opt_radius_desc          = "Vertical distance of the killfeed from the crosshair (128-291). Default: 250",
         ky_opt_buff_position_x      = "Buff Position X (%)",
@@ -178,76 +170,7 @@ local function add_fallbacks(loc)
         ky_hud_event_medal_air_kill  = "Air Kill",
         ky_hud_event_medal_wall_bang = "Wallbang",
         ky_hud_event_medal_loot_carrier = "Hands Off",
-
-        -- Categories
-        ky_opt_cat_mastermind           = "Mastermind",
-        ky_opt_cat_mastermind_desc      = "Show/hide all Mastermind buffs",
-        ky_opt_cat_mastermind_buffs     = "Mastermind Buffs",
-        ky_opt_cat_mastermind_buffs_desc = "Toggle individual Mastermind buffs",
-
-        ky_opt_cat_enforcer             = "Enforcer",
-        ky_opt_cat_enforcer_desc        = "Show/hide all Enforcer buffs",
-        ky_opt_cat_enforcer_buffs       = "Enforcer Buffs",
-        ky_opt_cat_enforcer_buffs_desc  = "Toggle individual Enforcer buffs",
-
-        ky_opt_cat_technician           = "Technician",
-        ky_opt_cat_technician_desc      = "Show/hide all Technician buffs",
-        ky_opt_cat_technician_buffs     = "Technician Buffs",
-        ky_opt_cat_technician_buffs_desc = "Toggle individual Technician buffs",
-
-        ky_opt_cat_ghost                = "Ghost",
-        ky_opt_cat_ghost_desc           = "Show/hide all Ghost buffs",
-        ky_opt_cat_ghost_buffs          = "Ghost Buffs",
-        ky_opt_cat_ghost_buffs_desc     = "Toggle individual Ghost buffs",
-
-        ky_opt_cat_fugitive             = "Fugitive",
-        ky_opt_cat_fugitive_desc        = "Show/hide all Fugitive buffs",
-        ky_opt_cat_fugitive_buffs       = "Fugitive Buffs",
-        ky_opt_cat_fugitive_buffs_desc  = "Toggle individual Fugitive buffs",
-
-        ky_opt_cat_perk                 = "Perk Decks",
-        ky_opt_cat_perk_desc            = "Show/hide all Perk Deck buffs",
-        ky_opt_cat_perk_buffs           = "Perk Deck Buffs",
-        ky_opt_cat_perk_buffs_desc      = "Toggle individual Perk Deck buffs",
-
-        ky_opt_cat_debuff               = "Debuffs",
-        ky_opt_cat_debuff_desc          = "Show/hide all debuffs",
-        ky_opt_cat_debuff_buffs         = "Debuffs List",
-        ky_opt_cat_debuff_buffs_desc    = "Toggle individual debuffs",
-
-        ky_opt_cat_team                 = "Team Buffs",
-        ky_opt_cat_team_desc            = "Show/hide all team buffs",
-        ky_opt_cat_team_buffs           = "Team Buffs List",
-        ky_opt_cat_team_buffs_desc      = "Toggle individual team buffs",
-
-        ky_opt_cat_player_action            = "Player Actions",
-        ky_opt_cat_player_action_desc       = "Show/hide player action buffs",
-        ky_opt_cat_player_action_buffs      = "Player Action Buffs",
-        ky_opt_cat_player_action_buffs_desc = "Toggle individual player action buffs",
-
-        ky_opt_cat_gage                 = "Gage Boosts",
-        ky_opt_cat_gage_desc            = "Show/hide Gage boosts",
-        ky_opt_cat_gage_buffs           = "Gage Boosts List",
-        ky_opt_cat_gage_buffs_desc      = "Toggle individual Gage boosts",
-
-        ky_opt_cat_ai                   = "AI Skills",
-        ky_opt_cat_ai_desc              = "Show/hide AI crew skill buffs",
-        ky_opt_cat_ai_buffs             = "AI Skill Buffs",
-        ky_opt_cat_ai_buffs_desc        = "Toggle individual AI skill buffs",
     })
-
-    -- Dynamic fallbacks for individual buffs
-    if kyohud and kyohud.BUFF_MAP then
-        local buff_fallbacks = {}
-        for buff_id, _ in pairs(kyohud.BUFF_MAP) do
-            local nice_name = buff_id:gsub("_", " "):gsub("(%a)([%w_']*)", function(a, b)
-                return string.upper(a) .. b
-            end)
-            buff_fallbacks["ky_opt_buff_" .. buff_id] = nice_name
-            buff_fallbacks["ky_opt_buff_" .. buff_id .. "_desc"] = "Toggle " .. nice_name
-        end
-        loc:add_localized_strings(buff_fallbacks)
-    end
 end
 
 Hooks:Add("LocalizationManagerPostInit", "KH_Localization", function(loc)

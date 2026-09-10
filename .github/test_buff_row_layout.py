@@ -223,6 +223,10 @@ class BuffRowLayoutTests(unittest.TestCase):
             kyohud._panel = panel
             kyohud._buffs = {}
             kyohud._kills = {}
+            HUDList = {BuffItemBase = {MAP = {
+                equipped_perk_deck = {ignore = true},
+            }}}
+            kyohud._gameinfo_bridge_active = true
             kyohud.settings = {
                 enable_buffs = true,
                 enable_killfeed = false,
@@ -231,7 +235,6 @@ class BuffRowLayoutTests(unittest.TestCase):
                 buff_position_x = 50,
                 buff_position_y = 85,
                 circle_radius = 250,
-                buff_toggles = {equipped_perk_deck = false},
             }
             for index = 1, 20 do
                 game_t = 100 + index

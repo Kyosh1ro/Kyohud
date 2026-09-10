@@ -1,5 +1,5 @@
 -- ky_options.lua — BLT Menu + settings save/load
--- Fixed JSON structure; single BuildMenu, submenus via deep_clone
+-- Fixed JSON structure with a single MenuHelper:BuildMenu call.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -13,11 +13,6 @@ local function update_best_streak_menu_enabled()
     if best_streak_menu_item and best_streak_menu_item.set_enabled then
         best_streak_menu_item:set_enabled(KH.settings.show_total_score ~= false)
     end
-end
-
-local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
-if not catalog_ok then
-    log("[KyoHUD] Buff catalog load error (options): " .. tostring(catalog_err))
 end
 
 -- ═══════════════════════════════════════════════════
@@ -92,36 +87,12 @@ for _, profile in ipairs(HUD_DEFAULT_LAYOUTS) do
     end
 end
 
-KH._default_categories = {}
-for category_id in pairs(KH.BUFF_CATEGORIES or {}) do
-    KH._default_categories[category_id] = true
-end
-
-local function build_default_buff_toggles()
-    if KH.BuildDefaultBuffToggles then
-        return KH.BuildDefaultBuffToggles()
-    end
-
-    local t = {}
-    if KH.BUFF_MAP then
-        for bid, _ in pairs(KH.BUFF_MAP) do
-            t[bid] = true
-        end
-    end
-    return t
-end
-
 if not KH.settings then
     KH.settings = {}
     for k, v in pairs(KH._defaults) do KH.settings[k] = v end
 end
-if not KH.settings.buff_categories then
-    KH.settings.buff_categories = {}
-    for k, v in pairs(KH._default_categories) do KH.settings.buff_categories[k] = v end
-end
-if not KH.settings.buff_toggles then
-    KH.settings.buff_toggles = build_default_buff_toggles()
-end
+KH.settings.buff_categories = nil
+KH.settings.buff_toggles = nil
 
 function KH.Save()
     local encoded_ok, encoded = pcall(json.encode, KH.settings)
@@ -182,24 +153,7 @@ function KH.Load()
                     KH.settings[k] = dv
                 end
             end
-            if type(data.buff_categories) == "table" then
-                for k, v in pairs(KH._default_categories) do
-                    if data.buff_categories[k] ~= nil then
-                        KH.settings.buff_categories[k] = data.buff_categories[k]
-                    else
-                        KH.settings.buff_categories[k] = v
-                    end
-                end
-            end
-            if type(data.buff_toggles) == "table" then
-                KH.settings.buff_toggles = data.buff_toggles
-                local defs = build_default_buff_toggles()
-                for bid, dv in pairs(defs) do
-                    if KH.settings.buff_toggles[bid] == nil then KH.settings.buff_toggles[bid] = dv end
-                end
-            else
-                KH.settings.buff_toggles = build_default_buff_toggles()
-            end
+
             -- The old range 100-500 was visually bounded to 70-160 px.
             -- 128-291 covers the same useful area without retaining an inert portion.
             local saved_radius = KH.settings.circle_radius
@@ -211,9 +165,10 @@ function KH.Load()
                 )
             )
             KH.settings.circle_radius = normalized_radius
-            -- Rewrite old saved settings to remove the public option
-            -- `buff_duration` and normalize the old vertical offset range.
+            -- Rewrite old saved settings to remove obsolete buff filters and
+            -- `buff_duration`, and normalize the old vertical offset range.
             if loaded_legacy_settings or data.buff_duration ~= nil
+                    or data.buff_categories ~= nil or data.buff_toggles ~= nil
                     or saved_radius ~= normalized_radius then
                 KH.Save()
             end
@@ -224,8 +179,8 @@ KH.Load()
 
 function KH.ResetDefaults()
     for k, v in pairs(KH._defaults) do KH.settings[k] = v end
-    for k, v in pairs(KH._default_categories) do KH.settings.buff_categories[k] = v end
-    KH.settings.buff_toggles = build_default_buff_toggles()
+    KH.settings.buff_categories = nil
+    KH.settings.buff_toggles = nil
     KH.Save()
     update_best_streak_menu_enabled()
     if KH.RefreshHUD then KH:RefreshHUD() end
@@ -312,39 +267,21 @@ local function load_menu_definition(filename)
     return content
 end
 
+local function buff_provider_available()
+    local gameinfo = managers and managers.gameinfo
+    return gameinfo ~= nil
+        and type(gameinfo.register_listener) == "function"
+        and type(gameinfo.get_buffs) == "function"
+        and type(gameinfo.get_player_actions) == "function"
+        and HUDList ~= nil
+        and HUDList.BuffItemBase ~= nil
+        and type(HUDList.BuffItemBase.MAP) == "table"
+        and HUDListManager ~= nil
+        and type(HUDListManager.BUFFS) == "table"
+end
+
 local MAIN_MENU_DEFINITION = load_menu_definition("menu.json")
-local BUFFS_MENU_DEFINITION = load_menu_definition("buffs.json")
 local MENU_ID = MAIN_MENU_DEFINITION and MAIN_MENU_DEFINITION.menu_id or "kyohud_options"
-local BUFFS_MENU_ID = BUFFS_MENU_DEFINITION and BUFFS_MENU_DEFINITION.menu_id or "kyohud_buffs_menu"
-
-local CAT_ORDER = {}
-local CAT_MENU_ITEMS = {}
-if BUFFS_MENU_DEFINITION then
-    for _, item in ipairs(BUFFS_MENU_DEFINITION.items) do
-        if item.type == "button" and type(item.category) == "string" and type(item.next_menu) == "string" then
-            table.insert(CAT_ORDER, item.category)
-            CAT_MENU_ITEMS[item.category] = item
-        end
-    end
-end
-
-for _, cat_id in ipairs(CAT_ORDER) do
-    local cid = cat_id
-    MenuCallbackHandler["KY_ToggleCat_" .. cat_id] = function(self, item)
-        KH.settings.buff_categories[cid] = (item:value() == "on")
-        KH.Save(); if KH.RefreshHUD then KH:RefreshHUD() end
-    end
-end
-
-if KH.BUFF_MAP then
-    for buff_id, _ in pairs(KH.BUFF_MAP) do
-        local bid = buff_id
-        MenuCallbackHandler["KY_ToggleBuff_" .. buff_id] = function(self, item)
-            KH.settings.buff_toggles[bid] = (item:value() == "on")
-            KH.Save(); if KH.RefreshHUD then KH:RefreshHUD() end
-        end
-    end
-end
 
 -- ═══════════════════════════════════════════════════
 -- 3) Menu construction
@@ -358,6 +295,11 @@ local function populate_json_menu(definition)
         local item_type = item.type
         local priority = item.priority or (item_count - index + 1)
         local value = item.default_value
+        local description = item.description
+        local provider_unavailable = item.provider_required and not buff_provider_available()
+        if provider_unavailable then
+            description = item.unavailable_description or description
+        end
         if item.value and KH.settings[item.value] ~= nil then
             value = KH.settings[item.value]
         end
@@ -367,7 +309,7 @@ local function populate_json_menu(definition)
 
         if item_type == "multiple_choice" then
             MenuHelper:AddMultipleChoice({
-                id = item.id, title = item.title, desc = item.description,
+                id = item.id, title = item.title, desc = description,
                 callback = item.callback, items = item.items,
                 item_values = item.item_values, value = value,
                 localized_items = item.localized_items,
@@ -375,9 +317,10 @@ local function populate_json_menu(definition)
             })
         elseif item_type == "toggle" then
             local created_item = MenuHelper:AddToggle({
-                id = item.id, title = item.title, desc = item.description,
+                id = item.id, title = item.title, desc = description,
                 callback = item.callback, value = value,
-                disabled = item.enabled_by and KH.settings[item.enabled_by] == false,
+                disabled = provider_unavailable
+                    or (item.enabled_by and KH.settings[item.enabled_by] == false),
                 menu_id = definition.menu_id, priority = priority,
             })
             if item.id == "ky_show_best_streak" then
@@ -385,16 +328,17 @@ local function populate_json_menu(definition)
             end
         elseif item_type == "slider" then
             MenuHelper:AddSlider({
-                id = item.id, title = item.title, desc = item.description,
+                id = item.id, title = item.title, desc = description,
                 callback = item.callback, value = value,
                 min = item.min or 0, max = item.max or 1, step = item.step or 1,
                 show_value = item.show_value ~= false,
                 display_precision = item.display_precision or 0,
+                disabled = provider_unavailable,
                 menu_id = definition.menu_id, priority = priority,
             })
         elseif item_type == "button" then
             MenuHelper:AddButton({
-                id = item.id, title = item.title, desc = item.description,
+                id = item.id, title = item.title, desc = description,
                 callback = item.callback, next_node = item.next_menu,
                 menu_id = definition.menu_id, priority = priority,
             })
@@ -412,9 +356,8 @@ end
 
 -- ── HOOK 1 : Setup ──
 Hooks:Add("MenuManagerSetupCustomMenus", "KY_SetupMenu", function(menu_manager, nodes)
-    if not MAIN_MENU_DEFINITION or not BUFFS_MENU_DEFINITION then return end
+    if not MAIN_MENU_DEFINITION then return end
     MenuHelper:NewMenu(MENU_ID)
-    -- NO NewMenu for submenus; create them via cloning
 end)
 
 -- ── HOOK 2: Populate (main menu items only) ──
@@ -422,70 +365,10 @@ Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
     populate_json_menu(MAIN_MENU_DEFINITION)
 end)
 
--- ── Utility: create a toggle item on an existing node ──
--- The PD2 toggle REQUIRES on/off options with tickbox textures
-local function add_toggle_to_node(node, id, title_id, desc_id, callback_name, value)
-    local ok, err = pcall(function()
-        local data = {
-            type = "CoreMenuItemToggle.ItemToggle",
-            {
-                _meta    = "option",
-                icon     = "guis/textures/menu_tickbox",
-                value    = "on",
-                x = 24, y = 0, w = 24, h = 24,
-                s_icon   = "guis/textures/menu_tickbox",
-                s_x = 24, s_y = 24, s_w = 24, s_h = 24,
-            },
-            {
-                _meta    = "option",
-                icon     = "guis/textures/menu_tickbox",
-                value    = "off",
-                x = 0, y = 0, w = 24, h = 24,
-                s_icon   = "guis/textures/menu_tickbox",
-                s_x = 0, s_y = 24, s_w = 24, s_h = 24,
-            },
-        }
-        local params = {
-            name         = id,
-            text_id      = title_id,
-            help_id      = desc_id,
-            callback     = callback_name,
-            icon_by_text = true,
-        }
-        local item = node:create_item(data, params)
-        if item then
-            item:set_value(value and "on" or "off")
-            node:add_item(item)
-        end
-    end)
-    if not ok then
-        log("[KyoHUD] Error adding toggle " .. id .. ": " .. tostring(err))
-    end
-end
-
-local function add_menu_link_to_node(node, id, title_id, desc_id, next_node)
-    local ok, err = pcall(function()
-        local item = node:create_item(
-            { type = "CoreMenuItem.Item" },
-            {
-                name = id,
-                text_id = title_id,
-                help_id = desc_id,
-                next_node = next_node,
-            }
-        )
-        if item then node:add_item(item) end
-    end)
-    if not ok then
-        log("[KyoHUD] Error adding menu link " .. tostring(id) .. ": " .. tostring(err))
-    end
-end
-
 -- ── HOOK 3 : Build ──
 Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, nodes)
-    if not MAIN_MENU_DEFINITION or not BUFFS_MENU_DEFINITION then return end
+    if not MAIN_MENU_DEFINITION then return end
 
-    -- 3a. Single BuildMenu — the main menu
     local main_ok, main_err = pcall(function()
         nodes[MENU_ID] = MenuHelper:BuildMenu(MENU_ID, {
             back_callback = MAIN_MENU_DEFINITION.back_callback or "KY_BackCallback",
@@ -497,78 +380,6 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         return
     end
 
-    -- 3b. Create the Buffs menu and submenus via CLONING of the main node
-    local buffs_node
-    local buffs_ok, buffs_err = pcall(function()
-        buffs_node = deep_clone(nodes[MENU_ID])
-        buffs_node:clean_items()
-        nodes[BUFFS_MENU_ID] = buffs_node
-    end)
-
-    if not buffs_ok then
-        log("[KyoHUD] Buffs menu clone error: " .. tostring(buffs_err))
-        return
-    end
-
-    local sub_count = 0
-    for _, cat_id in ipairs(CAT_ORDER) do
-        local menu_item = CAT_MENU_ITEMS[cat_id]
-        local sub_id = menu_item.next_menu
-
-        local clone_ok, clone_err = pcall(function()
-            -- Clone the main menu node (recovers renderer, layout, etc.)
-            local sub_node = deep_clone(nodes[MENU_ID])
-            sub_node:clean_items()
-
-            -- Add the category toggle first
-            add_toggle_to_node(
-                sub_node,
-                "ky_cat_" .. cat_id,
-                "ky_opt_cat_" .. cat_id,
-                "ky_opt_cat_" .. cat_id .. "_desc",
-                "KY_ToggleCat_" .. cat_id,
-                KH.settings.buff_categories[cat_id] ~= false
-            )
-
-            -- Add individual buff toggles
-            if KH.BUFF_MAP then
-                local sorted = KH.GetSortedBuffIdsForCategory and KH.GetSortedBuffIdsForCategory(cat_id) or {}
-
-                for _, bid in ipairs(sorted) do
-                    local val = true
-                    if KH.settings.buff_toggles and KH.settings.buff_toggles[bid] ~= nil then
-                        val = KH.settings.buff_toggles[bid]
-                    end
-                    add_toggle_to_node(
-                        sub_node,
-                        "ky_buff_" .. bid,
-                        "ky_opt_buff_" .. bid,
-                        "ky_opt_buff_" .. bid .. "_desc",
-                        "KY_ToggleBuff_" .. bid,
-                        val
-                    )
-                end
-            end
-
-            nodes[sub_id] = sub_node
-        end)
-
-        if clone_ok then
-            -- Add the link to the category in the Buffs menu
-            add_menu_link_to_node(
-                buffs_node,
-                menu_item.id,
-                menu_item.title,
-                menu_item.description,
-                sub_id
-            )
-            sub_count = sub_count + 1
-        else
-            log("[KyoHUD] Submenu clone error " .. cat_id .. ": " .. tostring(clone_err))
-        end
-    end
-
-    -- 3c. Link to the BLT Options menu
     local parent_id = MAIN_MENU_DEFINITION.parent_menu_id or "blt_options"
     if nodes[parent_id] then
         MenuHelper:AddMenuItem(
@@ -581,5 +392,5 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         log("[KyoHUD] Parent menu not found: " .. tostring(parent_id))
     end
 
-    log("[KyoHUD] JSON menu built: main + Buffs + " .. sub_count .. "/" .. #CAT_ORDER .. " categories (deep_clone).")
+    log("[KyoHUD] JSON menu built.")
 end)

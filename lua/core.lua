@@ -397,26 +397,15 @@ local function color_for_buff(buff_id, is_debuff)
 end
 
 -- ═══════════════════════════════════════════════════
--- Checks if a buff should be displayed (settings)
+-- Checks if the integration and VanillaHUD+ definition allow this buff.
 -- ═══════════════════════════════════════════════════
 function KH:is_buff_visible(buff_id)
     if not self.settings or not self.settings.enable_buffs then return false end
 
-    local map_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
-    if not map_entry then return true end -- unknown buff, display it
-
-    -- Check category toggle
-    local cat = map_entry.category
-    if cat and self.settings.buff_categories then
-        if self.settings.buff_categories[cat] == false then
-            return false
-        end
-    end
-
-    -- Check individual toggle
-    if self.settings.buff_toggles then
-        if self.settings.buff_toggles[buff_id] == false then
-            return false
+    if self._gameinfo_bridge_active then
+        local runtime_definition = self:GetVanillaHUDBuffDefinition(buff_id)
+        if runtime_definition then
+            return runtime_definition.ignore ~= true
         end
     end
 
@@ -800,8 +789,25 @@ local SENTRY_KILL_MEDAL_THRESHOLDS = { 50, 100, 150 }
 -- Gold: the cumulative medal distinguishes itself from weapon family colors.
 local KILL_MEDAL_COLOR = Color(1, 0.84, 0.35)
 
--- The cumulative medal does not write its name: it displays the damage buff pictogram, the one already shown under the « Dmg+ » label in the buff row.
-local KILL_MEDAL_ICON_BUFF = "damage_increase"
+-- Vanilla preplanning icon 61 (`reduce_mobsters`) is a PAYDAY 2-owned kill
+-- pictogram, so cumulative medals do not depend on VanillaHUD+ buff metadata.
+function KH:GetKillMedalIconDescriptor()
+    if self._kill_medal_icon_descriptor then return self._kill_medal_icon_descriptor end
+
+    local texture = "guis/dlcs/deep/textures/pd2/pre_planning/preplan_icon_types"
+    local rect = { 240, 0, 48, 48 }
+    pcall(function()
+        local preplanning = tweak_data and tweak_data.preplanning
+        local gui = preplanning and preplanning.gui
+        texture = gui and gui.type_icons_path or texture
+        if preplanning and preplanning.get_type_texture_rect then
+            rect = preplanning:get_type_texture_rect(61) or rect
+        end
+    end)
+
+    self._kill_medal_icon_descriptor = { texture = texture, rect = rect }
+    return self._kill_medal_icon_descriptor
+end
 
 -- Medal families sharing the killfeed row. A card's `kind` decides only what a reset clears: rendering, duration, and queue are identical for all.
 local MEDAL_KIND_WEAPON_STREAK = "weapon_streak"
@@ -932,8 +938,8 @@ local function make_weapon_streak_card(family, tier_index)
     }
 end
 
---- Cumulative kills medal. The medal's name is carried by the damage buff's
---- icon; only the tier reached and a single key remain, common to all eight
+--- Cumulative kills medal. The medal's name is carried by a vanilla
+--- preplanning icon; only the tier reached and a single key remain, common to all eight
 --- tiers. Texture, atlas cutout, and tint are resolved here once per medal:
 --- `KH:draw` then just places the bitmap.
 local function make_kill_medal_card(kill_count)
@@ -941,8 +947,8 @@ local function make_kill_medal_card(kill_count)
 
     return {
         kind  = MEDAL_KIND_KILL_TOTAL,
-        icon  = icon_for_buff(KILL_MEDAL_ICON_BUFF),
-        icon_color = color_for_buff(KILL_MEDAL_ICON_BUFF),
+        icon  = KH:GetKillMedalIconDescriptor(),
+        icon_color = KILL_MEDAL_COLOR,
         label = tostring(kill_count) .. " "
             .. localized_text("ky_hud_kill_medal_kills", "KILLS"),
         color = KILL_MEDAL_COLOR,
@@ -3640,7 +3646,7 @@ function KH:draw()
     local alpha     = clamp(s.opacity or 0.9, 0.1, 1.0)
 
     -- ── Draw buffs ──
-    if s.enable_buffs then
+    if s.enable_buffs and self._gameinfo_bridge_active then
         local buff_list = {}
         local promoted_perk_buff_id
 
