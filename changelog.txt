@@ -1,3 +1,11 @@
+r22 (11.09.2026):
+-Migrated buffs to the VanillaHUD+ runtime provider.
+
+r21 (10.09.2026):
+-Prevented kill detection errors when an enemy unit's alive check fails;
+-Restored settings from the backup when the primary settings file is missing;
+-Hardened texture lookup against database errors.
+
 r20 (09.09.2026):
 -New combat medals: Air kill, Wallbang, No Flashbang, Hands off;
 -Support for sentry kills;
