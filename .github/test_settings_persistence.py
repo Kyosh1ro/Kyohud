@@ -182,14 +182,21 @@ class SettingsPersistenceTests(unittest.TestCase):
                 Hooks = {callbacks = {}}
                 function Hooks:Add(event, id, callback) self.callbacks[id] = callback end
                 captured_items = {}
+                created_menu_items = {}
                 MenuHelper = {}
                 function MenuHelper:AddToggle(params)
                     captured_items[#captured_items + 1] = params
-                    return {}
+                    local item = {enabled = params.disabled ~= true}
+                    function item:set_enabled(enabled) self.enabled = enabled end
+                    created_menu_items[#created_menu_items + 1] = item
+                    return item
                 end
                 function MenuHelper:AddSlider(params)
                     captured_items[#captured_items + 1] = params
-                    return {}
+                    local item = {enabled = params.disabled ~= true}
+                    function item:set_enabled(enabled) self.enabled = enabled end
+                    created_menu_items[#created_menu_items + 1] = item
+                    return item
                 end
                 BLT = nil
                 managers = {}
@@ -214,11 +221,13 @@ class SettingsPersistenceTests(unittest.TestCase):
                                 {
                                     type = "slider", id = "ky_buff_position_x",
                                     description = "x", provider_required = true,
+                                    enabled_by = "enable_buffs",
                                     value = "buff_position_x", default_value = 50,
                                 },
                                 {
                                     type = "slider", id = "ky_buff_position_y",
                                     description = "y", provider_required = true,
+                                    enabled_by = "enable_buffs",
                                     value = "buff_position_y", default_value = 83,
                                 },
                                 {
@@ -245,6 +254,44 @@ class SettingsPersistenceTests(unittest.TestCase):
             self.assertFalse(lua.eval("captured_items[4].disabled == true"))
 
             lua.execute('''
+                BLT = {
+                    Mods = {
+                        GetModByName = function(self, name)
+                            if name ~= "VanillaHUDPlus" then return nil end
+                            return {IsEnabled = function() return true end}
+                        end,
+                    },
+                }
+                kyohud.settings.enable_buffs = false
+                Hooks.callbacks.KY_PopulateMenu()
+            ''')
+            self.assertEqual(
+                "ky_opt_enable_buffs_desc",
+                lua.eval("captured_items[5].desc"),
+            )
+            self.assertFalse(lua.eval("captured_items[5].disabled == true"))
+            self.assertTrue(lua.eval("captured_items[6].disabled"))
+            self.assertTrue(lua.eval("captured_items[7].disabled"))
+
+            lua.execute('''
+                MenuCallbackHandler.KY_ToggleBuffs(nil, {
+                    value = function() return "on" end,
+                })
+            ''')
+            self.assertTrue(lua.eval("created_menu_items[6].enabled"))
+            self.assertTrue(lua.eval("created_menu_items[7].enabled"))
+
+            lua.execute('''
+                MenuCallbackHandler.KY_ToggleBuffs(nil, {
+                    value = function() return "off" end,
+                })
+            ''')
+            self.assertFalse(lua.eval("created_menu_items[6].enabled"))
+            self.assertFalse(lua.eval("created_menu_items[7].enabled"))
+
+            lua.execute('''
+                BLT = nil
+                kyohud.settings.enable_buffs = true
                 managers.gameinfo = {
                     register_listener = function() end,
                     get_buffs = function() return {} end,
@@ -256,11 +303,11 @@ class SettingsPersistenceTests(unittest.TestCase):
             ''')
             self.assertEqual(
                 "ky_opt_enable_buffs_desc",
-                lua.eval("captured_items[5].desc"),
+                lua.eval("captured_items[9].desc"),
             )
-            self.assertFalse(lua.eval("captured_items[5].disabled == true"))
-            self.assertFalse(lua.eval("captured_items[6].disabled == true"))
-            self.assertFalse(lua.eval("captured_items[7].disabled == true"))
+            self.assertFalse(lua.eval("captured_items[9].disabled == true"))
+            self.assertFalse(lua.eval("captured_items[10].disabled == true"))
+            self.assertFalse(lua.eval("captured_items[11].disabled == true"))
 
     def test_catalog_derived_menus_callbacks_and_localizations_are_removed(self):
         source = OPTIONS_CHUNK
