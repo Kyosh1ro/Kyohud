@@ -8,6 +8,8 @@ local MY_MOD_PATH = ModPath
 local KILLFEED_OFFSET_MIN = 128
 local KILLFEED_OFFSET_MAX = 291
 local best_streak_menu_item = nil
+local buff_position_menu_items = {}
+local update_buff_position_menu_enabled
 
 local function update_best_streak_menu_enabled()
     if best_streak_menu_item and best_streak_menu_item.set_enabled then
@@ -183,6 +185,7 @@ function KH.ResetDefaults()
     KH.settings.buff_toggles = nil
     KH.Save()
     update_best_streak_menu_enabled()
+    if update_buff_position_menu_enabled then update_buff_position_menu_enabled() end
     if KH.RefreshHUD then KH:RefreshHUD() end
 end
 
@@ -227,7 +230,11 @@ MenuCallbackHandler.KY_SetKillfeedSize = function(self, item)
 
     KH.Save(); if KH.RefreshHUD then KH:RefreshHUD() end
 end
-MenuCallbackHandler.KY_ToggleBuffs    = make_toggle_cb("enable_buffs")
+MenuCallbackHandler.KY_ToggleBuffs = function(self, item)
+    KH.settings.enable_buffs = (item:value() == "on")
+    if update_buff_position_menu_enabled then update_buff_position_menu_enabled() end
+    KH.Save(); if KH.RefreshHUD then KH:RefreshHUD() end
+end
 MenuCallbackHandler.KY_SetRadius      = make_slider_cb("circle_radius", true)
 MenuCallbackHandler.KY_SetBuffPositionX = make_slider_cb("buff_position_x", true)
 MenuCallbackHandler.KY_SetBuffPositionY = make_slider_cb("buff_position_y", true)
@@ -269,7 +276,7 @@ end
 
 local function buff_provider_available()
     local gameinfo = managers and managers.gameinfo
-    return gameinfo ~= nil
+    local runtime_available = gameinfo ~= nil
         and type(gameinfo.register_listener) == "function"
         and type(gameinfo.get_buffs) == "function"
         and type(gameinfo.get_player_actions) == "function"
@@ -278,6 +285,18 @@ local function buff_provider_available()
         and type(HUDList.BuffItemBase.MAP) == "table"
         and HUDListManager ~= nil
         and type(HUDListManager.BUFFS) == "table"
+    if runtime_available then return true end
+
+    -- The main menu can be built before VanillaHUD+ initializes its runtime
+    -- globals. SuperBLT's enabled-mod registry is already available there.
+    return is_blt_mod_enabled("VanillaHUDPlus")
+end
+
+update_buff_position_menu_enabled = function()
+    local enabled = KH.settings.enable_buffs ~= false and buff_provider_available()
+    for _, item in ipairs(buff_position_menu_items) do
+        if item and item.set_enabled then item:set_enabled(enabled) end
+    end
 end
 
 local MAIN_MENU_DEFINITION = load_menu_definition("menu.json")
@@ -289,6 +308,7 @@ local MENU_ID = MAIN_MENU_DEFINITION and MAIN_MENU_DEFINITION.menu_id or "kyohud
 local function populate_json_menu(definition)
     if not definition then return end
 
+    buff_position_menu_items = {}
     local items = definition.items
     local item_count = #items
     for index, item in ipairs(items) do
@@ -327,15 +347,19 @@ local function populate_json_menu(definition)
                 best_streak_menu_item = created_item
             end
         elseif item_type == "slider" then
-            MenuHelper:AddSlider({
+            local created_item = MenuHelper:AddSlider({
                 id = item.id, title = item.title, desc = description,
                 callback = item.callback, value = value,
                 min = item.min or 0, max = item.max or 1, step = item.step or 1,
                 show_value = item.show_value ~= false,
                 display_precision = item.display_precision or 0,
-                disabled = provider_unavailable,
+                disabled = provider_unavailable
+                    or (item.enabled_by and KH.settings[item.enabled_by] == false),
                 menu_id = definition.menu_id, priority = priority,
             })
+            if item.enabled_by == "enable_buffs" and created_item then
+                table.insert(buff_position_menu_items, created_item)
+            end
         elseif item_type == "button" then
             MenuHelper:AddButton({
                 id = item.id, title = item.title, desc = description,
@@ -352,6 +376,7 @@ local function populate_json_menu(definition)
         end
     end
     update_best_streak_menu_enabled()
+    update_buff_position_menu_enabled()
 end
 
 -- ── HOOK 1 : Setup ──
