@@ -1,31 +1,36 @@
 # KyoHUD - Killfeed & Combat Score
 
-KyoHUD is a **PAYDAY 2** mod focused on a tactical killfeed, kill streak and special-enemy announcements, combat score, and customizable buffs around the crosshair.
+KyoHUD adds a killfeed, kill streak announcements, a combat score, and optional buff display to PAYDAY 2.
 
 ## Features
 
-- Killfeed for eliminations made by the local player.
-- Announcements for kill streaks and special enemies.
-- Combat score displayed alongside the killfeed.
-- Horizontal display of active buffs with their remaining duration.
-- Configurable position, icon size, and opacity.
-- Filters by category and individual buff.
-- Menus available in English and French.
+- Killfeed for your kills.
+- Kill streak and special enemy announcements.
+- Combat score and medals.
+- Active buffs displayed in a horizontal row.
+- English and French menus.
+
+Buff display requires [VanillaHUD Plus](https://modworkshop.net/mod/25629). Everything else works without it.
 
 ## Installation
 
 1. Install [SuperBLT](https://superblt.znix.xyz/).
-2. Place the `Kyohud` folder in `PAYDAY 2/mods/`.
-3. Launch the game.
+2. Extract the `Kyohud` folder into `PAYDAY 2/mods/`.
+3. Install VanillaHUD Plus if you want to display buffs.
+4. Launch the game.
 
 ## Configuration
 
-Open **Options > Mod Options > KyoHUD - Killfeed & Combat Score** to customize the display. Use **Preview Buffs & Kills** and **Clear Preview** to quickly test the layout.
+Open **Options > Mod Options > KyoHUD - Killfeed & Combat Score**.
+
+Buff visibility is configured in **VanillaHUD Plus > HUD Info Options > Buff List Options**. Enable **Show Buffs** while choosing your buffs, then disable it to avoid displaying two buff rows.
 
 ## Credits
 
-KyoHUD's combat-score concept and initial unit score values were inspired by **Joy's Score Counter** by **Offyerrocker**, itself based on Joy's in-game scoring voice lines. KyoHUD uses its own kill detection, attribution, rendering, and state management.
+The combat score was inspired by **Joy's Score Counter** by **Offyerrocker**.
 
-KyoHUD's buff catalog and icon descriptor conventions are adapted from **HUDList** and **GameInfoManager** by **NN / pjal3urb (Thomas G. Hall)**, and from the expanded implementation maintained in **VanillaHUD Plus** by **Test1, LT71/Bunnie, Kamikaze94, and BangL**.
+Buff data comes from **HUDList** and **GameInfoManager**, included in VanillaHUD Plus. See [CREDITS.md](CREDITS.md) for details and links.
 
-VanillaHUD Plus support is optional; KyoHUD keeps its own local catalog and does not bundle HUDList or GameInfoManager. See [CREDITS.md](CREDITS.md) for the full source lineage and links.
+## Permission
+
+Do not re-upload KyoHUD without permission or present it as your own work.

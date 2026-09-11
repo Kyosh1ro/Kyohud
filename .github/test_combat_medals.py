@@ -75,7 +75,7 @@ class CombatMedalTests(unittest.TestCase):
                     } end}
             end
         ''')
-        self.load('ky_buffhud.lua', 'lib/managers/hudmanagerpd2')
+        self.load('core.lua', 'lib/managers/hudmanagerpd2')
         self.load('ky_killfeed.lua', 'lib/managers/playermanager')
         self.load('ky_killfeed.lua', 'lib/units/enemies/cop/copdamage')
         self.load('ky_playerinventory.lua', 'lib/units/beings/player/playerinventory')
@@ -753,6 +753,33 @@ class CombatMedalTests(unittest.TestCase):
             kyohud:ResetHeistCombatState()
             assert(kyohud._sentry_kill_count == 0 and kyohud._sentry_kill_medal_index == 0,
                 'new heist did not reset sentry medals')
+        ''')
+
+    def test_cumulative_kill_medal_uses_vanilla_preplanning_icon_61(self):
+        self.lua.execute('''
+            local requested_icon
+            tweak_data.preplanning = {
+                gui = {
+                    type_icons_path = "guis/dlcs/deep/textures/pd2/pre_planning/preplan_icon_types",
+                },
+                get_type_texture_rect = function(self, icon)
+                    requested_icon = icon
+                    return {240, 0, 48, 48}
+                end,
+            }
+
+            for i = 1, 50 do kill(nil) end
+
+            local medal
+            for _, card in ipairs(cards) do
+                if card.kind == "kill_total" then medal = card break end
+            end
+            assert(medal ~= nil, "50-kill medal was not emitted")
+            assert(requested_icon == 61, "preplanning icon 61 was not requested")
+            assert(medal.icon.texture
+                == "guis/dlcs/deep/textures/pd2/pre_planning/preplan_icon_types")
+            assert(medal.icon.rect[1] == 240 and medal.icon.rect[3] == 48,
+                "preplanning atlas rect was not preserved")
         ''')
 
     def test_host_sentry_kill_source_reaches_the_killfeed(self):

@@ -2,9 +2,10 @@
 
 Run: uv run --with lupa python -B -m unittest discover -s .github -p test_settings_persistence.py -v
 """
-from pathlib import Path
+import json
 import tempfile
 import unittest
+from pathlib import Path
 
 from lupa.luajit21 import LuaRuntime
 
@@ -67,6 +68,230 @@ class SettingsPersistenceTests(unittest.TestCase):
                 '''
             )
         return lua
+
+    def test_global_buff_options_do_not_require_the_local_catalog(self):
+        with tempfile.TemporaryDirectory() as save_dir:
+            lua = LuaRuntime(unpack_returned_tuples=True)
+            lua.globals().ModPath = ROOT.as_posix() + "/"
+            lua.globals().SavePath = Path(save_dir).as_posix() + "/"
+            lua.execute(
+                r'''
+                kyohud = nil
+                Kyosh1roHUD = nil
+                MenuCallbackHandler = {}
+                Hooks = {callbacks = {}}
+                function Hooks:Add(event, id, callback) self.callbacks[id] = callback end
+                MenuHelper = {}
+                BLT = nil
+                function log(...) end
+                function dofile(...) error("local buff catalog must not be loaded") end
+                json = {
+                    encode = function() return "{}" end,
+                    decode = function() return {} end,
+                }
+                '''
+            )
+
+            lua.execute(OPTIONS_CHUNK)
+
+            for key in (
+                "enable_buffs",
+                "buff_position_x",
+                "buff_position_y",
+                "opacity",
+                "icon_size",
+            ):
+                self.assertIsNotNone(lua.eval(f"kyohud._defaults.{key}"), key)
+            self.assertIsNone(lua.eval("kyohud._default_categories"))
+            self.assertIsNone(lua.eval("kyohud.settings.buff_categories"))
+            self.assertIsNone(lua.eval("kyohud.settings.buff_toggles"))
+
+            menu = json.loads((ROOT / "menu" / "menu.json").read_text(encoding="utf-8-sig"))
+            values = {item.get("value") for item in menu["items"]}
+            self.assertTrue(
+                {"enable_buffs", "buff_position_x", "buff_position_y", "opacity", "icon_size"}
+                <= values
+            )
+            self.assertFalse(any(item.get("next_menu") == "kyohud_buffs_menu" for item in menu["items"]))
+
+    def test_legacy_buff_filters_are_removed_without_losing_false_settings(self):
+        with tempfile.TemporaryDirectory() as save_dir:
+            settings_path = Path(save_dir) / "kyohud_settings.json"
+            settings_path.write_text("legacy", encoding="utf-8")
+            lua = LuaRuntime(unpack_returned_tuples=True)
+            lua.globals().ModPath = ROOT.as_posix() + "/"
+            lua.globals().SavePath = Path(save_dir).as_posix() + "/"
+            lua.execute(
+                r'''
+                kyohud = nil
+                Kyosh1roHUD = nil
+                MenuCallbackHandler = {}
+                Hooks = {callbacks = {}}
+                function Hooks:Add(event, id, callback) self.callbacks[id] = callback end
+                MenuHelper = {}
+                BLT = nil
+                function log(...) end
+                json = {}
+                function json.decode()
+                    return {
+                        enable_buffs = false,
+                        enable_killfeed = false,
+                        show_total_score = false,
+                        show_best_streak = false,
+                        killfeed_size = 5,
+                        score_position_x = 42,
+                        score_position_y = 73,
+                        buff_categories = {mastermind = false},
+                        buff_toggles = {inspire = false},
+                    }
+                end
+                function json.encode(data)
+                    assert(data.enable_buffs == false)
+                    assert(data.enable_killfeed == false)
+                    assert(data.show_total_score == false)
+                    assert(data.show_best_streak == false)
+                    assert(data.killfeed_size == 5)
+                    assert(data.score_position_x == 42 and data.score_position_y == 73)
+                    assert(data.buff_categories == nil and data.buff_toggles == nil)
+                    return "migrated"
+                end
+                '''
+            )
+
+            lua.execute(OPTIONS_CHUNK)
+
+            self.assertFalse(lua.eval("kyohud.settings.enable_buffs"))
+            self.assertFalse(lua.eval("kyohud.settings.enable_killfeed"))
+            self.assertFalse(lua.eval("kyohud.settings.show_total_score"))
+            self.assertFalse(lua.eval("kyohud.settings.show_best_streak"))
+            self.assertEqual(5, lua.eval("kyohud.settings.killfeed_size"))
+            self.assertEqual(42, lua.eval("kyohud.settings.score_position_x"))
+            self.assertEqual(73, lua.eval("kyohud.settings.score_position_y"))
+            self.assertEqual("migrated", settings_path.read_text(encoding="utf-8"))
+
+    def test_buff_toggle_describes_an_unavailable_provider(self):
+        with tempfile.TemporaryDirectory() as save_dir:
+            lua = LuaRuntime(unpack_returned_tuples=True)
+            lua.globals().ModPath = ROOT.as_posix() + "/"
+            lua.globals().SavePath = Path(save_dir).as_posix() + "/"
+            lua.execute(
+                r'''
+                kyohud = nil
+                Kyosh1roHUD = nil
+                MenuCallbackHandler = {}
+                Hooks = {callbacks = {}}
+                function Hooks:Add(event, id, callback) self.callbacks[id] = callback end
+                captured_items = {}
+                MenuHelper = {}
+                function MenuHelper:AddToggle(params)
+                    captured_items[#captured_items + 1] = params
+                    return {}
+                end
+                function MenuHelper:AddSlider(params)
+                    captured_items[#captured_items + 1] = params
+                    return {}
+                end
+                BLT = nil
+                managers = {}
+                HUDList = nil
+                HUDListManager = nil
+                function log(...) end
+                json = {
+                    encode = function() return "{}" end,
+                    decode = function()
+                        return {
+                            menu_id = "kyohud_options",
+                            items = {
+                                {
+                                    type = "toggle",
+                                    id = "ky_enable_buffs",
+                                    description = "ky_opt_enable_buffs_desc",
+                                    unavailable_description = "ky_opt_enable_buffs_unavailable_desc",
+                                    provider_required = true,
+                                    value = "enable_buffs",
+                                    default_value = true,
+                                },
+                                {
+                                    type = "slider", id = "ky_buff_position_x",
+                                    description = "x", provider_required = true,
+                                    value = "buff_position_x", default_value = 50,
+                                },
+                                {
+                                    type = "slider", id = "ky_buff_position_y",
+                                    description = "y", provider_required = true,
+                                    value = "buff_position_y", default_value = 83,
+                                },
+                                {
+                                    type = "slider", id = "ky_opacity",
+                                    description = "opacity", value = "opacity",
+                                    default_value = 0.9,
+                                },
+                            },
+                        }
+                    end,
+                }
+                '''
+            )
+
+            lua.execute(OPTIONS_CHUNK)
+            lua.execute("Hooks.callbacks.KY_PopulateMenu()")
+            self.assertEqual(
+                "ky_opt_enable_buffs_unavailable_desc",
+                lua.eval("captured_items[1].desc"),
+            )
+            self.assertTrue(lua.eval("captured_items[1].disabled"))
+            self.assertTrue(lua.eval("captured_items[2].disabled"))
+            self.assertTrue(lua.eval("captured_items[3].disabled"))
+            self.assertFalse(lua.eval("captured_items[4].disabled == true"))
+
+            lua.execute('''
+                managers.gameinfo = {
+                    register_listener = function() end,
+                    get_buffs = function() return {} end,
+                    get_player_actions = function() return {} end,
+                }
+                HUDList = {BuffItemBase = {MAP = {}}}
+                HUDListManager = {BUFFS = {}}
+                Hooks.callbacks.KY_PopulateMenu()
+            ''')
+            self.assertEqual(
+                "ky_opt_enable_buffs_desc",
+                lua.eval("captured_items[5].desc"),
+            )
+            self.assertFalse(lua.eval("captured_items[5].disabled == true"))
+            self.assertFalse(lua.eval("captured_items[6].disabled == true"))
+            self.assertFalse(lua.eval("captured_items[7].disabled == true"))
+
+    def test_catalog_derived_menus_callbacks_and_localizations_are_removed(self):
+        source = OPTIONS_CHUNK
+        localization_source = (ROOT / "lua" / "ky_localization.lua").read_text(
+            encoding="utf-8-sig"
+        )
+
+        removed_map = "BUFF" + "_MAP"
+        self.assertNotIn("KH." + removed_map, source)
+        self.assertNotIn("KY_ToggleCat_", source)
+        self.assertNotIn("KY_ToggleBuff_", source)
+        self.assertNotIn("BUFFS_MENU_DEFINITION", source)
+        self.assertNotIn("kyohud." + removed_map, localization_source)
+        self.assertFalse((ROOT / "menu" / "buffs.json").exists())
+
+        allowed_buff_option_keys = {
+            "ky_opt_buff_position_x",
+            "ky_opt_buff_position_x_desc",
+            "ky_opt_buff_position_y",
+            "ky_opt_buff_position_y_desc",
+        }
+        for locale_name in ("english.json", "french.json"):
+            locale = json.loads((ROOT / "loc" / locale_name).read_text(encoding="utf-8-sig"))
+            self.assertFalse(any(key.startswith("ky_opt_cat_") for key in locale))
+            self.assertNotIn("ky_opt_buffs_menu", locale)
+            self.assertNotIn("ky_opt_buffs_menu_desc", locale)
+            self.assertEqual(
+                allowed_buff_option_keys,
+                {key for key in locale if key.startswith("ky_opt_buff_")},
+            )
+            self.assertTrue(locale["ky_opt_enable_buffs_unavailable_desc"])
 
     def test_normal_save_replaces_destination_directly(self):
         with tempfile.TemporaryDirectory() as save_dir:
