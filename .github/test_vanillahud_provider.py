@@ -373,7 +373,6 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
             HUDList = {BuffItemBase = {MAP = {
                 damage_increase = {title = "upstream_title"},
             }}}
-            kyohud.BUFF_MAP.damage_increase = nil
 
             kyohud:add_buff("damage_increase", {}, nil, nil, true, false, "+25%")
 
@@ -393,7 +392,6 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
                 regen_a = {"passive_health_regen"},
                 regen_b = {"passive_health_regen"},
             }}
-            kyohud.BUFF_MAP.passive_health_regen = nil
             kyohud._gameinfo_bridge_active = true
 
             kyohud:handle_buff_event("activate", "regen_a", {value = 0.01})
@@ -461,8 +459,6 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
 
     def test_equipped_deck_promotion_is_owned_by_kyohud_presentation(self):
         self.lua.execute('''
-            kyohud.PERK_DECK_BUFFS = nil
-
             local armorer = kyohud:GetKyoEquippedPerkBuffCandidates(3)
             local hacker = kyohud:GetKyoEquippedPerkBuffCandidates(21)
             local copycat = kyohud:GetKyoEquippedPerkBuffCandidates(23)
@@ -476,7 +472,6 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
     def test_equipped_skill_counter_is_owned_by_kyohud_presentation(self):
         self.lua.execute('''
             HUDList = {BuffItemBase = {MAP = {partner_in_crime = {priority = 3}}}}
-            kyohud.BUFF_MAP.partner_in_crime = nil
             managers.skilltree = {skill_step = function() return 1 end}
             managers.player = {
                 num_local_minions = function() return 1 end,
@@ -522,7 +517,6 @@ class VanillaHUDBuffProviderTests(unittest.TestCase):
             HUDListManager = {BUFFS = {
                 future_source = {"future_buff"},
             }}
-            kyohud.GetBuffTargets = nil
 
             assert(kyohud:TryRegisterGameInfoBridge() == true)
             listeners["buff:activate"]("activate", "future_source", {duration = 8})

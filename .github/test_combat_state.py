@@ -31,32 +31,18 @@ class CombatStateTests(unittest.TestCase):
             Application = {time = function() return app_t end}
             game_state_machine = {last_queued_state_name = function() return state_name end}
         ''')
-        for name in ("core.lua", "ky_hooks.lua"):
-            self.lua.execute((ROOT / "lua" / name).read_text(encoding="utf-8-sig"))
+        self.lua.execute((ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig"))
         self.lua.execute('''
             kyohud.settings = {enable_killfeed = true, killfeed_size = 3}
             kyohud:ResetHeistCombatState()
         ''')
 
-    def test_temporary_buff_uses_application_clock(self):
-        self.lua.execute('''
-            local captured
-            kyohud.GetBuffTargets = function() return {'overkill'} end
-            kyohud.handle_buff_event = function(self, event, id, data) captured = data.duration end
-            local pm = {
-                _temporary_upgrades = {temporary = {
-                    overkill_damage_multiplier = {expire_time = 1020}
-                }},
-                upgrade_value = function() return {1.75, 20} end
-            }
-            Hooks.callbacks.KH_OnBuffOn(pm, 'temporary', 'overkill_damage_multiplier')
-            assert(captured == 20, 'expected 20 seconds remaining, got ' .. tostring(captured))
-        ''')
-
     def test_absolute_expiry_does_not_fall_back_to_game_clock(self):
         self.lua.execute('''
             kyohud.settings.enable_buffs = true
-            kyohud.GetBuffTargets = function() return {'overkill'} end
+            kyohud._gameinfo_bridge_active = true
+            HUDList = {BuffItemBase = {MAP = {overkill = {}}}}
+            HUDListManager = {BUFFS = {overkill_damage_multiplier = {'overkill'}}}
             Application.time = function() error('application clock unavailable') end
             kyohud:handle_buff_event('activate', 'overkill_damage_multiplier', {
                 expire_t = 1020,
@@ -88,8 +74,9 @@ class CombatStateTests(unittest.TestCase):
     def test_changed_source_targets_remove_former_composite(self):
         self.lua.execute('''
             kyohud.settings.enable_buffs = true
+            kyohud._gameinfo_bridge_active = true
             local targets = {'source_a', 'source_b'}
-            kyohud.GetBuffTargets = function() return targets end
+            kyohud.GetVanillaHUDBuffTargets = function() return targets end
 
             kyohud:handle_buff_event('activate', 'dynamic_source', {}, 'gameinfo_buff')
             assert(kyohud._buffs.source_a and kyohud._buffs.source_b,
@@ -196,20 +183,7 @@ class CombatStateTests(unittest.TestCase):
             assert(kyohud._heist_score_total == 10 and kyohud._heist_kill_count == 1)
         ''')
 
-    def test_temporary_buff_duration_fallback(self):
-        self.lua.execute('''
-            local captured
-            kyohud.GetBuffTargets = function() return {'overkill'} end
-            kyohud.handle_buff_event = function(self, event, id, data) captured = data.duration end
-            local pm = {upgrade_value = function() return {1.75, 12} end}
-            Hooks.callbacks.KH_OnBuffOn(pm, 'temporary', 'overkill_damage_multiplier')
-            assert(captured == 12)
-            pm.upgrade_value = function() return nil end
-            Hooks.callbacks.KH_OnBuffOn(pm, 'temporary', 'overkill_damage_multiplier')
-            assert(captured == 5)
-        ''')
-
-    def test_total_dodge_counts_smoke_once_for_native_and_bridge_sources(self):
+    def test_total_dodge_counts_smoke_once_for_provider_and_calculated_sources(self):
         self.lua.execute('''
             kyohud.settings.enable_buffs = true
             tweak_data.player = {damage = {DODGE_INIT = 0}}

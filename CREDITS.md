@@ -1,21 +1,21 @@
 # Credits and source lineage
 
-KyoHUD is an independent PAYDAY 2 SuperBLT mod. It does not bundle HUDList or GameInfoManager, and VanillaHUD Plus is not a required dependency.
+KyoHUD is an independent PAYDAY 2 SuperBLT mod. It does not bundle HUDList, GameInfoManager, or their buff catalog. VanillaHUD Plus is optional for the killfeed, score, and medals, but required for buff display.
 
 ## HUDList and GameInfoManager
 
-The buff catalog, icon descriptor conventions, and parts of the buff-event model are adapted from:
+The runtime buff state, source mappings, and display metadata consumed by KyoHUD are provided by implementations derived from:
 
 - **HUDList**, originally created by **NN / pjal3urb (Thomas G. Hall)**:  
   https://bitbucket.org/pjal3urb/hudlist/src/master/
 - **GameInfoManager**, originally created by **NN / pjal3urb (Thomas G. Hall)**:  
   https://bitbucket.org/pjal3urb/gameinfomanager/src/master/
 
-The original HUDList project uses GameInfoManager as its information-gathering layer. KyoHUD keeps its own local catalog and rendering implementation rather than loading either project as a required runtime dependency.
+The original HUDList project uses GameInfoManager as its information-gathering layer. KyoHUD keeps its own rendering and presentation overrides, but reads these upstream runtime interfaces instead of redistributing their catalog.
 
 ## VanillaHUD Plus
 
-KyoHUD also references the expanded HUDList and GameInfoManager implementation maintained in **VanillaHUD Plus** by:
+KyoHUD integrates at runtime with the expanded HUDList and GameInfoManager implementation maintained in **VanillaHUD Plus** by:
 
 - **Test1**
 - **LT71 / Bunnie**
@@ -25,7 +25,7 @@ KyoHUD also references the expanded HUDList and GameInfoManager implementation m
 VanillaHUD Plus:  
 https://modworkshop.net/mod/25629
 
-When VanillaHUD Plus exposes its optional `managers.gameinfo` interface, KyoHUD can use that interface to enrich buff detection. KyoHUD continues to provide its own native hooks and remains usable without VanillaHUD Plus.
+When VanillaHUD Plus exposes `managers.gameinfo`, `HUDListManager.BUFFS`, and `HUDList.BuffItemBase.MAP`, KyoHUD uses them for active buff state, source mappings, and display metadata. Without that full provider contract, only KyoHUD's buff display is disabled; unrelated HUD features remain operational.
 
 ## Joy's Score Counter
 

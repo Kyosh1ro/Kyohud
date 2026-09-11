@@ -1,16 +1,11 @@
 -- core.lua — KyoHUD state, combat HUD and buff rendering
 -- Buffs displayed side-by-side on a configurable horizontal row.
--- Local icon descriptors inspired by HUDList/VanillaHUD Plus; see CREDITS.md.
+-- Buff state and metadata are provided at runtime by VanillaHUD+.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
 local KH = kyohud
 local MY_MOD_PATH = ModPath
-
-local catalog_ok, catalog_err = pcall(dofile, MY_MOD_PATH .. "lua/ky_buff_catalog.lua")
-if not catalog_ok then
-    log("[KyoHUD] Buff catalog load error (HUD): " .. tostring(catalog_err))
-end
 
 -- ═══════════════════════════════════════════════════
 -- Utilities
@@ -178,7 +173,7 @@ local function get_icon_data(icon)
     local skills = icon.skills
     local skills_new = icon.skills_new
 
-    -- Atlas coordinates have changed over updates. When the catalog knows the skill's internal name, request its position from the game and keep static coordinates only as a fallback.
+    -- Atlas coordinates have changed over updates. When the runtime definition knows the skill's internal name, request its position from the game and keep static coordinates only as a fallback.
     if icon.skill_id then
         local ok, icon_xy = pcall(function()
             local skills_tweak = tweak_data and tweak_data.skilltree and tweak_data.skilltree.skills
@@ -255,8 +250,6 @@ local function sentry_icon_descriptor()
     end
     return SENTRY_ICON_DESCRIPTOR
 end
-
--- The shared buff catalog is loaded from ky_buff_catalog.lua.
 
 -- ═══════════════════════════════════════════════════
 -- Icon Resolution for a buff_id
@@ -351,7 +344,7 @@ local function icon_for_equipped_perk_deck()
         return KH._equipped_perk_deck_icon
     end
 
-    -- This game API resolves the correct atlas itself, including for DLC decks. Keep the generic catalog icon as a fallback.
+    -- This game API resolves the correct atlas itself, including for DLC decks. Keep the generic provider icon as a fallback.
     local icon_ok, texture, rect = pcall(function()
         local skilltree_tweak = tweak_data and tweak_data.skilltree
         return skilltree_tweak:get_specialization_icon_data(specialization_id)
@@ -365,13 +358,11 @@ local function icon_for_equipped_perk_deck()
     return KH._equipped_perk_deck_icon
 end
 
-local function color_from_catalog(value)
+local function color_from_presentation(value)
     if not value then return nil end
     if type(value) ~= "string" then return value end
 
-    local definition = KYO_BUFF_COLORS[value]
-        or (KH.BUFF_COLORS and KH.BUFF_COLORS[value])
-        or value
+    local definition = KYO_BUFF_COLORS[value] or value
     local ok, color = pcall(function()
         if type(definition) == "table" then
             return Color(unpack(definition))
@@ -381,18 +372,16 @@ local function color_from_catalog(value)
     return ok and color or nil
 end
 
--- VanillaHUD+ can provide icons and events, never the tint.
--- The visible palette remains exclusively that of the KyoHUD catalog.
+-- VanillaHUD+ provides icons and events, never the KyoHUD-specific tint.
+-- The visible palette remains exclusively owned by KyoHUD presentation.
 local function color_for_buff(buff_id, is_debuff)
     if is_debuff then
-        return color_from_catalog("debuff")
+        return color_from_presentation("debuff")
             or Color.white
     end
 
     local presentation = KYO_BUFF_PRESENTATION[buff_id]
-    local catalog_entry = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
-    return color_from_catalog(presentation and presentation.color)
-        or color_from_catalog(catalog_entry and catalog_entry.color)
+    return color_from_presentation(presentation and presentation.color)
         or Color.white
 end
 
@@ -480,7 +469,7 @@ local function presentation_label_for_buff(buff_id)
     return text, label.placement == "timer" and "timer" or "top"
 end
 
--- Optional cell label, bypassing value_text. AI buffs retain their historical marker above the icon; others have one only if the catalog declares `label`, whose `placement` field chooses between BUFF_LABEL_TOP and BUFF_LABEL_TIMER. Text and placement are returned separately: KH:draw allocates no table and translation is resolved once per identifier, not per frame.
+-- Optional cell label, bypassing value_text. AI buffs retain their historical marker above the icon; others have one only if KyoHUD presentation declares `label`, whose `placement` field chooses between BUFF_LABEL_TOP and BUFF_LABEL_TIMER. Text and placement are returned separately: KH:draw allocates no table and translation is resolved once per identifier, not per frame.
 local BUFF_LABEL_TOP = "top"
 local BUFF_LABEL_TIMER = "timer"
 local function buff_label(buff)
@@ -1512,7 +1501,7 @@ end
 
 --   persistent: no known timer. Stable tint, no simulated progression,
 --                no pulsing.
---   normal     : temporary buff far from expiry. It keeps its catalog
+--   normal     : temporary buff far from expiry. It keeps its presentation
 --                color, including debuff tint.
 --   warning    : approaching expiry. Amber, increased opacity.
 --   critical   : imminent expiry. Red, increased opacity and retained
@@ -1787,14 +1776,10 @@ end
 -- ═══════════════════════════════════════════════════
 -- Public API: add/remove buffs
 -- ═══════════════════════════════════════════════════
-function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, is_debuff, value_text, stack_text)
+function KH:add_buff(buff_id, icon_data, duration, _raw_upgrade_id, persistent, is_debuff, value_text, stack_text)
     if not self.settings or not self.settings.enable_buffs then return end
 
-    -- Resolve the real buff_id from the upgrade
     local resolved_id = buff_id
-    if raw_upgrade_id and KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[raw_upgrade_id] then
-        resolved_id = KH.UPGRADE_TO_BUFF[raw_upgrade_id]
-    end
 
     -- Check if this buff is visible in settings
     if not self:is_buff_visible(resolved_id) then return end
@@ -1804,7 +1789,6 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
         dur = dur or DEFAULT_TEMPORARY_BUFF_DURATION
     end
     local t = now()
-    local definition = KH.BUFF_MAP and KH.BUFF_MAP[resolved_id]
     local runtime_definition = self:GetVanillaHUDBuffDefinition(resolved_id)
 
     -- A refreshed buff keeps its row position (original order_t),
@@ -1816,7 +1800,6 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
         id       = resolved_id,
         icon     = icon_data or icon_for_buff(resolved_id),
         color    = color_for_buff(resolved_id, is_debuff),
-        category = definition and definition.category,
         priority = tonumber(runtime_definition and runtime_definition.priority) or 0,
         provider_class = runtime_definition and runtime_definition.class or nil,
         title_text = title_for_buff(resolved_id),
@@ -1834,11 +1817,7 @@ function KH:add_buff(buff_id, icon_data, duration, raw_upgrade_id, persistent, i
 end
 
 function KH:remove_buff(buff_id)
-    -- Try the resolved buff too
     self._buffs[buff_id] = nil
-    if KH.UPGRADE_TO_BUFF and KH.UPGRADE_TO_BUFF[buff_id] then
-        self._buffs[KH.UPGRADE_TO_BUFF[buff_id]] = nil
-    end
 end
 
 -- ═══════════════════════════════════════════════════
@@ -2206,10 +2185,8 @@ end
 
 local function format_buff_value(buff_id, sources)
     local runtime_definition = KH:GetVanillaHUDBuffDefinition(buff_id)
-    local catalog_definition = KH.BUFF_MAP and KH.BUFF_MAP[buff_id]
     local presentation = KYO_BUFF_PRESENTATION[buff_id]
     local value_format = presentation and presentation.value_format
-        or (catalog_definition and catalog_definition.value_format)
     local formatter = value_format and BUFF_VALUE_FORMATTERS[value_format]
     local value_text
     if presentation and presentation.value_format then
@@ -2222,14 +2199,11 @@ local function format_buff_value(buff_id, sources)
     local stack_count = largest_stack_count(sources)
     local stack_text
     local stack_format = presentation and presentation.stack_format
-        or (catalog_definition and catalog_definition.stack_format)
     if stack_format == "biker_charges" and stack_count then
         local maximum = tonumber(tweak_data and tweak_data.upgrades
             and tweak_data.upgrades.wild_max_triggers_per_time) or 0
         stack_text = "x" .. tostring(math.max(0, maximum - stack_count))
     elseif runtime_definition and stack_count and stack_count > 0 then
-        stack_text = "x" .. tostring(stack_count)
-    elseif catalog_definition and catalog_definition.show_stack_count and stack_count and stack_count > 0 then
         stack_text = "x" .. tostring(stack_count)
     end
     return value_text, stack_text
@@ -2469,16 +2443,9 @@ function KH:RefreshCalculatedBuffValues()
 end
 
 function KH:handle_buff_event(event, source_id, data, source_type)
-    if not source_id then return end
+    if not source_id or not self._gameinfo_bridge_active then return end
 
-    local targets
-    if self._gameinfo_bridge_active then
-        targets = self:GetVanillaHUDBuffTargets(source_id)
-    elseif KH.GetBuffTargets then
-        targets = KH.GetBuffTargets(source_id)
-    else
-        return
-    end
+    local targets = self:GetVanillaHUDBuffTargets(source_id)
     source_type = source_type or "buff"
     local source_key = tostring(source_type) .. ":" .. tostring(source_id)
 
@@ -2915,7 +2882,7 @@ end
 ---
 
 --- What does not belong to a heist is intentionally preserved: settings,
---- catalog, KyoHUD panel, and VanillaHUD+ bridge listeners. During a new heist,
+--- presentation config, KyoHUD panel, and VanillaHUD+ bridge listeners. During a new heist,
 --- `rearm_bridge_sync` rearms deferred synchronization to repopulate real buffs without
 --- re-registering listeners. A simple preview clear instead preserves the current latch
 --- to avoid injecting real buffs into demo cells.
@@ -4545,8 +4512,6 @@ function KH:DebugSimulate(n)
             id       = "demo_" .. base .. "_" .. tostring(i),
             icon     = icon,
             color    = color_for_buff(base, demo.is_debuff),
-            category = KH.BUFF_MAP and KH.BUFF_MAP[base]
-                and KH.BUFF_MAP[base].category,
             value_text = demo.value_text,
             stack_text = demo.stack_text,
             is_debuff = demo.is_debuff == true,
@@ -4575,8 +4540,6 @@ function KH:DebugSimulate(n)
             id       = demo_id,
             icon     = icon_for_buff(demo.id),
             color    = color_for_buff(demo.id, demo.is_debuff),
-            category = KH.BUFF_MAP and KH.BUFF_MAP[demo.id]
-                and KH.BUFF_MAP[demo.id].category,
             is_debuff = demo.is_debuff == true,
             order_t  = t_now + 0.1 + i * 0.001,
             start_t  = t_now,

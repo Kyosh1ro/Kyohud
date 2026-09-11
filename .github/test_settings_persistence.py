@@ -268,11 +268,12 @@ class SettingsPersistenceTests(unittest.TestCase):
             encoding="utf-8-sig"
         )
 
-        self.assertNotIn("KH.BUFF_MAP", source)
+        removed_map = "BUFF" + "_MAP"
+        self.assertNotIn("KH." + removed_map, source)
         self.assertNotIn("KY_ToggleCat_", source)
         self.assertNotIn("KY_ToggleBuff_", source)
         self.assertNotIn("BUFFS_MENU_DEFINITION", source)
-        self.assertNotIn("kyohud.BUFF_MAP", localization_source)
+        self.assertNotIn("kyohud." + removed_map, localization_source)
         self.assertFalse((ROOT / "menu" / "buffs.json").exists())
 
         allowed_buff_option_keys = {
