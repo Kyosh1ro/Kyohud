@@ -169,7 +169,7 @@ class SettingsPersistenceTests(unittest.TestCase):
             self.assertEqual(73, lua.eval("kyohud.settings.score_position_y"))
             self.assertEqual("migrated", settings_path.read_text(encoding="utf-8"))
 
-    def test_buff_toggle_describes_an_unavailable_provider(self):
+    def test_buff_toggle_is_always_available_and_positions_follow_it(self):
         with tempfile.TemporaryDirectory() as save_dir:
             lua = LuaRuntime(unpack_returned_tuples=True)
             lua.globals().ModPath = ROOT.as_posix() + "/"
@@ -245,23 +245,15 @@ class SettingsPersistenceTests(unittest.TestCase):
             lua.execute(OPTIONS_CHUNK)
             lua.execute("Hooks.callbacks.KY_PopulateMenu()")
             self.assertEqual(
-                "ky_opt_enable_buffs_unavailable_desc",
+                "ky_opt_enable_buffs_desc",
                 lua.eval("captured_items[1].desc"),
             )
-            self.assertTrue(lua.eval("captured_items[1].disabled"))
-            self.assertTrue(lua.eval("captured_items[2].disabled"))
-            self.assertTrue(lua.eval("captured_items[3].disabled"))
+            self.assertFalse(lua.eval("captured_items[1].disabled == true"))
+            self.assertFalse(lua.eval("captured_items[2].disabled == true"))
+            self.assertFalse(lua.eval("captured_items[3].disabled == true"))
             self.assertFalse(lua.eval("captured_items[4].disabled == true"))
 
             lua.execute('''
-                BLT = {
-                    Mods = {
-                        GetModByName = function(self, name)
-                            if name ~= "VanillaHUDPlus" then return nil end
-                            return {IsEnabled = function() return true end}
-                        end,
-                    },
-                }
                 kyohud.settings.enable_buffs = false
                 Hooks.callbacks.KY_PopulateMenu()
             ''')
@@ -338,7 +330,7 @@ class SettingsPersistenceTests(unittest.TestCase):
                 allowed_buff_option_keys,
                 {key for key in locale if key.startswith("ky_opt_buff_")},
             )
-            self.assertTrue(locale["ky_opt_enable_buffs_unavailable_desc"])
+            self.assertNotIn("ky_opt_enable_buffs_unavailable_desc", locale)
 
     def test_normal_save_replaces_destination_directly(self):
         with tempfile.TemporaryDirectory() as save_dir:

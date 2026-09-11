@@ -27,7 +27,6 @@ local function add_fallbacks(loc)
         ky_opt_killfeed_size_desc   = "Number of kills shown in the killfeed (1-5). Default: 3",
         ky_opt_enable_buffs         = "Enable Buffs",
         ky_opt_enable_buffs_desc    = "Show VanillaHUD+ buffs in KyoHUD's horizontal row; individual visibility follows VanillaHUD+ settings",
-        ky_opt_enable_buffs_unavailable_desc = "VanillaHUD+ buff data is unavailable; killfeed, score and medals remain active",
         ky_opt_radius               = "Killfeed Vertical Offset",
         ky_opt_radius_desc          = "Vertical distance of the killfeed from the crosshair (128-291). Default: 250",
         ky_opt_buff_position_x      = "Buff Position X (%)",
