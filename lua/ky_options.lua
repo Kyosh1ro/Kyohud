@@ -274,8 +274,26 @@ local function load_menu_definition(filename)
     return content
 end
 
+local function buff_provider_available()
+    local gameinfo = managers and managers.gameinfo
+    local runtime_available = gameinfo ~= nil
+        and type(gameinfo.register_listener) == "function"
+        and type(gameinfo.get_buffs) == "function"
+        and type(gameinfo.get_player_actions) == "function"
+        and HUDList ~= nil
+        and HUDList.BuffItemBase ~= nil
+        and type(HUDList.BuffItemBase.MAP) == "table"
+        and HUDListManager ~= nil
+        and type(HUDListManager.BUFFS) == "table"
+    if runtime_available then return true end
+
+    -- The main menu can be built before VanillaHUD+ initializes its runtime
+    -- globals. SuperBLT's enabled-mod registry is already available there.
+    return is_blt_mod_enabled("VanillaHUDPlus")
+end
+
 update_buff_position_menu_enabled = function()
-    local enabled = KH.settings.enable_buffs ~= false
+    local enabled = KH.settings.enable_buffs ~= false and buff_provider_available()
     for _, item in ipairs(buff_position_menu_items) do
         if item and item.set_enabled then item:set_enabled(enabled) end
     end
@@ -330,7 +348,8 @@ local function populate_json_menu(definition)
                 min = item.min or 0, max = item.max or 1, step = item.step or 1,
                 show_value = item.show_value ~= false,
                 display_precision = item.display_precision or 0,
-                disabled = item.enabled_by and KH.settings[item.enabled_by] == false,
+                disabled = provider_unavailable
+                    or (item.enabled_by and KH.settings[item.enabled_by] == false),
                 menu_id = definition.menu_id, priority = priority,
             })
             if item.enabled_by == "enable_buffs" and created_item then

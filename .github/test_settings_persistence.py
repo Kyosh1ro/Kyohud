@@ -254,6 +254,14 @@ class SettingsPersistenceTests(unittest.TestCase):
             self.assertFalse(lua.eval("captured_items[4].disabled == true"))
 
             lua.execute('''
+                BLT = {
+                    Mods = {
+                        GetModByName = function(self, name)
+                            if name ~= "VanillaHUDPlus" then return nil end
+                            return {IsEnabled = function() return true end}
+                        end,
+                    },
+                }
                 kyohud.settings.enable_buffs = false
                 Hooks.callbacks.KY_PopulateMenu()
             ''')
