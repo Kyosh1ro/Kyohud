@@ -57,8 +57,6 @@
       "id": "ky_enable_buffs",
       "title": "ky_opt_enable_buffs",
       "description": "ky_opt_enable_buffs_desc",
-      "unavailable_description": "ky_opt_enable_buffs_unavailable_desc",
-      "provider_required": true,
       "callback": "KY_ToggleBuffs",
       "value": "enable_buffs",
       "default_value": true

@@ -316,10 +316,6 @@ local function populate_json_menu(definition)
         local priority = item.priority or (item_count - index + 1)
         local value = item.default_value
         local description = item.description
-        local provider_unavailable = item.provider_required and not buff_provider_available()
-        if provider_unavailable then
-            description = item.unavailable_description or description
-        end
         if item.value and KH.settings[item.value] ~= nil then
             value = KH.settings[item.value]
         end
@@ -339,8 +335,7 @@ local function populate_json_menu(definition)
             local created_item = MenuHelper:AddToggle({
                 id = item.id, title = item.title, desc = description,
                 callback = item.callback, value = value,
-                disabled = provider_unavailable
-                    or (item.enabled_by and KH.settings[item.enabled_by] == false),
+                disabled = item.enabled_by and KH.settings[item.enabled_by] == false,
                 menu_id = definition.menu_id, priority = priority,
             })
             if item.id == "ky_show_best_streak" then

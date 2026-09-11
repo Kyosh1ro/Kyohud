@@ -13,7 +13,6 @@
   "ky_opt_killfeed_size_desc": "Nombre de kills affichés dans le killfeed (1-5). Par défaut : 3",
   "ky_opt_enable_buffs": "Activer l'affichage des buffs",
   "ky_opt_enable_buffs_desc": "Affiche les buffs VanillaHUD+ sur la rangée horizontale KyoHUD ; leur visibilité individuelle suit les réglages VanillaHUD+",
-  "ky_opt_enable_buffs_unavailable_desc": "Les données de buffs VanillaHUD+ sont indisponibles ; le killfeed, le score et les médailles restent actifs",
   "ky_opt_radius": "Décalage vertical du killfeed",
   "ky_opt_radius_desc": "Distance verticale du killfeed depuis le viseur (128-291). Par défaut : 250",
   "ky_opt_buff_position_x": "Position X des buffs (%)",
