@@ -58,7 +58,7 @@ class BuffRowLayoutTests(unittest.TestCase):
             end
         ''')
         self.lua.execute(
-            (ROOT / "lua" / "ky_buffhud.lua").read_text(encoding="utf-8-sig")
+            (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
         )
 
     def test_zero_buffs_returns_empty_layout(self):
@@ -223,6 +223,10 @@ class BuffRowLayoutTests(unittest.TestCase):
             kyohud._panel = panel
             kyohud._buffs = {}
             kyohud._kills = {}
+            HUDList = {BuffItemBase = {MAP = {
+                equipped_perk_deck = {ignore = true},
+            }}}
+            kyohud._gameinfo_bridge_active = true
             kyohud.settings = {
                 enable_buffs = true,
                 enable_killfeed = false,
@@ -231,7 +235,6 @@ class BuffRowLayoutTests(unittest.TestCase):
                 buff_position_x = 50,
                 buff_position_y = 85,
                 circle_radius = 250,
-                buff_toggles = {equipped_perk_deck = false},
             }
             for index = 1, 20 do
                 game_t = 100 + index
@@ -280,7 +283,7 @@ class BuffRowLayoutTests(unittest.TestCase):
         ''')
 
     def test_buff_scale_is_local_to_buff_rendering(self):
-        source = (ROOT / "lua" / "ky_buffhud.lua").read_text(encoding="utf-8-sig")
+        source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
         buff_block = source.split("-- ── Draw buffs ──", 1)[1].split(
             "-- ── Draw streak banner and horizontal killfeed ──", 1
         )[0]

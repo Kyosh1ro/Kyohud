@@ -14,7 +14,7 @@ r18 (06.09.2026):
 - Event medals now recognize first kills, assault openings, critical-state eliminations, enemy actions, penetration shots, Cloaker counters, revenge kills, flashbang kills, quick weapon swaps, sniper duels and long-distance shots.
 - Headshots now add a dedicated icon to their regular killfeed card, while weapon-streak medals keep their chevrons and event or cumulative medals use a cleaner icon-and-label frame.
 - Multikill banners now switch to electric cyan from five kills onward.
-- Temporary buff timers now use the correct application clock, and combat tracking remains consistent when the killfeed is hidden or previews are cleared.
+- Combat tracking remains consistent when the killfeed is hidden or previews are cleared.
 
 r17 (04.09.2026):
 - Selected buffs now use localized compact labels, with Inspire states identified above their icons and composite stat labels placed below instead of redundant timers.
@@ -31,7 +31,7 @@ r16 (03.09.2026):
 r15 (01.09.2026):
 - A persistent heist score widget now tracks the total combat score (including civilian penalties) and the best continuous scoring streak; it can be toggled, its Best Streak line hidden separately, and its position configured. Inspiration credited to Joy's Score Counter.
 - Buffs, killfeed cards, combat score, banners, combos, and weapon streaks now reset cleanly between heists and after previews.
-- Buff detection is more resilient without VanillaHUD Plus, and the killfeed vertical-offset slider now covers only its effective 128-291 range with existing settings migrated automatically.
+- The killfeed vertical-offset slider now covers only its effective 128-291 range with existing settings migrated automatically.
 - Debug preview controls now use release-ready labels, source lineage is documented, and the release workflow uses a tested Python hash implementation.
 
 r14 (27.08.2026):
@@ -84,7 +84,6 @@ r5 (17.08.2026):
 - Added autonomous detection of temporary buffs, cooldowns, and regeneration effects exposed by PAYDAY 2 and VanillaHUD+, with dynamic icon resolution and a fallback texture.
 - Buffs and the killfeed are now laid out as configurable horizontal rows, with a killfeed limit of 1, 2, or 3 entries and harmonized frames.
 - Removed the gray killfeed square and reworked its frame.
-- Fixed the Hostage Taker healing cycle and several buff mappings; removed the unavailable Iron Man and duplicate Inspire options and added Endurance.
 
 r4 (16.08.2026):
 - Added double-kill, triple-kill, and subsequent kill-streak banners with tactical styling.
@@ -98,7 +97,6 @@ r3 (12.07.2026):
 
 r2 (04.04.2026):
 - Reworked the options menu with per-category and individual buff-selection submenus, including descriptions.
-- Fixed several menu and load-order issues (CoreMenuItemToggle crash, submenus not appearing, catalog load order).
 - Fixed the language fallback that forced English instead of French.
 
 r1 (03.04.2026):

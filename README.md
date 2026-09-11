@@ -7,16 +7,17 @@ KyoHUD is a **PAYDAY 2** mod focused on a tactical killfeed, kill streak and spe
 - Killfeed for eliminations made by the local player.
 - Announcements for kill streaks and special enemies.
 - Combat score displayed alongside the killfeed.
-- Horizontal display of active buffs with their remaining duration.
+- Horizontal display of VanillaHUD+ active buffs with their remaining duration.
 - Configurable position, icon size, and opacity.
-- Filters by category and individual buff.
+- Individual buff visibility follows the VanillaHUD+ buff settings.
 - Menus available in English and French.
 
 ## Installation
 
 1. Install [SuperBLT](https://superblt.znix.xyz/).
-2. Place the `Kyohud` folder in `PAYDAY 2/mods/`.
-3. Launch the game.
+2. To display buffs, install [VanillaHUD Plus](https://modworkshop.net/mod/25629). KyoHUD's killfeed, score, and medals remain available without it.
+3. Place the `Kyohud` folder in `PAYDAY 2/mods/`.
+4. Launch the game.
 
 ## Configuration
 
@@ -26,6 +27,6 @@ Open **Options > Mod Options > KyoHUD - Killfeed & Combat Score** to customize t
 
 KyoHUD's combat-score concept and initial unit score values were inspired by **Joy's Score Counter** by **Offyerrocker**, itself based on Joy's in-game scoring voice lines. KyoHUD uses its own kill detection, attribution, rendering, and state management.
 
-KyoHUD's buff catalog and icon descriptor conventions are adapted from **HUDList** and **GameInfoManager** by **NN / pjal3urb (Thomas G. Hall)**, and from the expanded implementation maintained in **VanillaHUD Plus** by **Test1, LT71/Bunnie, Kamikaze94, and BangL**.
+KyoHUD reads active buff state and display metadata at runtime from the **HUDList** and **GameInfoManager** implementation included in **VanillaHUD Plus**, maintained by **Test1, LT71/Bunnie, Kamikaze94, and BangL** and originally created by **NN / pjal3urb (Thomas G. Hall)**.
 
-VanillaHUD Plus support is optional; KyoHUD keeps its own local catalog and does not bundle HUDList or GameInfoManager. See [CREDITS.md](CREDITS.md) for the full source lineage and links.
+VanillaHUD Plus is optional for KyoHUD as a whole but required for buff display. KyoHUD does not bundle a copy of HUDList, GameInfoManager, or their buff catalog. See [CREDITS.md](CREDITS.md) for the full source lineage and links.
