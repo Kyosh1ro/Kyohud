@@ -47,10 +47,6 @@ local function add_fallbacks(loc)
         ky_opt_icon_size_desc       = "Size of buff/kill icons in pixels (32-40). Default: 32",
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
-        ky_opt_debug_sim            = "Preview Buffs & Kills",
-        ky_opt_debug_sim_desc       = "Main menu only: preview buffs, special-enemy kill cards and priority-target banners; unavailable during a heist",
-        ky_opt_debug_clear          = "Clear Preview",
-        ky_opt_debug_clear_desc     = "Remove preview buffs and kills; the equipped perk deck remains visible",
 
         ky_hud_score_total       = "TOTAL SCORE",
         ky_hud_score_best_streak = "BEST STREAK",

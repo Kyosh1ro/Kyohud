@@ -114,6 +114,34 @@ class SettingsPersistenceTests(unittest.TestCase):
             )
             self.assertFalse(any(item.get("next_menu") == "kyohud_buffs_menu" for item in menu["items"]))
 
+    def test_buff_preview_controls_are_not_exposed_in_options(self):
+        menu = json.loads((ROOT / "menu" / "menu.json").read_text(encoding="utf-8-sig"))
+        menu_ids = {item.get("id") for item in menu["items"]}
+        callbacks = {item.get("callback") for item in menu["items"]}
+
+        self.assertNotIn("ky_debug_sim", menu_ids)
+        self.assertNotIn("ky_debug_clear", menu_ids)
+        self.assertNotIn("KY_DebugSimulate", callbacks)
+        self.assertNotIn("KY_DebugClear", callbacks)
+        self.assertNotIn("MenuCallbackHandler.KY_DebugSimulate", OPTIONS_CHUNK)
+        self.assertNotIn("MenuCallbackHandler.KY_DebugClear", OPTIONS_CHUNK)
+
+        fallback_source = (ROOT / "lua" / "ky_localization.lua").read_text(
+            encoding="utf-8-sig"
+        )
+        for key in (
+            "ky_opt_debug_sim",
+            "ky_opt_debug_sim_desc",
+            "ky_opt_debug_clear",
+            "ky_opt_debug_clear_desc",
+        ):
+            self.assertNotIn(key, fallback_source)
+            for locale_name in ("english.json", "french.json"):
+                locale = json.loads(
+                    (ROOT / "loc" / locale_name).read_text(encoding="utf-8-sig")
+                )
+                self.assertNotIn(key, locale)
+
     def test_legacy_buff_filters_are_removed_without_losing_false_settings(self):
         with tempfile.TemporaryDirectory() as save_dir:
             settings_path = Path(save_dir) / "kyohud_settings.json"

@@ -178,20 +178,6 @@
       "title": "ky_opt_reset",
       "description": "ky_opt_reset_desc",
       "callback": "KY_ResetDefaults"
-    },
-    {
-      "type": "button",
-      "id": "ky_debug_sim",
-      "title": "ky_opt_debug_sim",
-      "description": "ky_opt_debug_sim_desc",
-      "callback": "KY_DebugSimulate"
-    },
-    {
-      "type": "button",
-      "id": "ky_debug_clear",
-      "title": "ky_opt_debug_clear",
-      "description": "ky_opt_debug_clear_desc",
-      "callback": "KY_DebugClear"
     }
   ]
 }
