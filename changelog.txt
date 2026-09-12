@@ -1,3 +1,6 @@
+r23 (11.09.2026):
+-Fixed buff menu availability so Enable Buffs remains selectable and the X/Y position controls follow its state in the main menu and in game.
+
 r22 (11.09.2026):
 -Migrated buffs to the VanillaHUD+ runtime provider.
 

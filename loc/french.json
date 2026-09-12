@@ -33,10 +33,6 @@
   "ky_opt_icon_size_desc": "Taille des icônes de buff et kill (32-40 pixels). Par défaut : 32",
   "ky_opt_reset": "Réinitialiser par défaut",
   "ky_opt_reset_desc": "Remettre tous les paramètres à leurs valeurs par défaut",
-  "ky_opt_debug_sim": "Prévisualiser buffs et kills",
-  "ky_opt_debug_sim_desc": "Menu principal uniquement : prévisualise les buffs, les kills spéciaux et les bandeaux ; indisponible pendant un braquage",
-  "ky_opt_debug_clear": "Effacer l'aperçu",
-  "ky_opt_debug_clear_desc": "Supprime les buffs et kills de l'aperçu ; le deck d'atouts équipé reste visible",
 
   "ky_hud_score_total": "SCORE TOTAL",
   "ky_hud_score_best_streak": "BEST STREAK",
