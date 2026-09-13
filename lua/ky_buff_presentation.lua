@@ -1,6 +1,6 @@
 -- ky_buff_presentation.lua — KyoHUD-owned buff presentation overrides
 --
--- VanillaHUD+ remains the source of runtime state and general buff metadata.
+-- The autonomous provider owns runtime state; its catalog owns shared metadata.
 -- This module contains only KyoHUD-specific colors, labels, aggregate formats,
 -- fixed row placement, and equipped-deck presentation behavior.
 

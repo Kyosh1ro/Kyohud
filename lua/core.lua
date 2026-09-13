@@ -255,6 +255,10 @@ end
 -- Icon Resolution for a buff_id
 -- ═══════════════════════════════════════════════════
 function KH:GetVanillaHUDBuffDefinition(buff_id)
+    local local_definitions = self.hudlist_catalog and self.hudlist_catalog.definitions
+    if local_definitions and local_definitions[buff_id] then
+        return local_definitions[buff_id]
+    end
     local map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
     return map and map[buff_id] or nil
 end
@@ -265,6 +269,12 @@ function KH:GetKyoEquippedPerkBuffCandidates(specialization_id)
 end
 
 function KH:HasVanillaHUDBuffProvider()
+    if self.hudlist and self.hudlist.register_listener
+            and self.hudlist.get_buffs and self.hudlist.get_player_actions
+            and self.hudlist_catalog and type(self.hudlist_catalog.definitions) == "table"
+            and type(self.hudlist_catalog.routes) == "table" then
+        return true
+    end
     return managers and managers.gameinfo
         and managers.gameinfo.register_listener
         and managers.gameinfo.get_buffs
@@ -284,7 +294,8 @@ function KH:GetVanillaHUDBuffTargets(source_id)
         targets[1] = source_id
         return targets
     end
-    local groups = HUDListManager and HUDListManager.BUFFS
+    local groups = self.hudlist_catalog and self.hudlist_catalog.routes
+        or HUDListManager and HUDListManager.BUFFS
     local mapped = groups and groups[source_id]
     if type(mapped) ~= "table" then
         local composite_parent = groups
@@ -2525,10 +2536,11 @@ function KH:handle_buff_event(event, source_id, data, source_type)
 end
 
 function KH:SyncGameInfoBuffs()
-    if self._debug_preview_active or not (managers and managers.gameinfo) then return end
+    local provider = self.hudlist or managers and managers.gameinfo
+    if self._debug_preview_active or not provider then return end
 
     local ok_buffs, buffs = pcall(function()
-        return managers.gameinfo:get_buffs()
+        return provider:get_buffs()
     end)
     if ok_buffs and type(buffs) == "table" then
         for id, data in pairs(buffs) do
@@ -2537,7 +2549,7 @@ function KH:SyncGameInfoBuffs()
     end
 
     local ok_actions, actions = pcall(function()
-        return managers.gameinfo:get_player_actions()
+        return provider:get_player_actions()
     end)
     if ok_actions and type(actions) == "table" then
         for id, data in pairs(actions) do
@@ -2553,6 +2565,7 @@ function KH:TryRegisterGameInfoBridge()
         return false
     end
 
+    local provider = self.hudlist or managers and managers.gameinfo
     local buff_events = {
         "activate", "deactivate", "set_duration", "set_progress",
         "set_stack_count", "add_timed_stack", "remove_timed_stack", "set_value",
@@ -2567,10 +2580,10 @@ function KH:TryRegisterGameInfoBridge()
 
     local ok, err = pcall(function()
         for _, event in ipairs(buff_events) do
-            managers.gameinfo:register_listener("kyohud_buff_bridge", "buff", event, buff_callback)
+            provider:register_listener("kyohud_buff_bridge", "buff", event, buff_callback)
         end
         for _, event in ipairs(action_events) do
-            managers.gameinfo:register_listener("kyohud_action_bridge", "player_action", event, action_callback)
+            provider:register_listener("kyohud_action_bridge", "player_action", event, action_callback)
         end
     end)
     if not ok then
@@ -2589,7 +2602,7 @@ function KH:TryRegisterGameInfoBridge()
     self._gameinfo_bridge_active = true
     self._gameinfo_bridge_callbacks = { buff_callback, action_callback }
     self:SyncGameInfoBuffs()
-    log("[KyoHUD] Full detection linked to VanillaHUD+ buff manager.")
+    log("[KyoHUD] Buff presentation linked to the available provider.")
     return true
 end
 
@@ -2899,6 +2912,9 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._buffs = {}
     self._buff_sources = {}
     self._source_targets = {}
+    if rearm_bridge_sync and self.hudlist and self.hudlist.reset then
+        self.hudlist:reset()
+    end
     if self._equipped_perk_deck_buff then
         self._equipped_perk_deck_buff.value_text = nil
     end
@@ -4671,6 +4687,9 @@ Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
 end)
 
 Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
+    if KH.hudlist and KH.hudlist.update then
+        KH.hudlist:update()
+    end
     if not KH._gameinfo_bridge_active then
         KH._bridge_retry_acc = (KH._bridge_retry_acc or 0) + dt
         if KH._bridge_retry_acc >= 1 then
