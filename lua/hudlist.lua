@@ -428,6 +428,7 @@ function Provider:event(source, event, id, data)
         entry.upgrade = data.upgrade
         entry.level = data.level
         entry.progress = finite_number(data.progress)
+        entry.stack_count = finite_number(data.stack_count)
         entry.best_peer = finite_number(data.best_peer)
         entry.provenance = data.provenance
         entry.source_count = finite_number(data.source_count)

@@ -224,36 +224,46 @@ local Catalog = {
         },
     },
 
-    -- Compatibility metadata consumed by the existing KyoHUD presentation bridge.
+    -- Minimal autonomous presentation metadata. Static coordinates mirror the
+    -- verified HUDList lineage; skill_id lets current game data override them.
     definitions = {
-        overkill = { class = "TimedBuffItem", priority = 0 },
-        biker = { class = "TimedBuffItem", priority = 0, state = "timed_stack", show_stack_count = true },
-        grinder = { class = "TimedBuffItem", priority = 0, state = "timed_stack", show_stack_count = true },
-        grinder_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        crew_chief = { class = "TeamBuffItem", priority = 0, state = "team", show_team_level = true },
-        maniac = { class = "BuffItem", priority = 0, state = "progress" },
-        maniac_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        sicario_dodge = { class = "BuffItem", priority = 0, state = "value" },
-        sicario_dodge_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        chico_injector = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        chico_injector_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        copr_ability = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        copr_ability_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        copycat_health_invul = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        copycat_health_invul_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        copycat_health_invul_passive = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        copycat_health_shot_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        pocket_ecm_jammer = { class = "TimedBuffItem", priority = 0, state = "sources" },
-        pocket_ecm_jammer_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
-        uppers = { class = "BuffItem", priority = 0, state = "persistent" },
-        uppers_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        overkill = { skills_new = { 3, 2 }, skill_id = "overkill", class = "TimedBuffItem", priority = 4 },
+        biker = { perks = { 0, 0 }, texture_bundle_folder = "wild", class = "TimedBuffItem", priority = 4, state = "timed_stack", show_stack_count = true },
+        grinder = { perks = { 4, 6 }, class = "TimedBuffItem", priority = 4, state = "timed_stack", show_stack_count = true },
+        grinder_debuff = { perks = { 4, 6 }, class = "TimedBuffItem", priority = 8, state = "timed" },
+        crew_chief = { perks = { 0, 0 }, class = "TeamBuffItem", priority = 4, state = "team", show_team_level = true },
+        maniac = { perks = { 0, 0 }, texture_bundle_folder = "coco", class = "BuffItem", priority = 4, state = "progress", show_value = "-%.1f" },
+        maniac_debuff = { perks = { 0, 0 }, texture_bundle_folder = "coco", class = "TimedBuffItem", priority = 8, state = "timed" },
+        sicario_dodge = { perks = { 1, 0 }, texture_bundle_folder = "max", class = "BuffItem", priority = 4, state = "value", show_value = true },
+        sicario_dodge_debuff = { perks = { 1, 0 }, texture_bundle_folder = "max", class = "TimedBuffItem", priority = 8, state = "timed" },
+        chico_injector = { perks = { 0, 0 }, texture_bundle_folder = "chico", class = "TimedBuffItem", priority = 4, state = "timed" },
+        chico_injector_debuff = { perks = { 0, 0 }, texture_bundle_folder = "chico", class = "TimedBuffItem", priority = 8, state = "timed" },
+        copr_ability = { perks = { 0, 0 }, texture_bundle_folder = "copr", class = "TimedBuffItem", priority = 4, state = "timed" },
+        copr_ability_debuff = { perks = { 0, 0 }, texture_bundle_folder = "copr", class = "TimedBuffItem", priority = 8, state = "timed" },
+        copycat_health_invul = { perks = { 3, 0 }, texture_bundle_folder = "mrwi", class = "TimedBuffItem", priority = 4, state = "timed" },
+        copycat_health_invul_debuff = { perks = { 3, 0 }, texture_bundle_folder = "mrwi", class = "TimedBuffItem", priority = 8, state = "timed" },
+        copycat_health_invul_passive = { perks = { 3, 0 }, texture_bundle_folder = "mrwi", class = "TimedBuffItem", priority = 8, state = "timed" },
+        copycat_health_shot_debuff = { perks = { 1, 0 }, texture_bundle_folder = "mrwi", class = "TimedBuffItem", priority = 8, state = "timed" },
+        pocket_ecm_jammer = { perks = { 0, 0 }, texture_bundle_folder = "joy", class = "TimedBuffItem", priority = 4, state = "sources" },
+        pocket_ecm_jammer_debuff = { perks = { 0, 0 }, texture_bundle_folder = "joy", class = "TimedBuffItem", priority = 8, state = "timed" },
+        uppers = { skills_new = { 0, 0 }, skill_id = "tea_cookies", class = "BuffItem", priority = 4, state = "persistent" },
+        uppers_debuff = { skills_new = { 0, 0 }, skill_id = "tea_cookies", class = "TimedBuffItem", priority = 8, state = "timed" },
         smoke_screen_grenade = {
-            class = "TimedBuffItem", priority = 0, state = "sources", show_stack_count = false,
+            perks = { 0, 0 }, texture_bundle_folder = "max", class = "TimedBuffItem",
+            priority = 4, state = "sources", show_stack_count = false,
         },
-        crew_inspire_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        crew_inspire_debuff = { skills_new = { 0, 0 }, skill_id = "inspire", class = "TimedBuffItem", priority = 8, state = "timed" },
+        partner_in_crime = { skills_new = { 0, 0 }, skill_id = "control_freak", class = "BuffItemBase", priority = 3 },
+        partner_in_crime_aced = { skills_new = { 0, 0 }, skill_id = "control_freak", class = "BuffItemBase", priority = 3 },
+        messiah = { skills_new = { 0, 0 }, skill_id = "messiah", class = "BuffItemBase", priority = 3 },
+        damage_increase = { hud_tweak = "pd2_kill", class = "BuffItemBase", priority = 2 },
+        damage_reduction = { hud_tweak = "pd2_generic_tickbox", class = "BuffItemBase", priority = 2 },
+        total_dodge_chance = { hud_tweak = "pd2_generic_tickbox", class = "BuffItemBase", priority = 2 },
+        equipped_perk_deck = { hud_tweak = "pd2_generic_tickbox", class = "BuffItemBase", priority = 1, ignore = true },
     },
     routes = {
-        overkill = { "overkill" },
+        overkill = { "overkill", "damage_increase" },
+        overkill_damage_multiplier = { "overkill", "damage_increase" },
         biker = { "biker" },
         grinder = { "grinder" },
         grinder_debuff = { "grinder_debuff" },
@@ -298,6 +308,35 @@ local DYNAMIC_IDS = {
             suffix = "_debuff", presentation = true, provenance = "current_game" },
     },
 }
+
+local function ensure_definition(id)
+    if type(id) ~= "string" then return end
+    id = Catalog.aliases[id] or id
+    if not Catalog.definitions[id] then
+        Catalog.definitions[id] = {
+            hud_tweak = "pd2_generic_tickbox",
+            class = "BuffItemBase",
+            priority = string.match(id, "_debuff$") and 8 or 4,
+        }
+    end
+end
+
+local function collect_mapping_definitions(mapping)
+    if type(mapping) == "string" then
+        ensure_definition(mapping)
+    elseif type(mapping) == "table" and type(mapping.id) == "string" then
+        ensure_definition(mapping.id)
+    elseif type(mapping) == "table" then
+        for _, value in pairs(mapping) do collect_mapping_definitions(value) end
+    end
+end
+
+for _, mappings in pairs(Catalog.mappings) do
+    collect_mapping_definitions(mappings)
+end
+for id in pairs(Catalog.direct_ids.literals) do
+    ensure_definition(id)
+end
 
 function Catalog:resolve(category, upgrade, level)
     if category == "team" then return nil end

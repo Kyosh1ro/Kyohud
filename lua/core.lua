@@ -1,6 +1,6 @@
 -- core.lua — KyoHUD state, combat HUD and buff rendering
 -- Buffs displayed side-by-side on a configurable horizontal row.
--- Buff state and metadata are provided at runtime by VanillaHUD+.
+-- Buff state and metadata are provided by KyoHUD's namespaced provider.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -256,11 +256,7 @@ end
 -- ═══════════════════════════════════════════════════
 function KH:GetVanillaHUDBuffDefinition(buff_id)
     local local_definitions = self.hudlist_catalog and self.hudlist_catalog.definitions
-    if local_definitions and local_definitions[buff_id] then
-        return local_definitions[buff_id]
-    end
-    local map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
-    return map and map[buff_id] or nil
+    return local_definitions and local_definitions[buff_id] or nil
 end
 
 function KH:GetKyoEquippedPerkBuffCandidates(specialization_id)
@@ -269,20 +265,10 @@ function KH:GetKyoEquippedPerkBuffCandidates(specialization_id)
 end
 
 function KH:HasVanillaHUDBuffProvider()
-    if self.hudlist and self.hudlist.register_listener
+    return self.hudlist and self.hudlist.register_listener
             and self.hudlist.get_buffs and self.hudlist.get_player_actions
             and self.hudlist_catalog and type(self.hudlist_catalog.definitions) == "table"
-            and type(self.hudlist_catalog.routes) == "table" then
-        return true
-    end
-    return managers and managers.gameinfo
-        and managers.gameinfo.register_listener
-        and managers.gameinfo.get_buffs
-        and managers.gameinfo.get_player_actions
-        and HUDList and HUDList.BuffItemBase
-        and type(HUDList.BuffItemBase.MAP) == "table"
-        and HUDListManager
-        and type(HUDListManager.BUFFS) == "table"
+            and type(self.hudlist_catalog.routes) == "table"
         or false
 end
 
@@ -295,7 +281,6 @@ function KH:GetVanillaHUDBuffTargets(source_id)
         return targets
     end
     local groups = self.hudlist_catalog and self.hudlist_catalog.routes
-        or HUDListManager and HUDListManager.BUFFS
     local mapped = groups and groups[source_id]
     if type(mapped) ~= "table" then
         local composite_parent = groups
@@ -383,8 +368,7 @@ local function color_from_presentation(value)
     return ok and color or nil
 end
 
--- VanillaHUD+ provides icons and events, never the KyoHUD-specific tint.
--- The visible palette remains exclusively owned by KyoHUD presentation.
+-- Provider metadata never owns the KyoHUD-specific tint.
 local function color_for_buff(buff_id, is_debuff)
     if is_debuff then
         return color_from_presentation("debuff")
@@ -397,7 +381,7 @@ local function color_for_buff(buff_id, is_debuff)
 end
 
 -- ═══════════════════════════════════════════════════
--- Checks if the integration and VanillaHUD+ definition allow this buff.
+-- Checks if the autonomous definition allows this buff.
 -- ═══════════════════════════════════════════════════
 function KH:is_buff_visible(buff_id)
     if not self.settings or not self.settings.enable_buffs then return false end
@@ -1832,7 +1816,7 @@ function KH:remove_buff(buff_id)
 end
 
 -- ═══════════════════════════════════════════════════
--- Buff sources and optional VanillaHUD+ bridge
+-- Buff sources and autonomous provider bridge
 -- ═══════════════════════════════════════════════════
 local function application_time()
     local ok, t = pcall(function()
@@ -1940,7 +1924,7 @@ local function passive_health_regen_source_value(source)
     local value = source and tonumber(source.value)
     if not value then return nil end
 
-    -- VanillaHUD+ expresses teammate regeneration in health points
+    -- The historical provider protocol expresses teammate regeneration in health points
     -- internally, unlike other sources that already use a ratio.
     if source.source_id == "crew_health_regen" then
         local player_damage = current_player_damage()
@@ -2536,7 +2520,7 @@ function KH:handle_buff_event(event, source_id, data, source_type)
 end
 
 function KH:SyncGameInfoBuffs()
-    local provider = self.hudlist or managers and managers.gameinfo
+    local provider = self.hudlist
     if self._debug_preview_active or not provider then return end
 
     local ok_buffs, buffs = pcall(function()
@@ -2565,7 +2549,7 @@ function KH:TryRegisterGameInfoBridge()
         return false
     end
 
-    local provider = self.hudlist or managers and managers.gameinfo
+    local provider = self.hudlist
     local buff_events = {
         "activate", "deactivate", "set_duration", "set_progress",
         "set_stack_count", "add_timed_stack", "remove_timed_stack", "set_value",
@@ -2589,7 +2573,7 @@ function KH:TryRegisterGameInfoBridge()
     if not ok then
         if not self._gameinfo_bridge_error_logged then
             self._gameinfo_bridge_error_logged = true
-            log("[KyoHUD] VanillaHUD+ bridge unavailable: " .. tostring(err))
+            log("[KyoHUD] Buff provider bridge unavailable: " .. tostring(err))
         end
         return false
     end

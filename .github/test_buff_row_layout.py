@@ -58,6 +58,9 @@ class BuffRowLayoutTests(unittest.TestCase):
             end
         ''')
         self.lua.execute(
+            (ROOT / "lua" / "hudlist.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
             (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
         )
 
