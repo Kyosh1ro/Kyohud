@@ -225,9 +225,17 @@ local Catalog = {
     -- Compatibility metadata consumed by the existing KyoHUD presentation bridge.
     definitions = {
         overkill = { class = "TimedBuffItem", priority = 0 },
+        biker = { class = "TimedBuffItem", priority = 0, state = "timed_stack", show_stack_count = true },
+        grinder = { class = "TimedBuffItem", priority = 0, state = "timed_stack", show_stack_count = true },
+        grinder_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        crew_chief = { class = "TeamBuffItem", priority = 0, state = "team", show_team_level = true },
     },
     routes = {
         overkill = { "overkill" },
+        biker = { "biker" },
+        grinder = { "grinder" },
+        grinder_debuff = { "grinder_debuff" },
+        crew_chief = { "crew_chief" },
     },
 }
 
@@ -282,6 +290,11 @@ end
 
 function Catalog:resolve_alias(id)
     return self.aliases[id] or id
+end
+
+function Catalog:resolve_team_public(category, upgrade, level)
+    local event_id = self:resolve_team(category, upgrade, level)
+    return event_id and self:resolve_alias(event_id) or nil, event_id
 end
 
 kyohud.hudlist_catalog = Catalog

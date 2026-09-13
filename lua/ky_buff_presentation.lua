@@ -92,9 +92,7 @@ kyohud.KYO_BUFF_CONFIG = {
                 placement = "timer",
             },
         },
-        biker = {
-            stack_format = "biker_charges",
-        },
+
         partner_in_crime = {
             persistent_counter = "local_minions",
             skill_id = "control_freak",

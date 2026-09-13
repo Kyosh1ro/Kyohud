@@ -136,9 +136,9 @@ class HUDListGameHookTests(unittest.TestCase):
                 value = 1,
             }
             Hooks.callbacks.aquire_team_upgrade(manager, upgrade)
-            local buff = kyohud.hudlist:get_buffs().crew_chief_1
+            local buff = kyohud.hudlist:get_buffs().crew_chief
             assert(buff ~= nil and buff.value == 0.92)
-            assert(kyohud.hudlist:get_team_source_count("crew_chief_1") == 1)
+            assert(kyohud.hudlist:get_team_source_count("crew_chief") == 1)
 
             manager._global.synced_team_upgrades[7] = {
                 damage_dampener = {team_damage_reduction = 1},
@@ -152,24 +152,24 @@ class HUDListGameHookTests(unittest.TestCase):
             Hooks.callbacks.add_synced_team_upgrade(
                 manager, 8, "damage_dampener", "team_damage_reduction", 1
             )
-            assert(kyohud.hudlist:get_team_source_count("crew_chief_1") == 3)
-            assert(kyohud.hudlist:get_buffs().crew_chief_1 == buff)
+            assert(kyohud.hudlist:get_team_source_count("crew_chief") == 3)
+            assert(kyohud.hudlist:get_buffs().crew_chief == buff)
 
             manager._global.team_upgrades.damage_dampener.team_damage_reduction = nil
             Hooks.callbacks.unaquire_team_upgrade(manager, upgrade)
-            assert(kyohud.hudlist:get_buffs().crew_chief_1 ~= nil)
-            assert(kyohud.hudlist:get_team_source_count("crew_chief_1") == 2)
+            assert(kyohud.hudlist:get_buffs().crew_chief ~= nil)
+            assert(kyohud.hudlist:get_team_source_count("crew_chief") == 2)
 
             local peer7 = {id = function() return 7 end}
             Hooks.callbacks.peer_dropped_out(manager, peer7)
             manager._global.synced_team_upgrades[7] = nil
-            assert(kyohud.hudlist:get_buffs().crew_chief_1 ~= nil)
-            assert(kyohud.hudlist:get_team_source_count("crew_chief_1") == 1)
+            assert(kyohud.hudlist:get_buffs().crew_chief ~= nil)
+            assert(kyohud.hudlist:get_team_source_count("crew_chief") == 1)
 
             local peer8 = {id = function() return 8 end}
             Hooks.callbacks.peer_dropped_out(manager, peer8)
-            assert(kyohud.hudlist:get_buffs().crew_chief_1 == nil)
-            assert(kyohud.hudlist:get_team_source_count("crew_chief_1") == 0)
+            assert(kyohud.hudlist:get_buffs().crew_chief == nil)
+            assert(kyohud.hudlist:get_team_source_count("crew_chief") == 0)
         ''')
 
     def test_partner_in_crime_follows_native_minion_count_boundaries(self):
@@ -229,13 +229,13 @@ class HUDListGameHookTests(unittest.TestCase):
             RequiredScript = "lib/managers/playermanager"
         ''')
         lua.execute(HUDLIST)
-        lua.execute('assert(#Hooks.installed == 15)')
+        lua.execute('assert(#Hooks.installed == 17)')
         lua.execute(HUDLIST)
-        lua.execute('assert(#Hooks.installed == 15)')
+        lua.execute('assert(#Hooks.installed == 17)')
         lua.execute('RequiredScript = "lib/utils/temporarypropertymanager"')
         lua.execute(HUDLIST)
         lua.execute('''
-            assert(#Hooks.installed == 17)
+            assert(#Hooks.installed == 19)
             assert(kyohud.hudlist:get_buffs().keep_me ~= nil)
             assert(HUDList == nil and HUDListManager == nil and GameInfoManager == nil)
         ''')
@@ -249,6 +249,7 @@ class HUDListGameHookTests(unittest.TestCase):
         self.assertEqual(contexts, [
             "lib/managers/hudmanagerpd2",
             "lib/managers/playermanager",
+            "lib/units/beings/player/playerdamage",
             "lib/utils/temporarypropertymanager",
         ])
 
@@ -333,7 +334,7 @@ class HUDListGameHookTests(unittest.TestCase):
         lua.execute(HUDLIST)
         lua.execute('''
             assert(kyohud.hudlist ~= nil and kyohud.hudlist_catalog ~= nil)
-            assert(Hooks.count == 15)
+            assert(Hooks.count == 17)
             assert(HUDList.BuffItemBase.MAP.external.keep == true)
             assert(HUDListManager.BUFFS.external == true)
             assert(GameInfoManager.external == true)

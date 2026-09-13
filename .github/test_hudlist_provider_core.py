@@ -186,6 +186,7 @@ class HUDListProviderCoreTests(unittest.TestCase):
         self.assertEqual(provider_contexts, [
             "lib/managers/hudmanagerpd2",
             "lib/managers/playermanager",
+            "lib/units/beings/player/playerdamage",
             "lib/utils/temporarypropertymanager",
         ])
         self.assertLess(

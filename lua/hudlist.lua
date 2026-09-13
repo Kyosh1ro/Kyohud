@@ -15,6 +15,7 @@ Provider._buffs = Provider._buffs or {}
 Provider._listeners = Provider._listeners or {}
 Provider._arrival_order = Provider._arrival_order or {}
 Provider._team_sources = Provider._team_sources or {}
+Provider._next_stack_id = Provider._next_stack_id or 0
 
 local function finite_number(value)
     value = tonumber(value)
@@ -33,6 +34,24 @@ end
 
 function Provider:get_buffs()
     return self._buffs
+end
+
+local function copy_table(source)
+    if type(source) ~= "table" then return source end
+    local result = {}
+    for key, value in pairs(source) do
+        if key == "stacks" and type(value) == "table" then
+            result[key] = {}
+            for index, stack in ipairs(value) do result[key][index] = copy_table(stack) end
+        elseif key ~= "team_sources" then
+            result[key] = value
+        end
+    end
+    return result
+end
+
+function Provider:get_buff(id)
+    return copy_table(self._buffs[id])
 end
 
 function Provider:get_arrival_order()
@@ -85,9 +104,11 @@ function Provider:reset()
     self._buffs = {}
     self._arrival_order = {}
     self._team_sources = {}
+    self._next_stack_id = 0
 end
 
 function Provider:get_team_source_count(id)
+    id = Catalog:resolve_alias(id)
     local count = 0
     for _ in pairs(self._team_sources[id] or {}) do
         count = count + 1
@@ -99,6 +120,73 @@ local function team_source_key(peer, category, upgrade)
     return tostring(peer) .. ":" .. category .. ":" .. upgrade
 end
 
+function Provider:add_timed_stack(id, data)
+    if type(id) ~= "string" or id == "" or type(data) ~= "table" then return false end
+    local definition = Catalog.definitions[id]
+    if not definition or definition.state ~= "timed_stack" then return false end
+    local t = finite_number(data.t) or current_time()
+    local expire_t = finite_number(data.expire_t)
+    local duration = finite_number(data.duration)
+    if not expire_t then
+        if not duration or duration < 0 then return false end
+        expire_t = t + duration
+    end
+    if expire_t <= t then return false end
+    local entry = self._buffs[id]
+    local created = entry == nil
+    if not entry then
+        entry = { id = id, source = "buff", active = true, stacks = {} }
+        self._buffs[id] = entry
+        self._arrival_order[#self._arrival_order + 1] = id
+    end
+    self._next_stack_id = self._next_stack_id + 1
+    entry.stacks[#entry.stacks + 1] = {
+        stack_id = self._next_stack_id, t = t, expire_t = expire_t,
+        producer = type(data.producer) == "string" and data.producer or nil,
+    }
+    table.sort(entry.stacks, function(left, right)
+        if left.expire_t == right.expire_t then return left.stack_id < right.stack_id end
+        return left.expire_t < right.expire_t
+    end)
+    entry.stack_count = #entry.stacks
+    entry.t = entry.stacks[1].t
+    entry.expire_t = entry.stacks[#entry.stacks].expire_t
+    entry.duration = entry.expire_t - t
+    if created then self:_notify("buff", "activate", id, entry) end
+    self:_notify("buff", "set_stack_count", id, entry)
+    return true
+end
+
+function Provider:_recalculate_team(id)
+    local sources = self._team_sources[id]
+    if not sources or not next(sources) then
+        self._team_sources[id] = nil
+        self:_deactivate("buff", id, { reason = "last_team_contributor_removed" })
+        return
+    end
+    local best_level, best_value, count = nil, nil, 0
+    for _, contribution in pairs(sources) do
+        count = count + 1
+        if not best_level or contribution.level > best_level then
+            best_level, best_value = contribution.level, contribution.value
+        elseif contribution.level == best_level and contribution.value ~= nil
+                and (best_value == nil or contribution.value > best_value) then
+            best_value = contribution.value
+        end
+    end
+    local entry = self._buffs[id]
+    if not entry then
+        entry = { id = id, source = "buff", active = true }
+        self._buffs[id] = entry
+        self._arrival_order[#self._arrival_order + 1] = id
+    end
+    entry.team_level = best_level
+    entry.value = best_value
+    entry.contributor_count = count
+    entry.stack_count = nil
+    self:_notify("buff", "activate", id, entry)
+end
+
 function Provider:activate_team_source(peer, category, upgrade, level, value)
     if type(category) ~= "string" or type(upgrade) ~= "string" then return false end
     peer = finite_number(peer)
@@ -106,7 +194,7 @@ function Provider:activate_team_source(peer, category, upgrade, level, value)
     if not peer or peer < 0 or peer % 1 ~= 0 or not level or level % 1 ~= 0 then
         return false
     end
-    local id = Catalog:resolve_team(category, upgrade, level)
+    local id, event_id = Catalog:resolve_team_public(category, upgrade, level)
     if not id then return false end
 
     local sources = self._team_sources[id] or {}
@@ -117,35 +205,41 @@ function Provider:activate_team_source(peer, category, upgrade, level, value)
         upgrade = upgrade,
         level = level,
         value = finite_number(value),
+        event_id = event_id,
+        public_id = id,
+        provenance = peer == 0 and "local" or "synchronized",
     }
-    self:event("buff", "activate", id, {
-        peer = peer,
-        category = category,
-        upgrade = upgrade,
-        level = level,
-        value = finite_number(value),
-    })
-    self._buffs[id].team_sources = sources
+    self:_recalculate_team(id)
     return true
 end
 
 function Provider:deactivate_team_source(peer, category, upgrade, level)
     peer = finite_number(peer)
     level = finite_number(level)
-    local id = peer and level and Catalog:resolve_team(category, upgrade, level)
+    local id = peer and level and Catalog:resolve_team_public(category, upgrade, level)
     local sources = id and self._team_sources[id]
     if not sources then return false end
 
     sources[team_source_key(peer, category, upgrade)] = nil
-    if next(sources) then return true end
-    self._team_sources[id] = nil
-    self:event("buff", "deactivate", id, {
-        peer = peer,
-        category = category,
-        upgrade = upgrade,
-        level = level,
-    })
+    self:_recalculate_team(id)
     return true
+end
+
+function Provider:remove_team_sources_for_peer(peer)
+    peer = finite_number(peer)
+    if not peer or peer < 0 or peer % 1 ~= 0 then return 0 end
+    local removed, affected = 0, {}
+    for id, sources in pairs(self._team_sources) do
+        for key, contribution in pairs(sources) do
+            if contribution.peer == peer then
+                sources[key] = nil
+                removed = removed + 1
+                affected[id] = true
+            end
+        end
+    end
+    for id in pairs(affected) do self:_recalculate_team(id) end
+    return removed
 end
 
 function Provider:_deactivate(source, id, data)
@@ -165,7 +259,25 @@ function Provider:update(t)
     t = tonumber(t) or current_time()
     local expired = {}
     for id, entry in pairs(self._buffs) do
-        if entry.expire_t and entry.expire_t <= t then
+        if entry.stacks then
+            local write = 1
+            for read = 1, #entry.stacks do
+                local stack = entry.stacks[read]
+                if stack.expire_t > t then
+                    entry.stacks[write] = stack
+                    write = write + 1
+                end
+            end
+            for index = #entry.stacks, write, -1 do entry.stacks[index] = nil end
+            entry.stack_count = #entry.stacks
+            if entry.stack_count == 0 then
+                expired[#expired + 1] = id
+            else
+                entry.t = entry.stacks[1].t
+                entry.expire_t = entry.stacks[#entry.stacks].expire_t
+                self:_notify("buff", "set_stack_count", id, entry)
+            end
+        elseif entry.expire_t and entry.expire_t <= t then
             expired[#expired + 1] = id
         end
     end
@@ -356,10 +468,77 @@ local function update_messiah(manager)
     Provider:event("buff", "set_stack_count", id, { stack_count = charges })
 end
 
+local biker_snapshots = setmetatable({}, { __mode = "k" })
+local function snapshot_biker(manager)
+    local t, counts = current_time(), {}
+    for _, deadline in ipairs(manager._wild_kill_triggers or {}) do
+        deadline = finite_number(deadline)
+        if deadline and deadline > t then counts[deadline] = (counts[deadline] or 0) + 1 end
+    end
+    biker_snapshots[manager] = { t = t, counts = counts }
+end
+
+local function emit_new_biker_stacks(manager)
+    local snapshot = biker_snapshots[manager] or { t = current_time(), counts = {} }
+    biker_snapshots[manager] = nil
+    for _, deadline in ipairs(manager._wild_kill_triggers or {}) do
+        deadline = finite_number(deadline)
+        if deadline and deadline > snapshot.t then
+            local old_count = snapshot.counts[deadline] or 0
+            if old_count > 0 then
+                snapshot.counts[deadline] = old_count - 1
+            else
+                Provider:add_timed_stack("biker", { t = snapshot.t, expire_t = deadline,
+                    producer = "chk_wild_kill_counter" })
+            end
+        end
+    end
+end
+
+local grinder_snapshots = setmetatable({}, { __mode = "k" })
+local function snapshot_grinder(damage)
+    local entries = {}
+    for _, stack in ipairs(damage._damage_to_hot_stack or {}) do entries[stack] = true end
+    grinder_snapshots[damage] = entries
+end
+
+local function emit_new_grinder_stacks(damage)
+    local stacks = damage._damage_to_hot_stack or {}
+    local old_entries = grinder_snapshots[damage] or {}
+    grinder_snapshots[damage] = nil
+    local added = false
+    local tick_time = finite_number(damage._doh_data and damage._doh_data.tick_time) or 1
+    for _, native in ipairs(stacks) do
+        if not old_entries[native] then
+        local next_tick = finite_number(native and native.next_tick)
+        local ticks_left = finite_number(native and native.ticks_left)
+        if next_tick and ticks_left and ticks_left > 0 then
+            Provider:add_timed_stack("grinder", { t = current_time(),
+                expire_t = next_tick + (ticks_left - 1) * tick_time,
+                producer = "add_damage_to_hot" })
+            added = true
+        end
+        end
+    end
+    if not added then return end
+    local data = tweak_data and tweak_data.upgrades and tweak_data.upgrades.damage_to_hot_data
+    local cooldown = finite_number(data and data.stacking_cooldown)
+    if cooldown and cooldown >= 0 then
+        Provider:event("buff", "activate", "grinder_debuff", {
+            t = current_time(), duration = cooldown,
+        })
+    end
+end
+
 KH._hudlist_loaded_scripts = KH._hudlist_loaded_scripts or {}
 if RequiredScript == "lib/managers/playermanager"
         and not KH._hudlist_loaded_scripts[RequiredScript] then
     KH._hudlist_loaded_scripts[RequiredScript] = true
+
+    Hooks:PreHook(PlayerManager, "chk_wild_kill_counter",
+        "KyoHUD_HUDList_BikerSnapshot", snapshot_biker)
+    Hooks:PostHook(PlayerManager, "chk_wild_kill_counter",
+        "KyoHUD_HUDList_BikerEmit", emit_new_biker_stacks)
 
     Hooks:PostHook(PlayerManager, "activate_temporary_upgrade",
         "KyoHUD_HUDList_ActivateTemporaryUpgrade", function(manager, category, upgrade)
@@ -424,12 +603,7 @@ if RequiredScript == "lib/managers/playermanager"
     Hooks:PreHook(PlayerManager, "peer_dropped_out",
         "KyoHUD_HUDList_PeerDroppedOut", function(manager, peer)
             local ok, peer_id = pcall(function() return peer:id() end)
-            local peers = ok and manager._global and manager._global.synced_team_upgrades
-            for category, upgrades in pairs(peers and peers[peer_id] or {}) do
-                for upgrade, level in pairs(upgrades) do
-                    Provider:deactivate_team_source(peer_id, category, upgrade, level)
-                end
-            end
+            if ok then Provider:remove_team_sources_for_peer(peer_id) end
         end)
 
     Hooks:PostHook(PlayerManager, "count_up_player_minions",
@@ -491,4 +665,11 @@ elseif RequiredScript == "lib/utils/temporarypropertymanager"
                 })
             end
         end)
+elseif RequiredScript == "lib/units/beings/player/playerdamage"
+        and not KH._hudlist_loaded_scripts[RequiredScript] then
+    KH._hudlist_loaded_scripts[RequiredScript] = true
+    Hooks:PreHook(PlayerDamage, "add_damage_to_hot",
+        "KyoHUD_HUDList_GrinderSnapshot", snapshot_grinder)
+    Hooks:PostHook(PlayerDamage, "add_damage_to_hot",
+        "KyoHUD_HUDList_GrinderEmit", emit_new_grinder_stacks)
 end
