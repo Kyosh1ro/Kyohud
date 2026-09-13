@@ -56,6 +56,43 @@ class HUDListPresentationTests(unittest.TestCase):
             assert(#targets == 2 and targets[1] == "overkill" and targets[2] == "damage_increase")
         ''')
 
+    def test_partner_in_crime_aced_merges_without_duplicate_stack_badge(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            assert(kyohud:TryRegisterGameInfoBridge() == true)
+            local targets = kyohud:GetVanillaHUDBuffTargets("partner_in_crime_aced")
+            assert(#targets == 1 and targets[1] == "partner_in_crime")
+            kyohud.hudlist:event("buff", "activate", "partner_in_crime", {stack_count = 1})
+            kyohud.hudlist:event("buff", "activate", "partner_in_crime_aced", {stack_count = 1})
+            assert(kyohud._buffs.partner_in_crime ~= nil)
+            assert(kyohud._buffs.partner_in_crime_aced == nil)
+            assert(kyohud._buffs.partner_in_crime.stack_text == nil)
+        ''')
+
+    def test_composite_damage_icons_use_requested_native_assets(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local increase = kyohud.hudlist_catalog.definitions.damage_increase
+            local reduction = kyohud.hudlist_catalog.definitions.damage_reduction
+            assert(increase.hud_tweak == "equipment_chrome_mask")
+            assert(reduction.skill_id == "dire_need")
+            assert(reduction.skills_new[1] == 10 and reduction.skills_new[2] == 8)
+        ''')
+
+    def test_fixed_buff_order_configuration_is_preserved(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local buffs = kyohud.KYO_BUFF_CONFIG.buffs
+            assert(buffs.equipped_perk_deck.fixed_slot == 1)
+            assert(buffs.pocket_ecm_jammer_debuff.fixed_slot == 2)
+            assert(buffs.passive_health_regen.fixed_slot == 3)
+            assert(buffs.standard_armor_regeneration.fixed_slot == 4)
+            assert(buffs.armor_break_invulnerable_debuff.fixed_slot == 5)
+            assert(buffs.damage_increase.fixed_slot == 6)
+            assert(buffs.damage_reduction.fixed_slot == 7)
+            assert(buffs.melee_damage_increase.fixed_slot == 8)
+        ''')
+
     def test_produced_modern_buffs_have_local_visual_metadata(self):
         lua = self.make_runtime()
         lua.execute('''

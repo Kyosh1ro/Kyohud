@@ -2198,7 +2198,8 @@ local function format_buff_value(buff_id, sources)
         local maximum = tonumber(tweak_data and tweak_data.upgrades
             and tweak_data.upgrades.wild_max_triggers_per_time) or 0
         stack_text = "x" .. tostring(math.max(0, maximum - stack_count))
-    elseif runtime_definition and stack_count and stack_count > 0 then
+    elseif runtime_definition and runtime_definition.show_stack_count ~= false
+            and stack_count and stack_count > 0 then
         stack_text = "x" .. tostring(stack_count)
     end
     return value_text, stack_text
