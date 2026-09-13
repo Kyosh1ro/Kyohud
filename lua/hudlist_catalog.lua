@@ -64,6 +64,7 @@ local Catalog = {
             shock_and_awe_reload_multiplier = { "lock_n_load" },
             trigger_happy = { "trigger_happy" },
             desperado = { "desperado" },
+            mrwi_health_invulnerable = { "copycat_health_invul_passive" },
             bipod_deploy_multiplier = false,
         },
         cooldown = {
@@ -168,6 +169,7 @@ local Catalog = {
             copycat_health_shot_debuff = { source = "direct" },
             crew_chief_1 = { source = "direct" },
             crew_throwable_regen = { source = "direct" },
+            crew_inspire_debuff = { source = "direct", provenance = "modern_verified" },
             delayed_damage = { source = "direct" },
             delayed_damage_debuff = { source = "direct" },
             desperado = { source = "direct" },
@@ -229,6 +231,26 @@ local Catalog = {
         grinder = { class = "TimedBuffItem", priority = 0, state = "timed_stack", show_stack_count = true },
         grinder_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
         crew_chief = { class = "TeamBuffItem", priority = 0, state = "team", show_team_level = true },
+        maniac = { class = "BuffItem", priority = 0, state = "progress" },
+        maniac_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        sicario_dodge = { class = "BuffItem", priority = 0, state = "value" },
+        sicario_dodge_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        chico_injector = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        chico_injector_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        copr_ability = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        copr_ability_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        copycat_health_invul = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        copycat_health_invul_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        copycat_health_invul_passive = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        copycat_health_shot_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        pocket_ecm_jammer = { class = "TimedBuffItem", priority = 0, state = "sources" },
+        pocket_ecm_jammer_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        uppers = { class = "BuffItem", priority = 0, state = "persistent" },
+        uppers_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
+        smoke_screen_grenade = {
+            class = "TimedBuffItem", priority = 0, state = "sources", show_stack_count = false,
+        },
+        crew_inspire_debuff = { class = "TimedBuffItem", priority = 0, state = "timed" },
     },
     routes = {
         overkill = { "overkill" },
@@ -236,6 +258,44 @@ local Catalog = {
         grinder = { "grinder" },
         grinder_debuff = { "grinder_debuff" },
         crew_chief = { "crew_chief" },
+        maniac = { "maniac", "damage_reduction" },
+        maniac_debuff = { "maniac_debuff" },
+        sicario_dodge = { "sicario_dodge", "total_dodge_chance" },
+        sicario_dodge_debuff = { "sicario_dodge_debuff" },
+        chico_injector = { "chico_injector", "damage_reduction" },
+        chico_injector_debuff = { "chico_injector_debuff" },
+        copr_ability = { "copr_ability" },
+        copr_ability_debuff = { "copr_ability_debuff" },
+        copycat_health_invul = { "copycat_health_invul", "damage_reduction" },
+        copycat_health_invul_debuff = { "copycat_health_invul_debuff" },
+        copycat_health_invul_passive = { "damage_reduction" },
+        copycat_health_shot_debuff = { "copycat_health_shot" },
+        pocket_ecm_jammer_debuff = { "pocket_ecm_jammer_debuff" },
+        smoke_screen_grenade_debuff = { "smoke_screen_grenade_debuff" },
+        tag_team_debuff = { "tag_team_debuff" },
+        uppers = { "uppers" },
+        uppers_debuff = { "uppers_debuff" },
+        smoke_screen_grenade = { "smoke_screen_grenade", "total_dodge_chance" },
+        crew_inspire_debuff = { "crew_inspire_debuff" },
+    },
+}
+
+local DYNAMIC_IDS = {
+    grenade = {
+        chico_injector = { public_id = "chico_injector_debuff", type = "ability",
+            suffix = "_debuff", presentation = true, provenance = "modern_verified" },
+        copr_ability = { public_id = "copr_ability_debuff", type = "ability",
+            suffix = "_debuff", presentation = true, provenance = "modern_verified" },
+        pocket_ecm_jammer = { public_id = "pocket_ecm_jammer_debuff", type = "ability",
+            suffix = "_debuff", presentation = true, provenance = "modern_verified" },
+        smoke_screen_grenade = { public_id = "smoke_screen_grenade_debuff", type = "ability",
+            suffix = "_debuff", presentation = true, provenance = "modern_verified" },
+        tag_team = { public_id = "tag_team_debuff", type = "ability",
+            suffix = "_debuff", presentation = true, provenance = "modern_verified" },
+    },
+    custom = {
+        crew_inspire = { public_id = "crew_inspire_debuff", type = "team_ability",
+            suffix = "_debuff", presentation = true, provenance = "current_game" },
     },
 }
 
@@ -295,6 +355,13 @@ end
 function Catalog:resolve_team_public(category, upgrade, level)
     local event_id = self:resolve_team(category, upgrade, level)
     return event_id and self:resolve_alias(event_id) or nil, event_id
+end
+
+function Catalog:resolve_dynamic(kind, native_id)
+    local domain = type(kind) == "string" and DYNAMIC_IDS[kind]
+    local data = domain and type(native_id) == "string" and domain[native_id]
+    return type(data) == "table" and type(data.public_id) == "string"
+        and data.public_id or nil
 end
 
 kyohud.hudlist_catalog = Catalog

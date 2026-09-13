@@ -15,6 +15,7 @@ Provider._buffs = Provider._buffs or {}
 Provider._listeners = Provider._listeners or {}
 Provider._arrival_order = Provider._arrival_order or {}
 Provider._team_sources = Provider._team_sources or {}
+Provider._sources = Provider._sources or {}
 Provider._next_stack_id = Provider._next_stack_id or 0
 
 local function finite_number(value)
@@ -26,6 +27,10 @@ local function finite_number(value)
 end
 
 local function current_time()
+    local game_ok, game_value = pcall(function()
+        return TimerManager:game():time()
+    end)
+    if game_ok and finite_number(game_value) then return finite_number(game_value) end
     local ok, value = pcall(function()
         return Application:time()
     end)
@@ -104,7 +109,77 @@ function Provider:reset()
     self._buffs = {}
     self._arrival_order = {}
     self._team_sources = {}
+    self._sources = {}
     self._next_stack_id = 0
+    self._next_position_buff_check_t = 0
+    self._active_grenade_cooldown_id = nil
+end
+
+function Provider:get_source_count(id)
+    local count = 0
+    for _ in pairs(self._sources[id] or {}) do count = count + 1 end
+    return count
+end
+
+function Provider:_recalculate_sources(id)
+    local sources = self._sources[id]
+    if not sources or not next(sources) then
+        self._sources[id] = nil
+        self:_deactivate("buff", id, { reason = "last_source_removed" })
+        return
+    end
+
+    local count, expire_t, value = 0, nil, nil
+    local has_jamming, has_feedback = false, false
+    for _, source in pairs(sources) do
+        count = count + 1
+        expire_t = not expire_t and source.expire_t
+            or source.expire_t and math.max(expire_t, source.expire_t) or expire_t
+        value = not value and source.value
+            or source.value and math.max(value, source.value) or value
+        has_jamming = has_jamming or source.mode == "jamming"
+        has_feedback = has_feedback or source.mode == "feedback"
+    end
+    local entry = self._buffs[id]
+    if not entry then
+        entry = { id = id, source = "buff", active = true }
+        self._buffs[id] = entry
+        self._arrival_order[#self._arrival_order + 1] = id
+    end
+    entry.source_count = count
+    entry.expire_t = expire_t
+    entry.duration = expire_t and math.max(0, expire_t - current_time()) or nil
+    entry.value = value
+    entry.mode = has_jamming and has_feedback and "mixed"
+        or has_jamming and "jamming" or has_feedback and "feedback" or nil
+    self:_notify("buff", "activate", id, entry)
+end
+
+function Provider:set_source(id, key, data)
+    if type(id) ~= "string" or type(key) ~= "string" or type(data) ~= "table" then
+        return false
+    end
+    if not Catalog.definitions[id] then return false end
+    local expire_t = finite_number(data.expire_t)
+    local t = current_time()
+    if not expire_t or expire_t <= t then return false end
+    local sources = self._sources[id] or {}
+    self._sources[id] = sources
+    sources[key] = {
+        expire_t = expire_t,
+        value = finite_number(data.value),
+        mode = (data.mode == "jamming" or data.mode == "feedback") and data.mode or nil,
+    }
+    self:_recalculate_sources(id)
+    return true
+end
+
+function Provider:remove_source(id, key)
+    local sources = type(id) == "string" and self._sources[id]
+    if not sources or type(key) ~= "string" or not sources[key] then return false end
+    sources[key] = nil
+    self:_recalculate_sources(id)
+    return true
 end
 
 function Provider:get_team_source_count(id)
@@ -257,6 +332,16 @@ end
 
 function Provider:update(t)
     t = tonumber(t) or current_time()
+    local source_changes = {}
+    for id, sources in pairs(self._sources) do
+        for key, source in pairs(sources) do
+            if source.expire_t <= t then
+                sources[key] = nil
+                source_changes[id] = true
+            end
+        end
+    end
+    for id in pairs(source_changes) do self:_recalculate_sources(id) end
     local expired = {}
     for id, entry in pairs(self._buffs) do
         if entry.stacks then
@@ -303,7 +388,13 @@ function Provider:event(source, event, id, data)
     end
 
     if event == "set_value" then
-        entry.value = data.value
+        entry.value = finite_number(data.value)
+        self:_notify(source, event, id, entry)
+        return
+    end
+
+    if event == "set_progress" then
+        entry.progress = finite_number(data.progress)
         self:_notify(source, event, id, entry)
         return
     end
@@ -330,12 +421,16 @@ function Provider:event(source, event, id, data)
     entry.duration = duration
     entry.expire_t = expire_t
     if event == "activate" and data.value ~= nil then
-        entry.value = data.value
+        entry.value = finite_number(data.value)
     end
     if event == "activate" then
         entry.category = data.category
         entry.upgrade = data.upgrade
         entry.level = data.level
+        entry.progress = finite_number(data.progress)
+        entry.best_peer = finite_number(data.best_peer)
+        entry.provenance = data.provenance
+        entry.source_count = finite_number(data.source_count)
     end
     self:_notify(source, event, id, entry)
 end
@@ -367,6 +462,19 @@ local function emit_temporary_upgrade(manager, category, upgrade, level)
         upgrade = upgrade,
         level = level,
     })
+
+    if id == "copycat_health_invul" then
+        local values_ok, values = pcall(function()
+            return manager:upgrade_value("temporary", "mrwi_health_invulnerable")
+        end)
+        local cooldown = values_ok and type(values) == "table"
+            and finite_number(values[3]) or nil
+        if cooldown and cooldown > 0 then
+            Provider:event("buff", "activate", "copycat_health_invul_debuff", {
+                t = t, duration = cooldown,
+            })
+        end
+    end
 end
 
 local function emit_temporary_property(manager, property)
@@ -466,6 +574,219 @@ local function update_messiah(manager)
     end
     Provider:event("buff", "activate", id)
     Provider:event("buff", "set_stack_count", id, { stack_count = charges })
+end
+
+local function update_maniac(manager)
+    local session = managers and managers.network and managers.network:session()
+    local ok, local_peer_id = pcall(function() return session:local_peer():id() end)
+    local_peer_id = ok and finite_number(local_peer_id) or nil
+    if not local_peer_id then return end
+
+    local best_ok, absorption, best_peer = pcall(function()
+        return manager:get_best_cocaine_damage_absorption(local_peer_id)
+    end)
+    absorption = best_ok and finite_number(absorption) or nil
+    best_peer = best_ok and finite_number(best_peer) or nil
+    if not absorption then return end
+
+    if absorption > 0 then
+        local max_ok, maximum = pcall(function()
+            return manager:get_local_cocaine_damage_absorption_max()
+        end)
+        maximum = max_ok and finite_number(maximum) or nil
+        local progress = maximum and maximum > 0
+            and math.max(0, math.min(1, absorption / maximum)) or nil
+        Provider:event("buff", "activate", "maniac", {
+            value = absorption,
+            progress = progress,
+            best_peer = best_peer,
+            provenance = best_peer == local_peer_id and "local" or "synchronized",
+        })
+    else
+        Provider:event("buff", "deactivate", "maniac")
+    end
+
+    local expire_t = finite_number(manager._damage_dealt_to_cops_decay_t)
+    local t = current_time()
+    if expire_t and expire_t > t then
+        Provider:event("buff", "activate", "maniac_debuff", { t = t, expire_t = expire_t })
+    end
+end
+
+local function update_sicario(manager)
+    local gain = finite_number(manager._dodge_shot_gain_value)
+    if gain == nil then return end
+    if gain <= 0 then
+        Provider:event("buff", "deactivate", "sicario_dodge")
+        return
+    end
+
+    local ok, multiplier = pcall(function()
+        return manager:upgrade_value("player", "sicario_multiplier", 1)
+    end)
+    multiplier = ok and finite_number(multiplier) or 1
+    Provider:event("buff", "activate", "sicario_dodge", {
+        value = gain * (multiplier or 1),
+    })
+
+    local values = tweak_data and tweak_data.upgrades and tweak_data.upgrades.values
+    local dodge = values and values.player and values.player.dodge_shot_gain
+    local duration = finite_number(dodge and dodge[1] and dodge[1][2])
+    if duration and duration >= 0 then
+        Provider:event("buff", "activate", "sicario_dodge_debuff", {
+            t = current_time(), duration = duration,
+        })
+    end
+end
+
+local function update_copycat_headshot(manager)
+    local t = current_time()
+    local expire_t = finite_number(manager._on_headshot_dealt_t)
+    if not expire_t or expire_t <= t then return end
+    local ok, value = pcall(function()
+        return manager:upgrade_value("player", "headshot_regen_health_bonus", 0)
+    end)
+    value = ok and finite_number(value) or nil
+    if not value or value <= 0 then return end
+    Provider:event("buff", "activate", "copycat_health_shot_debuff", {
+        t = t, expire_t = expire_t, value = value,
+    })
+end
+
+local function equipped_grenade_id()
+    local ok, id = pcall(function() return managers.blackmarket:equipped_grenade() end)
+    return ok and type(id) == "string" and id or nil
+end
+
+local function update_grenade_cooldown(manager)
+    local public_id = Catalog:resolve_dynamic("grenade", equipped_grenade_id())
+    if Provider._active_grenade_cooldown_id
+            and Provider._active_grenade_cooldown_id ~= public_id then
+        Provider:event("buff", "deactivate", Provider._active_grenade_cooldown_id)
+        Provider._active_grenade_cooldown_id = nil
+    end
+    if not public_id then return end
+
+    local timer = manager._timers and manager._timers.replenish_grenades
+    local expire_t = timer and finite_number(timer.t)
+    local t = current_time()
+    if not expire_t or expire_t <= t then return end
+    Provider:event("buff", "activate", public_id, { t = t, expire_t = expire_t })
+    Provider._active_grenade_cooldown_id = public_id
+end
+
+local function end_grenade_cooldown()
+    if Provider._active_grenade_cooldown_id then
+        Provider:event("buff", "deactivate", Provider._active_grenade_cooldown_id)
+        Provider._active_grenade_cooldown_id = nil
+    end
+end
+
+local function update_custom_cooldown(manager, category, upgrade)
+    local public_id = Catalog:resolve_dynamic("custom", upgrade)
+    if not public_id or type(category) ~= "string" then return end
+    local timer = manager._timers and manager._timers[category .. "_" .. upgrade]
+    local expire_t = timer and finite_number(timer.t)
+    local t = current_time()
+    if not expire_t or expire_t <= t then return end
+    Provider:event("buff", "activate", public_id, { t = t, expire_t = expire_t })
+end
+
+local function pocket_ecm_source_key(inventory, mode)
+    return tostring(inventory) .. ":" .. mode
+end
+
+local function start_pocket_ecm(inventory, expected_mode)
+    local data = inventory._jammer_data
+    if type(data) ~= "table" or data.effect ~= expected_mode then return end
+    Provider:set_source("pocket_ecm_jammer",
+        pocket_ecm_source_key(inventory, expected_mode), {
+            expire_t = data.t,
+            mode = expected_mode,
+        })
+end
+
+local function stop_pocket_ecm(inventory, expected_mode)
+    local data = inventory._jammer_data
+    if type(data) ~= "table" or data.effect ~= expected_mode then return end
+    Provider:remove_source("pocket_ecm_jammer",
+        pocket_ecm_source_key(inventory, expected_mode))
+end
+
+local function update_position_buffs(manager, t)
+    t = finite_number(t) or current_time()
+    if t < (Provider._next_position_buff_check_t or 0) then return end
+    Provider._next_position_buff_check_t = t + 0.25
+
+    local unit_ok, unit = pcall(function() return manager:player_unit() end)
+    if not unit_ok or not alive(unit) then
+        Provider:event("buff", "deactivate", "uppers")
+        Provider:event("buff", "deactivate", "smoke_screen_grenade")
+        return
+    end
+
+    local upgrade_ok, has_uppers = pcall(function()
+        return manager:has_category_upgrade("first_aid_kit", "first_aid_kit_auto_recovery")
+    end)
+    if upgrade_ok and has_uppers and FirstAidKitBase and FirstAidKitBase.GetFirstAidKit then
+        local kit_ok, kit = pcall(function()
+            return FirstAidKitBase.GetFirstAidKit(unit:position())
+        end)
+        Provider:event("buff", kit_ok and kit and "activate" or "deactivate", "uppers")
+    else
+        Provider:event("buff", "deactivate", "uppers")
+    end
+
+    local screens_ok, screens = pcall(function() return manager:smoke_screens() end)
+    screens = screens_ok and type(screens) == "table" and screens or {}
+    local count, value, longest = 0, 0, 0
+    local has_local, has_allied = false, false
+    for _, smoke in ipairs(screens) do
+        local ok, is_active, in_smoke = pcall(function()
+            return smoke:alive(), smoke:is_in_smoke(unit)
+        end)
+        if ok and is_active and in_smoke then
+            count = count + 1
+            longest = math.max(longest, finite_number(smoke._timer) or 0)
+            local dodge_ok, dodge = pcall(function() return smoke:dodge_bonus() end)
+            dodge = dodge_ok and finite_number(dodge) or 0
+            local mine_ok, mine = pcall(function() return smoke:mine() end)
+            if mine_ok and mine then
+                has_local = true
+            else
+                has_allied = true
+                value = value + (dodge or 0)
+            end
+        end
+    end
+    if count > 0 then
+        Provider:event("buff", "activate", "smoke_screen_grenade", {
+            t = t,
+            expire_t = t + longest,
+            value = value,
+            source_count = count,
+            provenance = has_local and has_allied and "mixed"
+                or has_local and "local" or "allied",
+        })
+    else
+        Provider:event("buff", "deactivate", "smoke_screen_grenade")
+    end
+end
+
+local uppers_snapshots = setmetatable({}, { __mode = "k" })
+local function snapshot_uppers(damage)
+    uppers_snapshots[damage] = finite_number(damage._uppers_elapsed)
+end
+
+local function update_uppers_cooldown(damage)
+    local before = uppers_snapshots[damage]
+    uppers_snapshots[damage] = nil
+    local elapsed = finite_number(damage._uppers_elapsed)
+    local duration = finite_number(damage._UPPERS_COOLDOWN)
+    if not before or not elapsed or elapsed <= before or not duration or duration <= 0 then return end
+    Provider:event("buff", "activate", "uppers_debuff", {
+        t = elapsed, duration = duration,
+    })
 end
 
 local biker_snapshots = setmetatable({}, { __mode = "k" })
@@ -631,6 +952,30 @@ if RequiredScript == "lib/managers/playermanager"
             update_messiah(manager)
         end)
 
+    Hooks:PostHook(PlayerManager, "set_synced_cocaine_stacks",
+        "KyoHUD_HUDList_UpdateManiac", update_maniac)
+
+    Hooks:PostHook(PlayerManager, "_dodge_shot_gain",
+        "KyoHUD_HUDList_UpdateSicario", update_sicario)
+
+    Hooks:PostHook(PlayerManager, "on_headshot_dealt",
+        "KyoHUD_HUDList_CopycatHeadshot", update_copycat_headshot)
+
+    Hooks:PostHook(PlayerManager, "replenish_grenades",
+        "KyoHUD_HUDList_StartGrenadeCooldown", update_grenade_cooldown)
+
+    Hooks:PostHook(PlayerManager, "speed_up_grenade_cooldown",
+        "KyoHUD_HUDList_ChangeGrenadeCooldown", update_grenade_cooldown)
+
+    Hooks:PostHook(PlayerManager, "_on_grenade_cooldown_end",
+        "KyoHUD_HUDList_EndGrenadeCooldown", end_grenade_cooldown)
+
+    Hooks:PostHook(PlayerManager, "update",
+        "KyoHUD_HUDList_UpdatePositionBuffs", update_position_buffs)
+
+    Hooks:PostHook(PlayerManager, "start_custom_cooldown",
+        "KyoHUD_HUDList_StartCustomCooldown", update_custom_cooldown)
+
     Hooks:PreHook(PlayerManager, "deactivate_temporary_upgrade",
         "KyoHUD_HUDList_DeactivateTemporaryUpgrade", function(manager, category, upgrade)
             local ok, level = pcall(function()
@@ -672,4 +1017,27 @@ elseif RequiredScript == "lib/units/beings/player/playerdamage"
         "KyoHUD_HUDList_GrinderSnapshot", snapshot_grinder)
     Hooks:PostHook(PlayerDamage, "add_damage_to_hot",
         "KyoHUD_HUDList_GrinderEmit", emit_new_grinder_stacks)
+    Hooks:PreHook(PlayerDamage, "_check_bleed_out",
+        "KyoHUD_HUDList_UppersSnapshot", snapshot_uppers)
+    Hooks:PostHook(PlayerDamage, "_check_bleed_out",
+        "KyoHUD_HUDList_UppersCooldown", update_uppers_cooldown)
+elseif RequiredScript == "lib/units/beings/player/playerinventory"
+        and not KH._hudlist_loaded_scripts[RequiredScript] then
+    KH._hudlist_loaded_scripts[RequiredScript] = true
+    Hooks:PostHook(PlayerInventory, "_start_jammer_effect",
+        "KyoHUD_HUDList_StartPocketECMJammer", function(inventory)
+            start_pocket_ecm(inventory, "jamming")
+        end)
+    Hooks:PreHook(PlayerInventory, "_stop_jammer_effect",
+        "KyoHUD_HUDList_StopPocketECMJammer", function(inventory)
+            stop_pocket_ecm(inventory, "jamming")
+        end)
+    Hooks:PostHook(PlayerInventory, "_start_feedback_effect",
+        "KyoHUD_HUDList_StartPocketECMFeedback", function(inventory)
+            start_pocket_ecm(inventory, "feedback")
+        end)
+    Hooks:PreHook(PlayerInventory, "_stop_feedback_effect",
+        "KyoHUD_HUDList_StopPocketECMFeedback", function(inventory)
+            stop_pocket_ecm(inventory, "feedback")
+        end)
 end

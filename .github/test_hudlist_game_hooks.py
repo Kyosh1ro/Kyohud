@@ -229,13 +229,13 @@ class HUDListGameHookTests(unittest.TestCase):
             RequiredScript = "lib/managers/playermanager"
         ''')
         lua.execute(HUDLIST)
-        lua.execute('assert(#Hooks.installed == 17)')
+        lua.execute('assert(#Hooks.installed == 25)')
         lua.execute(HUDLIST)
-        lua.execute('assert(#Hooks.installed == 17)')
+        lua.execute('assert(#Hooks.installed == 25)')
         lua.execute('RequiredScript = "lib/utils/temporarypropertymanager"')
         lua.execute(HUDLIST)
         lua.execute('''
-            assert(#Hooks.installed == 19)
+            assert(#Hooks.installed == 27)
             assert(kyohud.hudlist:get_buffs().keep_me ~= nil)
             assert(HUDList == nil and HUDListManager == nil and GameInfoManager == nil)
         ''')
@@ -250,6 +250,7 @@ class HUDListGameHookTests(unittest.TestCase):
             "lib/managers/hudmanagerpd2",
             "lib/managers/playermanager",
             "lib/units/beings/player/playerdamage",
+            "lib/units/beings/player/playerinventory",
             "lib/utils/temporarypropertymanager",
         ])
 
@@ -334,7 +335,7 @@ class HUDListGameHookTests(unittest.TestCase):
         lua.execute(HUDLIST)
         lua.execute('''
             assert(kyohud.hudlist ~= nil and kyohud.hudlist_catalog ~= nil)
-            assert(Hooks.count == 17)
+            assert(Hooks.count == 25)
             assert(HUDList.BuffItemBase.MAP.external.keep == true)
             assert(HUDListManager.BUFFS.external == true)
             assert(GameInfoManager.external == true)

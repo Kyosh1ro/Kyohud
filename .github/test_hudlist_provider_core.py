@@ -187,6 +187,7 @@ class HUDListProviderCoreTests(unittest.TestCase):
             "lib/managers/hudmanagerpd2",
             "lib/managers/playermanager",
             "lib/units/beings/player/playerdamage",
+            "lib/units/beings/player/playerinventory",
             "lib/utils/temporarypropertymanager",
         ])
         self.assertLess(
