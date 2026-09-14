@@ -1,6 +1,6 @@
 -- core.lua — KyoHUD state, combat HUD and buff rendering
 -- Buffs displayed side-by-side on a configurable horizontal row.
--- Buff state and metadata are provided at runtime by VanillaHUD+.
+-- Buff state and metadata are provided by KyoHUD's namespaced provider.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -78,6 +78,47 @@ local KYO_BUFF_COLORS = assert(KYO_BUFF_CONFIG.colors, "KyoHUD buff colors are m
 local KYO_BUFF_PRESENTATION = assert(KYO_BUFF_CONFIG.buffs, "KyoHUD buff presentation is missing")
 KH.KYO_BUFF_PRESENTATION = KYO_BUFF_PRESENTATION
 local EMPTY_BUFF_CANDIDATES = {}
+
+local FRAME_ANIM_CACHE = {}
+for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
+    local _anim = _pres.frame_animation
+    if _anim and _pres.frame_color
+        and type(_anim.period) == "number" and _anim.period > 0 then
+        local _hex_a = KYO_BUFF_COLORS[_pres.frame_color] or _pres.frame_color
+        local _hex_b = KYO_BUFF_COLORS[_anim.color_b] or _anim.color_b
+        if type(_hex_a) == "string" and #_hex_a == 6
+            and type(_hex_b) == "string" and #_hex_b == 6 then
+            FRAME_ANIM_CACHE[_buff_id] = {
+                r1 = tonumber(_hex_a:sub(1, 2), 16) / 255,
+                g1 = tonumber(_hex_a:sub(3, 4), 16) / 255,
+                b1 = tonumber(_hex_a:sub(5, 6), 16) / 255,
+                r2 = tonumber(_hex_b:sub(1, 2), 16) / 255,
+                g2 = tonumber(_hex_b:sub(3, 4), 16) / 255,
+                b2 = tonumber(_hex_b:sub(5, 6), 16) / 255,
+                period = _anim.period,
+            }
+        end
+    end
+end
+KH._frame_anim_cache = FRAME_ANIM_CACHE
+
+function KH:_compute_frame_color(buff_id, t)
+    local anim = FRAME_ANIM_CACHE[buff_id]
+    if not anim then return nil end
+    local factor = (math.sin(2 * math.pi * t / anim.period) + 1) * 0.5
+    local r = anim.r1 + (anim.r2 - anim.r1) * factor
+    local g = anim.g1 + (anim.g2 - anim.g1) * factor
+    local b = anim.b1 + (anim.b2 - anim.b1) * factor
+    return r, g, b, factor
+end
+
+local function draw_frame_color(buff, t)
+    local anim = FRAME_ANIM_CACHE[buff.id]
+    if not anim then return buff.frame_color end
+    local r, g, b = KH:_compute_frame_color(buff.id, t)
+    if not r then return buff.frame_color end
+    return Color(r, g, b)
+end
 
 local function killfeed_size(settings)
     local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
@@ -255,8 +296,8 @@ end
 -- Icon Resolution for a buff_id
 -- ═══════════════════════════════════════════════════
 function KH:GetVanillaHUDBuffDefinition(buff_id)
-    local map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
-    return map and map[buff_id] or nil
+    local local_definitions = self.hudlist_catalog and self.hudlist_catalog.definitions
+    return local_definitions and local_definitions[buff_id] or nil
 end
 
 function KH:GetKyoEquippedPerkBuffCandidates(specialization_id)
@@ -265,14 +306,10 @@ function KH:GetKyoEquippedPerkBuffCandidates(specialization_id)
 end
 
 function KH:HasVanillaHUDBuffProvider()
-    return managers and managers.gameinfo
-        and managers.gameinfo.register_listener
-        and managers.gameinfo.get_buffs
-        and managers.gameinfo.get_player_actions
-        and HUDList and HUDList.BuffItemBase
-        and type(HUDList.BuffItemBase.MAP) == "table"
-        and HUDListManager
-        and type(HUDListManager.BUFFS) == "table"
+    return self.hudlist and self.hudlist.register_listener
+            and self.hudlist.get_buffs and self.hudlist.get_player_actions
+            and self.hudlist_catalog and type(self.hudlist_catalog.definitions) == "table"
+            and type(self.hudlist_catalog.routes) == "table"
         or false
 end
 
@@ -284,7 +321,7 @@ function KH:GetVanillaHUDBuffTargets(source_id)
         targets[1] = source_id
         return targets
     end
-    local groups = HUDListManager and HUDListManager.BUFFS
+    local groups = self.hudlist_catalog and self.hudlist_catalog.routes
     local mapped = groups and groups[source_id]
     if type(mapped) ~= "table" then
         local composite_parent = groups
@@ -312,7 +349,11 @@ local function icon_for_buff(buff_id)
     local map_entry = KH:GetVanillaHUDBuffDefinition(buff_id)
     if map_entry then
         local tex, rect = get_icon_data(map_entry)
-        return { texture = tex, rect = rect }
+        local descriptor = { texture = tex, rect = rect }
+        if map_entry.icon_rotation then
+            descriptor.rotation = map_entry.icon_rotation
+        end
+        return descriptor
     end
     return { texture = FALLBACK_TEXTURE }
 end
@@ -372,8 +413,7 @@ local function color_from_presentation(value)
     return ok and color or nil
 end
 
--- VanillaHUD+ provides icons and events, never the KyoHUD-specific tint.
--- The visible palette remains exclusively owned by KyoHUD presentation.
+-- Provider metadata never owns the KyoHUD-specific tint.
 local function color_for_buff(buff_id, is_debuff)
     if is_debuff then
         return color_from_presentation("debuff")
@@ -385,8 +425,13 @@ local function color_for_buff(buff_id, is_debuff)
         or Color.white
 end
 
+local function frame_color_for_buff(buff_id)
+    local presentation = KYO_BUFF_PRESENTATION[buff_id]
+    return color_from_presentation(presentation and presentation.frame_color)
+end
+
 -- ═══════════════════════════════════════════════════
--- Checks if the integration and VanillaHUD+ definition allow this buff.
+-- Checks if the autonomous definition allows this buff.
 -- ═══════════════════════════════════════════════════
 function KH:is_buff_visible(buff_id)
     if not self.settings or not self.settings.enable_buffs then return false end
@@ -412,6 +457,14 @@ end
 local STATIC_BUFF_SLOT_SET = {}
 for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
     STATIC_BUFF_SLOT_SET[buff_id] = true
+end
+
+function KH:get_static_buff_slots()
+    return STATIC_BUFF_SLOTS
+end
+
+function KH:get_static_buff_slot_set()
+    return STATIC_BUFF_SLOT_SET
 end
 
 local function equipped_perk_deck_entry(hud)
@@ -1371,8 +1424,10 @@ local function align_buff_cell_rect(x, y, w, h)
         math.max(min_size, math.floor(y + h + 0.5) - top)
 end
 
-local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
+local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
     local left, top, width, height = align_buff_cell_rect(x, y, w, h)
+    local has_custom_outline = color ~= nil
+    color = color or HUD_ACCENT_COLOR
 
     panel:gradient({
         x = left,
@@ -1391,9 +1446,9 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
     -- A single point table shared by both risers: they carry exactly the same
     -- gradient and `KH:draw` must not allocate twice.
     local edge_points = {
-        0,    HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
-        0.55, HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
-        1,    HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+        0,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
+        0.55, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
+        1,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
     }
     panel:gradient({
         x = left,
@@ -1420,19 +1475,57 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
         h = BUFF_CELL_LINE_WIDTH,
         orientation = "horizontal",
         gradient_points = {
-            0,   HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
-            0.5, HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
-            1,   HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+            0,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+            0.5, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+            1,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
         },
         layer = layer + 1,
     })
+
+    if has_custom_outline then
+        local stroke = 2
+        local outline_color = color:with_alpha(math.min(1, alpha * 1.15))
+        local outline_layer = layer + 1
+        panel:rect({
+            x = left,
+            y = top,
+            w = width,
+            h = stroke,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left,
+            y = top + height - stroke,
+            w = width,
+            h = stroke,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left,
+            y = top + stroke,
+            w = stroke,
+            h = height - stroke * 2,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left + width - stroke,
+            y = top + stroke,
+            w = stroke,
+            h = height - stroke * 2,
+            color = outline_color,
+            layer = outline_layer,
+        })
+    end
 end
 
 -- Traces the still-active part of a temporary buff's outline. The path
 -- starts at the top edge midpoint and advances clockwise; its end thus
 -- recedes continuously as the timer approaches zero.
--- This outline is the only stroke allowed to cross the cell's top:
--- the static frame, meanwhile, stays at three sides.
+-- Generic static frames stay at three sides. A buff with an explicit frame
+-- color may use a complete static outline instead.
 local function append_progress_segment(points, remaining_length, x1, y1, x2, y2, segment_length)
     if remaining_length <= 0 or segment_length <= 0 then return remaining_length end
 
@@ -1800,6 +1893,7 @@ function KH:add_buff(buff_id, icon_data, duration, _raw_upgrade_id, persistent, 
         id       = resolved_id,
         icon     = icon_data or icon_for_buff(resolved_id),
         color    = color_for_buff(resolved_id, is_debuff),
+        frame_color = frame_color_for_buff(resolved_id),
         priority = tonumber(runtime_definition and runtime_definition.priority) or 0,
         provider_class = runtime_definition and runtime_definition.class or nil,
         title_text = title_for_buff(resolved_id),
@@ -1821,7 +1915,7 @@ function KH:remove_buff(buff_id)
 end
 
 -- ═══════════════════════════════════════════════════
--- Buff sources and optional VanillaHUD+ bridge
+-- Buff sources and autonomous provider bridge
 -- ═══════════════════════════════════════════════════
 local function application_time()
     local ok, t = pcall(function()
@@ -1925,202 +2019,199 @@ local function current_player_damage()
     return ok and player_damage or nil
 end
 
-local function passive_health_regen_source_value(source)
-    local value = source and tonumber(source.value)
-    if not value then return nil end
-
-    -- VanillaHUD+ expresses teammate regeneration in health points
-    -- internally, unlike other sources that already use a ratio.
-    if source.source_id == "crew_health_regen" then
-        local player_damage = current_player_damage()
-        local ok, max_health = pcall(function()
-            return player_damage and player_damage:_max_health()
-        end)
-        max_health = ok and tonumber(max_health) or nil
-        if not max_health or max_health <= 0 then return nil end
-        return value / (max_health * 10)
-    end
-
-    return value
-end
-
-local function equipped_weapon_context()
-    local ok, ignore_upgrades, categories = pcall(function()
-        local player = managers.player and managers.player:player_unit()
+local function native_damage_increase_multiplier()
+    local ok, multiplier = pcall(function()
+        local pm = managers.player
+        if not pm then return 1 end
+        local player = pm:player_unit()
+        local damage = alive(player) and player:character_damage()
         local inventory = alive(player) and player:inventory()
         local weapon = inventory and inventory:equipped_unit()
         local base = alive(weapon) and weapon:base()
         local tweak = base and base:weapon_tweak_data()
-        return tweak and tweak.ignore_damage_upgrades == true, tweak and tweak.categories
-    end)
-    if not ok or type(categories) ~= "table" then return nil, nil end
+        local categories = tweak and tweak.categories or {}
+        local primary_category = categories[1]
 
-    local category_set = {}
-    for _, category in ipairs(categories) do
-        category_set[category] = true
-    end
-    return ignore_upgrades, category_set
-end
+        -- BlackMarketManager:damage_multiplier() includes Trigger Happy even
+        -- though PlayerStandard applies that property to each shot. Remove it
+        -- from this fresh static query, then apply it once below.
+        local trigger_mul = tonumber(pm:get_property("trigger_happy", 1)) or 1
 
-local function source_applies_to_weapon(source_id, categories)
-    if source_id == "overkill" then
-        return categories.shotgun or categories.saw
-    elseif source_id == "overkill_aced" then
-        return not categories.shotgun and not categories.saw
-    elseif source_id == "berserker" then
-        return categories.saw == true
-    elseif source_id == "berserker_aced" then
-        return categories.saw ~= true
-    end
-    return true
-end
-
-local function health_ratio_damage_multiplier(source_id, value)
-    if source_id == "berserker" then
-        return 1 + value * (tonumber(player_upgrade_value(
-            "player", "melee_damage_health_ratio_multiplier", 0
-        )) or 0)
-    elseif source_id == "berserker_aced" then
-        return 1 + value * (tonumber(player_upgrade_value(
-            "player", "damage_health_ratio_multiplier", 0
-        )) or 0)
-    end
-    return value
-end
-
-local function damage_increase_text(sources)
-    local ignore_upgrades, categories = equipped_weapon_context()
-    if not categories then return nil end
-    if ignore_upgrades then return "(0%)" end
-
-    local multiplier = 1
-    local has_value = false
-    for _, source in pairs(sources) do
-        local value = tonumber(source.value)
-        if value and source_applies_to_weapon(source.source_id, categories) then
-            multiplier = multiplier * health_ratio_damage_multiplier(source.source_id, value)
-            has_value = true
-        end
-    end
-    return has_value and string.format("%+.0f%%", (multiplier - 1) * 100) or nil
-end
-
-local function melee_damage_increase_text(sources)
-    local multiplier = 1
-    local has_value = false
-    for _, source in pairs(sources) do
-        local value = tonumber(source.value)
-        if value then
-            multiplier = multiplier * health_ratio_damage_multiplier(source.source_id, value)
-            has_value = true
-        end
-    end
-    return has_value and ("x" .. compact_number(multiplier)) or nil
-end
-
-local function maniac_damage_multiplier(value)
-    local player_damage = current_player_damage()
-    if not player_damage then return nil end
-
-    local ok, current_armor, max_armor, max_health = pcall(function()
-        return player_damage:get_real_armor(), player_damage:_max_armor(), player_damage:_max_health()
-    end)
-    if not ok then return nil end
-    current_armor = tonumber(current_armor)
-    if not current_armor then return nil end
-    local maximum = current_armor > 0 and tonumber(max_armor) or tonumber(max_health)
-    if not maximum or maximum <= 0 then return nil end
-    return 1 - value / (maximum * 10)
-end
-
-local function damage_reduction_source_multiplier(source)
-    local value = tonumber(source.value)
-    if not value then return nil end
-
-    if source.source_id == "chico_injector" then
-        local player_damage = current_player_damage()
-        local ok, health_ratio = pcall(function()
-            return player_damage and player_damage:health_ratio()
+        local static_mul = 1
+        local ok_static, base_mul = pcall(function()
+            return base and base:damage_multiplier() or 1
         end)
-        local low_health = player_upgrade_value("player", "chico_injector_low_health_multiplier", nil)
-        local threshold = type(low_health) == "table" and tonumber(low_health[1])
-        local bonus = type(low_health) == "table" and tonumber(low_health[2])
-        if ok and tonumber(health_ratio) and threshold and bonus and health_ratio < threshold then
-            value = value + bonus
+        if ok_static and base_mul then static_mul = static_mul * base_mul end
+        if trigger_mul ~= 0 then static_mul = static_mul / trigger_mul end
+
+        local ignore = tweak and tweak.ignore_damage_multipliers
+        local combat_medic_mul = pm:temporary_upgrade_value(
+            "temporary", "combat_medic_damage_multiplier", 1)
+        if ignore then return static_mul * combat_medic_mul end
+
+        local state = pm:get_current_state()
+        local overkill_all = state and state._overkill_all_weapons or false
+        local health_ratio_mul = state and state._damage_health_ratio_mul or 0
+        local health_ratio_mul_melee = state and state._damage_health_ratio_mul_melee or 0
+
+        local mul = 1
+        mul = mul * pm:temporary_upgrade_value("temporary", "dmg_multiplier_outnumbered", 1)
+        if overkill_all or (base and base:is_category("shotgun", "saw")) then
+            mul = mul * pm:temporary_upgrade_value("temporary", "overkill_damage_multiplier", 1)
         end
-        return 1 - value
-    elseif source.source_id == "frenzy" then
-        return 1 - value
-    elseif source.source_id == "maniac" then
-        return maniac_damage_multiplier(value)
-    end
-
-    return value
-end
-
-local function damage_reduction_text(sources)
-    local multiplier = 1
-    local has_value = false
-    for _, source in pairs(sources) do
-        local value = damage_reduction_source_multiplier(source)
-        if value then
-            multiplier = multiplier * value
-            has_value = true
-        end
-    end
-    local reduction = clamp(1 - multiplier, 0, 1)
-    return has_value and string.format("-%.0f%%", reduction * 100) or nil
-end
-
-local function calculated_base_dodge(include_sicario)
-    local value = tonumber(tweak_data and tweak_data.player
-        and tweak_data.player.damage and tweak_data.player.damage.DODGE_INIT) or 0
-
-    local ok, calculated = pcall(function()
-        local pm = managers.player
-        local armor_id = managers.blackmarket and managers.blackmarket:equipped_armor(true, true)
-        local armor_upgrade = armor_id and tostring(armor_id) .. "_dodge_addend"
-        local risk_upgrade = pm:upgrade_value("player", "detection_risk_add_dodge_chance", 0)
-        return (pm:body_armor_value("dodge") or 0)
-            + (pm:upgrade_value("player", "passive_dodge_chance", 0) or 0)
-            + (armor_upgrade and pm:upgrade_value("player", armor_upgrade, 0) or 0)
-            + (pm:upgrade_value("player", "tier_dodge_chance", 0) or 0)
-            + (pm:get_value_from_risk_upgrade(risk_upgrade) or 0)
-            + (pm:upgrade_value("team", "crew_add_dodge", 0) or 0)
-            + (include_sicario and pm:upgrade_value("player", "sicario_multiplier", 0) or 0)
-    end)
-    return math.max(0, value + (ok and tonumber(calculated) or 0))
-end
-
-local function total_dodge_chance_text(sources)
-    local has_sicario_source = false
-    local has_smoke_source = false
-    local smoke_dodge
-    for _, source in pairs(sources) do
-        has_sicario_source = has_sicario_source or source.source_id == "sicario_dodge"
-        if source.source_id == "smoke_screen_grenade" then
-            has_smoke_source = true
-            local source_smoke_dodge = tonumber(source.value)
-            if source_smoke_dodge and (not smoke_dodge or source_smoke_dodge > smoke_dodge) then
-                smoke_dodge = source_smoke_dodge
+        if damage then
+            local health_ratio = damage:health_ratio()
+            local damage_health_ratio = pm:get_damage_health_ratio(health_ratio, primary_category or "primary")
+            if damage_health_ratio > 0 then
+                local upgrade = (base and base:is_category("saw") and health_ratio_mul_melee)
+                    or health_ratio_mul or 0
+                mul = mul * (1 + upgrade * damage_health_ratio)
             end
         end
-    end
+        mul = mul * pm:temporary_upgrade_value("temporary", "berserker_damage_multiplier", 1)
+        mul = mul * trigger_mul
+        mul = mul * combat_medic_mul
+        return static_mul * mul
+    end)
+    return ok and tonumber(multiplier) or 1
+end
 
-    local value = calculated_base_dodge(not has_sicario_source)
-    for _, source in pairs(sources) do
-        if not source.is_calculated and source.source_id ~= "smoke_screen_grenade" then
-            value = value + (tonumber(source.value) or 0)
+local function native_damage_reduction_multiplier()
+    local ok, multiplier = pcall(function()
+        local pm = managers.player
+        if not pm or not pm.damage_reduction_skill_multiplier then return 1 end
+        return pm:damage_reduction_skill_multiplier("bullet")
+    end)
+    return ok and tonumber(multiplier) or 1
+end
+
+local function native_passive_health_regen_fraction()
+    local ok, fraction = pcall(function()
+        local pm = managers.player
+        local damage = current_player_damage()
+        if not pm or not damage then return 0 end
+
+        local maximum = tonumber(damage:_max_health())
+        if not maximum or maximum <= 0 then return 0 end
+
+        -- health_regen() is a max-health ratio (Muscle/Gorilla,
+        -- Hostage Taker and temporary ratio sources). fixed_health_regen()
+        -- is a health-point amount (crew regeneration), normalized here.
+        local ratio = tonumber(pm:health_regen()) or 0
+        local fixed = tonumber(pm:fixed_health_regen(damage:health_ratio())) or 0
+        local healing_mul = tonumber(damage._healing_reduction) or 1
+        return math.max(0, (ratio + fixed / maximum) * healing_mul)
+    end)
+    return ok and tonumber(fraction) or 0
+end
+
+local function native_melee_damage_multiplier()
+    local ok, multiplier = pcall(function()
+        local pm = managers.player
+        if not pm then return 1 end
+        local player = pm:player_unit()
+        local damage = alive(player) and player:character_damage()
+        local mul = 1
+        mul = mul * pm:upgrade_value("player", "non_special_melee_multiplier", 1)
+        local melee_entry = managers.blackmarket and managers.blackmarket:equipped_melee_weapon()
+        local melee_tweak = melee_entry and tweak_data.blackmarket.melee_weapons[melee_entry]
+        if melee_tweak and melee_tweak.stats then
+            local weapon_type = melee_tweak.stats.weapon_type
+            if weapon_type then
+                mul = mul * pm:upgrade_value("player",
+                    "melee_" .. tostring(weapon_type) .. "_damage_multiplier", 1)
+            end
         end
-    end
+        if pm:has_category_upgrade("melee", "stacking_hit_damage_multiplier") then
+            local movement = alive(player) and player:movement()
+            local stack_state = movement and movement._state_data
+                and movement._state_data.stacking_dmg_mul
+                and movement._state_data.stacking_dmg_mul.melee
+            if stack_state and stack_state[1] then
+                local t = TimerManager:game():time()
+                if t < stack_state[1] then
+                    mul = mul * (1 + pm:upgrade_value("melee", "stacking_hit_damage_multiplier", 0)
+                        * (stack_state[2] or 0))
+                end
+            end
+        end
+        local state = pm:get_current_state()
+        local health_ratio_mul_melee = state and state._damage_health_ratio_mul_melee or 0
+        if damage then
+            local health_ratio = damage:health_ratio()
+            local damage_health_ratio = pm:get_damage_health_ratio(health_ratio, "melee")
+            if damage_health_ratio > 0 then
+                mul = mul * (1 + health_ratio_mul_melee * damage_health_ratio)
+            end
+        end
+        mul = mul * pm:temporary_upgrade_value("temporary", "berserker_damage_multiplier", 1)
+        mul = mul * pm:get_melee_dmg_multiplier()
+        return mul
+    end)
+    return ok and tonumber(multiplier) or 1
+end
 
-    if has_smoke_source then
-        smoke_dodge = smoke_dodge or tonumber(tweak_data and tweak_data.projectiles
-            and tweak_data.projectiles.smoke_screen_grenade
-            and tweak_data.projectiles.smoke_screen_grenade.dodge_chance) or 0
-        value = 1 - (1 - value) * (1 - smoke_dodge)
-    end
+local function damage_increase_text()
+    local multiplier = native_damage_increase_multiplier()
+    local bonus = (multiplier - 1) * 100
+    if math.abs(bonus) < 0.5 then return "+0%" end
+    return string.format("%+.0f%%", bonus)
+end
 
+local function damage_reduction_text()
+    local multiplier = native_damage_reduction_multiplier()
+    local reduction = clamp(1 - multiplier, 0, 1)
+    if reduction < 0.005 then return "-0%" end
+    return string.format("-%.0f%%", reduction * 100)
+end
+
+local function passive_health_regen_text()
+    return string.format("%.1f%%", native_passive_health_regen_fraction() * 100)
+end
+
+local function melee_damage_increase_text()
+    local multiplier = native_melee_damage_multiplier()
+    return "x" .. compact_number(multiplier)
+end
+
+local function calculated_base_dodge()
+    local dodge_init = tonumber(tweak_data and tweak_data.player
+        and tweak_data.player.damage and tweak_data.player.damage.DODGE_INIT) or 0
+
+    local ok, value = pcall(function()
+        local pm = managers.player
+        local player = pm:player_unit()
+        local movement = alive(player) and player:movement()
+        local running = movement and movement:running() or false
+        local crouching = movement and movement:crouching() or false
+        local zipline = movement and movement:zipline_unit() or nil
+
+        local result = dodge_init
+            + (pm:body_armor_value("dodge") or 0)
+            + (pm:skill_dodge_chance(running, crouching, zipline) or 0)
+
+        local damage = alive(player) and player:character_damage()
+        if damage and damage._temporary_dodge_t
+                and damage._temporary_dodge_t > TimerManager:game():time() then
+            result = result + (damage._temporary_dodge or 0)
+        end
+
+        local smoke_dodge = 0
+        for _, smoke_screen in ipairs(pm._smoke_screen_effects or {}) do
+            if smoke_screen:is_in_smoke(player) then
+                smoke_dodge = tweak_data.projectiles.smoke_screen_grenade.dodge_chance or 0
+                break
+            end
+        end
+        result = 1 - (1 - result) * (1 - smoke_dodge)
+
+        return math.max(0, result)
+    end)
+    return ok and tonumber(value) or dodge_init
+end
+
+local function total_dodge_chance_text()
+    local value = calculated_base_dodge()
     return string.format("%.0f%%", math.max(value * 100, 0))
 end
 
@@ -2145,23 +2236,32 @@ local BUFF_VALUE_FORMATTERS = {
         local value = largest_source_value(sources)
         return value and string.format("-%.1f", math.abs(value)) or nil
     end,
+    bonus_fraction = function(sources)
+        local value = largest_source_value(sources)
+        return value and value > 0 and string.format("%+.0f%%", value * 100) or nil
+    end,
+    reduction_fraction = function(sources)
+        local value = largest_source_value(sources)
+        return value and value > 0 and string.format("-%.0f%%", value * 100) or nil
+    end,
+    health_per_interval = function(sources)
+        local source
+        for _, candidate in pairs(sources) do
+            if tonumber(candidate.value) and tonumber(candidate.interval) then
+                source = candidate
+                break
+            end
+        end
+        if not source or source.value <= 0 or source.interval <= 0 then return nil end
+        local suffix = source.value_kind == "health_points_per_tick" and " HP" or "%"
+        local value = source.value_kind == "health_points_per_tick"
+            and source.value or source.value * 100
+        return compact_number(value) .. suffix .. " / " .. compact_number(source.interval) .. "s"
+    end,
     damage_increase = damage_increase_text,
     damage_reduction = damage_reduction_text,
     melee_damage_increase = melee_damage_increase_text,
-    passive_health_regen = function(sources)
-        local total = 0
-        local has_value = false
-
-        for _, source in pairs(sources) do
-            local value = passive_health_regen_source_value(source)
-            if value then
-                total = total + value
-                has_value = true
-            end
-        end
-
-        return has_value and string.format("%.1f%%", total * 100) or nil
-    end,
+    passive_health_regen = passive_health_regen_text,
     total_dodge_chance = total_dodge_chance_text,
 }
 
@@ -2203,7 +2303,8 @@ local function format_buff_value(buff_id, sources)
         local maximum = tonumber(tweak_data and tweak_data.upgrades
             and tweak_data.upgrades.wild_max_triggers_per_time) or 0
         stack_text = "x" .. tostring(math.max(0, maximum - stack_count))
-    elseif runtime_definition and stack_count and stack_count > 0 then
+    elseif runtime_definition and runtime_definition.show_stack_count ~= false
+            and stack_count and stack_count > 0 then
         stack_text = "x" .. tostring(stack_count)
     end
     return value_text, stack_text
@@ -2247,14 +2348,6 @@ function KH:_refresh_source_target(buff_id)
         self:remove_buff(buff_id)
     end
 end
-
-local DYNAMIC_VALUE_BUFFS = {
-    "damage_increase",
-    "damage_reduction",
-    "melee_damage_increase",
-    "passive_health_regen",
-    "total_dodge_chance",
-}
 
 local EQUIPPED_SKILL_COUNTER_BUFFS = {}
 for buff_id, presentation in pairs(KYO_BUFF_PRESENTATION) do
@@ -2402,42 +2495,37 @@ function KH:RefreshHackerPocketECMStatus()
     existing.color = color_for_buff(POCKET_ECM_COOLDOWN_ID, true)
 end
 
+local STAT_CARD_BUFF_IDS = {
+    "passive_health_regen",
+    "damage_increase",
+    "damage_reduction",
+    "melee_damage_increase",
+    "total_dodge_chance",
+}
+
+local STAT_CARD_VALUE_TEXT = {
+    passive_health_regen = passive_health_regen_text,
+    damage_increase = damage_increase_text,
+    damage_reduction = damage_reduction_text,
+    melee_damage_increase = melee_damage_increase_text,
+    total_dodge_chance = total_dodge_chance_text,
+}
+
 function KH:RefreshCalculatedBuffValues()
     if self._debug_preview_active then return end
 
-    local buff_id = "total_dodge_chance"
-    local source_key = "calculated:base_dodge"
-    local sources = self._buff_sources[buff_id]
-    local base_dodge = calculated_base_dodge(true)
-    local has_calculated_source = sources and sources[source_key] ~= nil
-    local source_changed = false
-
-    if base_dodge > 0 and not has_calculated_source then
-        self._buff_sources[buff_id] = sources or {}
-        self._buff_sources[buff_id][source_key] = {
-            source_id = "base_dodge",
-            is_calculated = true,
-            is_debuff = false,
-        }
-        source_changed = true
-    elseif base_dodge <= 0 and has_calculated_source then
-        sources[source_key] = nil
-        if not next(sources) then self._buff_sources[buff_id] = nil end
-        source_changed = true
-    end
-
-    if source_changed then
-        self:_refresh_source_target(buff_id)
-    end
-
-    -- These values also depend on the equipped weapon, health, or
-    -- armor. Recalculating them at a low frequency without recreating entries
-    -- preserves their order and timer.
-    for _, dynamic_buff_id in ipairs(DYNAMIC_VALUE_BUFFS) do
-        local dynamic_sources = self._buff_sources[dynamic_buff_id]
-        local buff = self._buffs[dynamic_buff_id]
-        if dynamic_sources and buff then
-            buff.value_text, buff.stack_text = format_buff_value(dynamic_buff_id, dynamic_sources)
+    for _, buff_id in ipairs(STAT_CARD_BUFF_IDS) do
+        if self:is_buff_visible(buff_id) then
+            local value_text = STAT_CARD_VALUE_TEXT[buff_id]()
+            local existing = self._buffs[buff_id]
+            if not existing then
+                self:add_buff(buff_id, nil, nil, nil, true, false, value_text)
+            else
+                existing.value_text = value_text
+                existing.persistent = true
+            end
+        else
+            self:remove_buff(buff_id)
         end
     end
 end
@@ -2525,10 +2613,11 @@ function KH:handle_buff_event(event, source_id, data, source_type)
 end
 
 function KH:SyncGameInfoBuffs()
-    if self._debug_preview_active or not (managers and managers.gameinfo) then return end
+    local provider = self.hudlist
+    if self._debug_preview_active or not provider then return end
 
     local ok_buffs, buffs = pcall(function()
-        return managers.gameinfo:get_buffs()
+        return provider:get_buffs()
     end)
     if ok_buffs and type(buffs) == "table" then
         for id, data in pairs(buffs) do
@@ -2537,7 +2626,7 @@ function KH:SyncGameInfoBuffs()
     end
 
     local ok_actions, actions = pcall(function()
-        return managers.gameinfo:get_player_actions()
+        return provider:get_player_actions()
     end)
     if ok_actions and type(actions) == "table" then
         for id, data in pairs(actions) do
@@ -2553,6 +2642,7 @@ function KH:TryRegisterGameInfoBridge()
         return false
     end
 
+    local provider = self.hudlist
     local buff_events = {
         "activate", "deactivate", "set_duration", "set_progress",
         "set_stack_count", "add_timed_stack", "remove_timed_stack", "set_value",
@@ -2567,16 +2657,16 @@ function KH:TryRegisterGameInfoBridge()
 
     local ok, err = pcall(function()
         for _, event in ipairs(buff_events) do
-            managers.gameinfo:register_listener("kyohud_buff_bridge", "buff", event, buff_callback)
+            provider:register_listener("kyohud_buff_bridge", "buff", event, buff_callback)
         end
         for _, event in ipairs(action_events) do
-            managers.gameinfo:register_listener("kyohud_action_bridge", "player_action", event, action_callback)
+            provider:register_listener("kyohud_action_bridge", "player_action", event, action_callback)
         end
     end)
     if not ok then
         if not self._gameinfo_bridge_error_logged then
             self._gameinfo_bridge_error_logged = true
-            log("[KyoHUD] VanillaHUD+ bridge unavailable: " .. tostring(err))
+            log("[KyoHUD] Buff provider bridge unavailable: " .. tostring(err))
         end
         return false
     end
@@ -2589,7 +2679,7 @@ function KH:TryRegisterGameInfoBridge()
     self._gameinfo_bridge_active = true
     self._gameinfo_bridge_callbacks = { buff_callback, action_callback }
     self:SyncGameInfoBuffs()
-    log("[KyoHUD] Full detection linked to VanillaHUD+ buff manager.")
+    log("[KyoHUD] Buff presentation linked to the available provider.")
     return true
 end
 
@@ -2899,6 +2989,9 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._buffs = {}
     self._buff_sources = {}
     self._source_targets = {}
+    if rearm_bridge_sync and self.hudlist and self.hudlist.reset then
+        self.hudlist:reset()
+    end
     if self._equipped_perk_deck_buff then
         self._equipped_perk_deck_buff.value_text = nil
     end
@@ -3712,7 +3805,8 @@ function KH:draw()
                     frame_w,
                     frame_h,
                     buff_alpha * (0.72 + 0.28 * state.emphasis),
-                    98
+                    98,
+                    draw_frame_color(buff, t)
                 )
 
                 -- Hourly perimeter outline, reserved for temporary buffs:
@@ -3751,6 +3845,10 @@ function KH:draw()
                 local bmp = self._panel:bitmap(params)
                 bmp:set_color(buff.color or Color.white)
                 bmp:set_alpha(buff_alpha)
+
+                if buff.icon.rotation then
+                    bmp:set_rotation(buff.icon.rotation)
+                end
 
                 -- A top label occupies the line just above the frame and
                 -- shifts the value down by an additional line. A placement
@@ -4455,6 +4553,7 @@ function KH:DebugSimulate(n)
         { id = "damage_increase", value_text = "+35%" },
         { id = "damage_reduction", value_text = "-20%" },
         { id = "melee_damage_increase", value_text = "x1.75" },
+        { id = "total_dodge_chance", value_text = "25%" },
     }
     local t_now = now()
     for i, demo in ipairs(demo_static_buffs) do
@@ -4462,6 +4561,7 @@ function KH:DebugSimulate(n)
             id = demo.id,
             icon = icon_for_buff(demo.id),
             color = color_for_buff(demo.id, demo.is_debuff),
+            frame_color = frame_color_for_buff(demo.id),
             value_text = demo.value_text,
             is_debuff = demo.is_debuff == true,
             order_t = t_now + i * 0.001,
@@ -4671,6 +4771,9 @@ Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
 end)
 
 Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
+    if KH.hudlist and KH.hudlist.update then
+        KH.hudlist:update()
+    end
     if not KH._gameinfo_bridge_active then
         KH._bridge_retry_acc = (KH._bridge_retry_acc or 0) + dt
         if KH._bridge_retry_acc >= 1 then

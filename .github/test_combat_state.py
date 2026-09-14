@@ -31,6 +31,7 @@ class CombatStateTests(unittest.TestCase):
             Application = {time = function() return app_t end}
             game_state_machine = {last_queued_state_name = function() return state_name end}
         ''')
+        self.lua.execute((ROOT / "lua" / "hudlist.lua").read_text(encoding="utf-8-sig"))
         self.lua.execute((ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig"))
         self.lua.execute('''
             kyohud.settings = {enable_killfeed = true, killfeed_size = 3}
@@ -41,10 +42,8 @@ class CombatStateTests(unittest.TestCase):
         self.lua.execute('''
             kyohud.settings.enable_buffs = true
             kyohud._gameinfo_bridge_active = true
-            HUDList = {BuffItemBase = {MAP = {overkill = {}}}}
-            HUDListManager = {BUFFS = {overkill_damage_multiplier = {'overkill'}}}
             Application.time = function() error('application clock unavailable') end
-            kyohud:handle_buff_event('activate', 'overkill_damage_multiplier', {
+            kyohud:handle_buff_event('activate', 'overkill', {
                 expire_t = 1020,
                 duration = 20,
             })
@@ -55,14 +54,14 @@ class CombatStateTests(unittest.TestCase):
             kyohud._buffs = {}
             kyohud._buff_sources = {}
             kyohud._source_targets = {}
-            kyohud:handle_buff_event('activate', 'overkill_damage_multiplier', {
+            kyohud:handle_buff_event('activate', 'overkill', {
                 expire_t = 1020,
             })
             assert(kyohud._buffs.overkill == nil,
                 'absolute expiry without a safe clock or duration should be suppressed')
 
             Application.time = function() return app_t end
-            kyohud:handle_buff_event('activate', 'overkill_damage_multiplier', {
+            kyohud:handle_buff_event('activate', 'overkill', {
                 expire_t = 1020,
                 duration = 50,
             })
@@ -183,60 +182,58 @@ class CombatStateTests(unittest.TestCase):
             assert(kyohud._heist_score_total == 10 and kyohud._heist_kill_count == 1)
         ''')
 
-    def test_total_dodge_counts_smoke_once_for_provider_and_calculated_sources(self):
+    def test_total_dodge_uses_skill_dodge_chance_native_computation(self):
         self.lua.execute('''
             kyohud.settings.enable_buffs = true
             tweak_data.player = {damage = {DODGE_INIT = 0}}
             tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0.5}}
 
             local base_dodge = 0
-            local sicario_dodge = 0
+            local skill_dodge = 0
+            local running = false
             managers.blackmarket = {equipped_armor = function() return nil end}
             managers.player = {
                 body_armor_value = function(_, name)
                     return name == 'dodge' and base_dodge or 0
                 end,
-                upgrade_value = function(_, category, upgrade, default)
-                    if category == 'player' and upgrade == 'sicario_multiplier' then
-                        return sicario_dodge
-                    end
-                    return default
+                skill_dodge_chance = function(_, run, crouch, zipline)
+                    return skill_dodge
                 end,
-                get_value_from_risk_upgrade = function() return 0 end,
+                player_unit = function()
+                    return {movement = function() return {
+                        running = function() return running end,
+                        crouching = function() return false end,
+                        zipline_unit = function() return nil end,
+                    } end,
+                    character_damage = function() return {
+                        _temporary_dodge_t = 0,
+                        _temporary_dodge = 0,
+                    } end}
+                end,
+                _smoke_screen_effects = {},
             }
 
-            local function source(id, value, calculated)
-                return {source_id = id, value = value, is_calculated = calculated == true}
-            end
-
             local cases = {
-                {name = 'base-only', base = 0.2, sources = {
-                    base = source('base_dodge', nil, true),
-                }, expected = '20%'},
-                {name = 'smoke-only', base = 0, sources = {
-                    smoke = source('smoke_screen_grenade'),
-                }, expected = '50%'},
-                {name = 'base+smoke', base = 0.2, sources = {
-                    base = source('base_dodge', nil, true),
-                    smoke = source('smoke_screen_grenade'),
-                }, expected = '60%'},
-                {name = 'Sicario-only', base = 0.1, sicario = 0.25, sources = {
-                    base = source('base_dodge', nil, true),
-                    sicario = source('sicario_dodge', 0.25),
-                }, expected = '35%'},
-                {name = 'bridge source values', base = 0.2, sources = {
-                    base = source('base_dodge', nil, true),
-                    movement = source('movement_dodge', 0.1),
-                    smoke = source('smoke_screen_grenade', 0.3),
-                }, expected = '51%'},
+                {name = 'base-only', base = 0.2, skill = 0, expected = '20%'},
+                {name = 'base+skill', base = 0.2, skill = 0.1, expected = '30%'},
+                {name = 'smoke-only', base = 0, skill = 0, smoke = true, expected = '50%'},
+                {name = 'base+smoke', base = 0.2, skill = 0, smoke = true, expected = '60%'},
+                {name = 'base+skill+smoke', base = 0.2, skill = 0.1, smoke = true, expected = '65%'},
             }
 
             for _, case in ipairs(cases) do
                 base_dodge = case.base or 0
-                sicario_dodge = case.sicario or 0
+                skill_dodge = case.skill or 0
+                running = false
+                if case.smoke then
+                    managers.player._smoke_screen_effects = {{
+                        is_in_smoke = function() return true end,
+                    }}
+                else
+                    managers.player._smoke_screen_effects = {}
+                end
                 kyohud._buffs = {}
-                kyohud._buff_sources = {total_dodge_chance = case.sources}
-                kyohud:_refresh_source_target('total_dodge_chance')
+                kyohud:RefreshCalculatedBuffValues()
                 local actual = kyohud._buffs.total_dodge_chance
                     and kyohud._buffs.total_dodge_chance.value_text
                 assert(actual == case.expected,

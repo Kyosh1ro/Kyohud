@@ -1,6 +1,6 @@
 -- ky_buff_presentation.lua — KyoHUD-owned buff presentation overrides
 --
--- VanillaHUD+ remains the source of runtime state and general buff metadata.
+-- The autonomous provider owns runtime state; its catalog owns shared metadata.
 -- This module contains only KyoHUD-specific colors, labels, aggregate formats,
 -- fixed row placement, and equipped-deck presentation behavior.
 
@@ -17,7 +17,8 @@ kyohud.KYO_BUFF_CONFIG = {
         damage_reduction = "6C8CFF",
         melee_damage_increase = "D66BFF",
         passive_health_regen = "4ADE9B",
-        total_dodge_chance = "F5D547",
+        passive_health_regen_pulse = "70F5C0",
+        total_dodge_chance = "2E8B57",
     },
     buffs = {
         inspire_debuff = {
@@ -41,8 +42,15 @@ kyohud.KYO_BUFF_CONFIG = {
             label = { fallback = "[AI]", placement = "top" },
         },
         crew_health_regen = {
+            value_format = "health_per_interval",
             label = { fallback = "[AI]", placement = "top" },
         },
+        muscle_regen = { value_format = "health_per_interval" },
+        hostage_taker = { value_format = "health_per_interval" },
+        berserker = { value_format = "bonus_fraction" },
+        berserker_aced = { value_format = "bonus_fraction" },
+        yakuza_recovery = { value_format = "reduction_fraction" },
+        yakuza_speed = { value_format = "bonus_fraction" },
         damage_increase = {
             fixed_slot = 6,
             color = "damage_increase",
@@ -73,17 +81,8 @@ kyohud.KYO_BUFF_CONFIG = {
                 placement = "timer",
             },
         },
-        passive_health_regen = {
-            fixed_slot = 3,
-            color = "passive_health_regen",
-            value_format = "passive_health_regen",
-            label = {
-                id = "ky_hud_buff_label_health_regen",
-                fallback = "HP+",
-                placement = "timer",
-            },
-        },
         total_dodge_chance = {
+            fixed_slot = 9,
             color = "total_dodge_chance",
             value_format = "total_dodge_chance",
             label = {
@@ -92,9 +91,23 @@ kyohud.KYO_BUFF_CONFIG = {
                 placement = "timer",
             },
         },
-        biker = {
-            stack_format = "biker_charges",
+
+        passive_health_regen = {
+            fixed_slot = 3,
+            color = "passive_health_regen",
+            frame_color = "passive_health_regen",
+            frame_animation = {
+                color_b = "passive_health_regen_pulse",
+                period = 2.5,
+            },
+            value_format = "passive_health_regen",
+            label = {
+                id = "ky_hud_buff_label_health_regen",
+                fallback = "HP+",
+                placement = "timer",
+            },
         },
+
         partner_in_crime = {
             persistent_counter = "local_minions",
             skill_id = "control_freak",

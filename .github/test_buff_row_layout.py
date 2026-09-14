@@ -58,6 +58,9 @@ class BuffRowLayoutTests(unittest.TestCase):
             end
         ''')
         self.lua.execute(
+            (ROOT / "lua" / "hudlist.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
             (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
         )
 
@@ -195,6 +198,150 @@ class BuffRowLayoutTests(unittest.TestCase):
             assert(kyohud._buffs.first.order_t == first_order)
             assert(kyohud._buffs.second.order_t == second_order)
             assert(kyohud._buffs.first.order_t < kyohud._buffs.second.order_t)
+        ''')
+
+    def test_draw_applies_per_buff_icon_and_frame_overrides(self):
+        self.lua.execute(
+            (ROOT / "lua" / "hudlist_catalog.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute('''
+            function Idstring(value) return value end
+            DB = {has = function() return true end}
+            tweak_data.hud_icons = {get_icon_data = function(self, id)
+                return "native/" .. id, {0, 0, 32, 32}
+            end}
+
+            local panel = {bitmaps = {}, gradients = {}, rects = {}}
+            function panel:clear() self.bitmaps = {}; self.gradients = {}; self.rects = {} end
+            function panel:w() return 800 end
+            function panel:h() return 600 end
+            function panel:gradient(params)
+                self.gradients[#self.gradients + 1] = params
+                return params
+            end
+            function panel:rect(params)
+                self.rects[#self.rects + 1] = params
+                return params
+            end
+            function panel:polyline(params) return params end
+            function panel:bitmap(params)
+                local bitmap = {
+                    params = params,
+                    set_color = function() end,
+                    set_alpha = function() end,
+                    set_rotation = function(self, rotation) self.rotation = rotation end,
+                }
+                self.bitmaps[#self.bitmaps + 1] = bitmap
+                return bitmap
+            end
+            function panel:text(params)
+                return {text_rect = function() return 0, 0, 20, 12 end}
+            end
+
+            kyohud._panel = panel
+            kyohud._buffs = {}
+            kyohud._kills = {}
+            kyohud._debug_preview_active = true
+            kyohud._gameinfo_bridge_active = true
+            kyohud.settings = {
+                enable_buffs = true,
+                enable_killfeed = false,
+                icon_size = 32,
+                opacity = 0.9,
+                buff_position_x = 50,
+                buff_position_y = 85,
+                circle_radius = 250,
+            }
+            kyohud:add_buff("melee_damage_increase", nil, nil, nil, true, false, "x1.5")
+            kyohud:add_buff("total_dodge_chance", nil, nil, nil, true, false, "25%")
+            kyohud:add_buff("passive_health_regen", nil, nil, nil, true, false, "4.5%")
+            assert(kyohud._buffs.melee_damage_increase.icon.rotation == -90)
+            assert(kyohud._buffs.melee_damage_increase.icon.texture == "native/throwing_axe",
+                "unexpected melee texture " .. tostring(kyohud._buffs.melee_damage_increase.icon.texture))
+            kyohud:draw()
+
+            local melee_bitmap
+            local dodge_bitmap
+            for _, bitmap in ipairs(panel.bitmaps) do
+                if bitmap.params.texture == "native/throwing_axe" then
+                    melee_bitmap = bitmap
+                elseif bitmap.params.texture == "guis/textures/pd2/specialization/icons_atlas" then
+                    dodge_bitmap = bitmap
+                end
+            end
+            assert(melee_bitmap and melee_bitmap.rotation == -90,
+                "renderer did not rotate the throwing axe 90 degrees counter-clockwise; bitmaps="
+                .. tostring(#panel.bitmaps))
+            assert(dodge_bitmap and dodge_bitmap.rotation == nil,
+                "renderer rotated the Burglar dodge icon")
+
+            local has_health_green_frame = false
+            for _, gradient in ipairs(panel.gradients) do
+                for _, point in ipairs(gradient.gradient_points or {}) do
+                    if type(point) == "table" and type(point.r) == "number"
+                        and point.r > 0.25 and point.r < 0.55
+                        and point.g > 0.80 and point.g < 1.0
+                        and point.b > 0.55 and point.b < 0.85 then
+                        has_health_green_frame = true
+                    end
+                end
+            end
+            assert(has_health_green_frame,
+                "renderer did not use an animated PV+ green for the health regeneration frame")
+
+            local green_outline_strokes = 0
+            for _, rect in ipairs(panel.rects) do
+                if rect.color and type(rect.color.r) == "number"
+                    and rect.color.r > 0.25 and rect.color.r < 0.55
+                    and rect.color.g > 0.80 and rect.color.g < 1.0
+                    and rect.color.b > 0.55 and rect.color.b < 0.85 then
+                    green_outline_strokes = green_outline_strokes + 1
+                end
+            end
+            assert(green_outline_strokes == 4,
+                "PV+ must have a complete visible green outline, got "
+                .. tostring(green_outline_strokes) .. " strokes")
+
+            local first_outline_color = panel.rects[1].color
+            local static_frame_color
+            for _, gradient in ipairs(panel.gradients) do
+                for _, point in ipairs(gradient.gradient_points or {}) do
+                    if type(point) == "table" and point.r == 0.52
+                        and point.g == 0.88 and point.b == 0.92 then
+                        static_frame_color = point
+                        break
+                    end
+                end
+                if static_frame_color then break end
+            end
+            assert(static_frame_color, "renderer did not retain a generic static frame")
+
+            game_t = game_t + kyohud._frame_anim_cache.passive_health_regen.period * 0.25
+            kyohud:draw()
+            local second_outline_color = panel.rects[1] and panel.rects[1].color
+            assert(second_outline_color,
+                "renderer removed the PV+ outline on the next animation frame")
+            assert(first_outline_color.r ~= second_outline_color.r
+                or first_outline_color.g ~= second_outline_color.g
+                or first_outline_color.b ~= second_outline_color.b,
+                "rendered PV+ outline color did not change over time")
+
+            local static_frame_color_after
+            for _, gradient in ipairs(panel.gradients) do
+                for _, point in ipairs(gradient.gradient_points or {}) do
+                    if type(point) == "table" and point.r == 0.52
+                        and point.g == 0.88 and point.b == 0.92 then
+                        static_frame_color_after = point
+                        break
+                    end
+                end
+                if static_frame_color_after then break end
+            end
+            assert(static_frame_color_after
+                and static_frame_color_after.r == static_frame_color.r
+                and static_frame_color_after.g == static_frame_color.g
+                and static_frame_color_after.b == static_frame_color.b,
+                "animation changed another buff's generic frame color")
         ''')
 
     def test_draw_uses_layout_and_renders_exact_overflow_count(self):
