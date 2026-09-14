@@ -1385,6 +1385,7 @@ end
 
 local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
     local left, top, width, height = align_buff_cell_rect(x, y, w, h)
+    local has_custom_outline = color ~= nil
     color = color or HUD_ACCENT_COLOR
 
     panel:gradient({
@@ -1439,13 +1440,51 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
         },
         layer = layer + 1,
     })
+
+    if has_custom_outline then
+        local stroke = 2
+        local outline_color = color:with_alpha(math.min(1, alpha * 1.15))
+        local outline_layer = layer + 1
+        panel:rect({
+            x = left,
+            y = top,
+            w = width,
+            h = stroke,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left,
+            y = top + height - stroke,
+            w = width,
+            h = stroke,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left,
+            y = top + stroke,
+            w = stroke,
+            h = height - stroke * 2,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left + width - stroke,
+            y = top + stroke,
+            w = stroke,
+            h = height - stroke * 2,
+            color = outline_color,
+            layer = outline_layer,
+        })
+    end
 end
 
 -- Traces the still-active part of a temporary buff's outline. The path
 -- starts at the top edge midpoint and advances clockwise; its end thus
 -- recedes continuously as the timer approaches zero.
--- This outline is the only stroke allowed to cross the cell's top:
--- the static frame, meanwhile, stays at three sides.
+-- Generic static frames stay at three sides. A buff with an explicit frame
+-- color may use a complete static outline instead.
 local function append_progress_segment(points, remaining_length, x1, y1, x2, y2, segment_length)
     if remaining_length <= 0 or segment_length <= 0 then return remaining_length end
 

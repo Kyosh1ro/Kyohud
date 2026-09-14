@@ -200,7 +200,7 @@ class BuffRowLayoutTests(unittest.TestCase):
             assert(kyohud._buffs.first.order_t < kyohud._buffs.second.order_t)
         ''')
 
-    def test_draw_applies_rotation_only_to_the_declared_icon(self):
+    def test_draw_applies_per_buff_icon_and_frame_overrides(self):
         self.lua.execute(
             (ROOT / "lua" / "hudlist_catalog.lua").read_text(encoding="utf-8-sig")
         )
@@ -211,15 +211,18 @@ class BuffRowLayoutTests(unittest.TestCase):
                 return "native/" .. id, {0, 0, 32, 32}
             end}
 
-            local panel = {bitmaps = {}, gradients = {}}
-            function panel:clear() self.bitmaps = {}; self.gradients = {} end
+            local panel = {bitmaps = {}, gradients = {}, rects = {}}
+            function panel:clear() self.bitmaps = {}; self.gradients = {}; self.rects = {} end
             function panel:w() return 800 end
             function panel:h() return 600 end
             function panel:gradient(params)
                 self.gradients[#self.gradients + 1] = params
                 return params
             end
-            function panel:rect(params) return params end
+            function panel:rect(params)
+                self.rects[#self.rects + 1] = params
+                return params
+            end
             function panel:polyline(params) return params end
             function panel:bitmap(params)
                 local bitmap = {
@@ -282,6 +285,16 @@ class BuffRowLayoutTests(unittest.TestCase):
             end
             assert(has_health_green_frame,
                 "renderer did not use the PV+ green for the health regeneration frame")
+
+            local green_outline_strokes = 0
+            for _, rect in ipairs(panel.rects) do
+                if rect.color and rect.color.r == "4ADE9B" then
+                    green_outline_strokes = green_outline_strokes + 1
+                end
+            end
+            assert(green_outline_strokes == 4,
+                "PV+ must have a complete visible green outline, got "
+                .. tostring(green_outline_strokes) .. " strokes")
         ''')
 
     def test_draw_uses_layout_and_renders_exact_overflow_count(self):
