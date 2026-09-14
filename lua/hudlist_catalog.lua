@@ -341,6 +341,167 @@ local Catalog = {
     },
 }
 
+-- Visual descriptors reconstructed from the HUDList lineage and checked against
+-- current PAYDAY 2 skill/perk identifiers.  Keeping this inventory explicit
+-- prevents ensure_definition() from silently turning a missed producer into an
+-- indistinguishable generic tickbox.
+local function skill_icon(skill_id, atlas)
+    return {
+        skill_id = skill_id,
+        skill_atlas = atlas,
+        icon_provenance = "current skilltree skill " .. skill_id .. " icon_xy",
+    }
+end
+
+local function perk_icon(x, y, folder, source)
+    return {
+        perks = { x, y },
+        texture_bundle_folder = folder,
+        icon_provenance = source or "verified HUDList specialization icon coordinates",
+    }
+end
+
+local function hud_icon(id, source)
+    return {
+        hud_tweak = id,
+        icon_provenance = source or "verified native hud icon " .. id,
+    }
+end
+
+local function intentional_fallback(reason)
+    return {
+        hud_tweak = "pd2_generic_tickbox",
+        intentional_fallback = true,
+        fallback_reason = reason,
+        icon_provenance = "reviewed generic fallback; no verified dedicated asset",
+    }
+end
+
+
+local VISUALS = {
+    aggressive_reload_aced = skill_icon("speedy_reload"),
+    ammo_efficiency = skill_icon("single_shot_ammo_return"),
+    ammo_give_out_debuff = perk_icon(5, 5),
+    anarchist_armor_recovery_debuff = perk_icon(0, 1, "opera"),
+    armor_break_invulnerable = perk_icon(6, 1),
+    armor_break_invulnerable_debuff = perk_icon(6, 1),
+    armorer = perk_icon(6, 0),
+    berserker = skill_icon("wolverine"),
+    berserker_aced = skill_icon("wolverine"),
+    biker = perk_icon(0, 0, "wild"),
+    bloodthirst_aced = skill_icon("bloodthirst"),
+    bloodthirst_basic = skill_icon("bloodthirst"),
+    bullet_storm = skill_icon("ammo_reservoir"),
+    bulletproof = perk_icon(6, 2),
+    bullseye_debuff = skill_icon("prison_wife"),
+    chico_injector = perk_icon(0, 0, "chico"),
+    chico_injector_debuff = perk_icon(0, 0, "chico"),
+    close_contact = perk_icon(5, 4),
+    combat_medic = skill_icon("combat_medic"),
+    combat_medic_interaction = skill_icon("combat_medic"),
+    combat_medic_passive = skill_icon("combat_medic"),
+    copr_ability = perk_icon(0, 0, "copr"),
+    copr_ability_debuff = perk_icon(0, 0, "copr"),
+    copycat_health_invul = perk_icon(3, 0, "mrwi"),
+    copycat_health_invul_debuff = perk_icon(3, 0, "mrwi"),
+    copycat_health_invul_passive = perk_icon(3, 0, "mrwi"),
+    copycat_health_shot = perk_icon(1, 0, "mrwi"),
+    copycat_health_shot_debuff = perk_icon(1, 0, "mrwi"),
+    crew_chief = perk_icon(2, 0),
+    crew_health_regen = hud_icon("skill_5", "verified native AI skill icon skill_5"),
+    crew_inspire_debuff = hud_icon("ability_1", "verified native AI ability icon ability_1"),
+    crew_throwable_regen = hud_icon("skill_7", "verified native AI skill icon skill_7"),
+    delayed_damage = perk_icon(3, 0, "myh"),
+    delayed_damage_debuff = perk_icon(3, 0, "myh"),
+    desperado = skill_icon("expert_handling"),
+    die_hard = skill_icon("show_of_force"),
+    dire_need = skill_icon("dire_need"),
+    endurance = skill_icon("triathlete"),
+    forced_friendship = skill_icon("triathlete", "skills"),
+    frenzy = skill_icon("frenzy"),
+    grinder = perk_icon(4, 6),
+    grinder_debuff = perk_icon(4, 6),
+    hostage_situation = perk_icon(0, 1),
+    hostage_taker = skill_icon("black_marketeer"),
+    inspire = skill_icon("inspire"),
+    inspire_debuff = skill_icon("inspire"),
+    inspire_revive_debuff = skill_icon("inspire"),
+    invulnerable_buff = hud_icon("csb_melee"),
+    life_drain_debuff = perk_icon(7, 4),
+    life_steal_debuff = hud_icon("csb_lifesteal"),
+    lock_n_load = skill_icon("shock_and_awe"),
+    maniac = perk_icon(0, 0, "coco"),
+    maniac_debuff = perk_icon(0, 0, "coco"),
+    medical_supplies_debuff = perk_icon(4, 5),
+    melee_stack_damage = perk_icon(5, 4),
+    messiah = skill_icon("messiah"),
+    muscle_regen = perk_icon(4, 1),
+    overdog = perk_icon(6, 4),
+    overkill = skill_icon("overkill"),
+    overkill_aced = skill_icon("overkill"),
+    painkiller = skill_icon("fast_learner"),
+    partner_in_crime = skill_icon("control_freak"),
+    partner_in_crime_aced = skill_icon("control_freak"),
+    pocket_ecm_jammer = perk_icon(0, 0, "joy"),
+    pocket_ecm_jammer_debuff = perk_icon(0, 0, "joy"),
+    pocket_ecm_kill_dodge = perk_icon(3, 0, "joy"),
+    quick_fix = skill_icon("tea_time"),
+    running_from_death = skill_icon("running_from_death"),
+    second_wind = skill_icon("scavenger"),
+    sicario_dodge = perk_icon(1, 0, "max"),
+    sicario_dodge_debuff = perk_icon(1, 0, "max"),
+    sixth_sense = skill_icon("chameleon"),
+    smoke_screen_grenade = perk_icon(0, 0, "max"),
+    smoke_screen_grenade_debuff = perk_icon(0, 0, "max"),
+    sociopath_debuff = perk_icon(3, 5),
+    swan_song = skill_icon("perseverance"),
+    swan_song_aced = skill_icon("perseverance"),
+    tag_team = perk_icon(0, 0, "ecp"),
+    tag_team_debuff = perk_icon(0, 0, "ecp"),
+    tooth_and_claw = perk_icon(0, 3),
+    trigger_happy = skill_icon("trigger_happy"),
+    underdog = skill_icon("underdog"),
+    underdog_aced = skill_icon("underdog"),
+    unseen_strike = skill_icon("unseen_strike"),
+    unseen_strike_debuff = skill_icon("unseen_strike"),
+    up_you_go = skill_icon("up_you_go"),
+    uppers = skill_icon("tea_cookies"),
+    uppers_debuff = skill_icon("tea_cookies"),
+    yakuza_recovery = perk_icon(2, 7),
+    yakuza_speed = perk_icon(2, 7),
+
+    damage_increase = hud_icon("equipment_chrome_mask"),
+    damage_reduction = skill_icon("dire_need"),
+    melee_damage_increase = skill_icon("hidden_blade"),
+    total_dodge_chance = { skills_new = { 1, 12 }, texture_bundle_folder = "max",
+        icon_provenance = "verified HUDList total dodge composite icon" },
+    equipped_perk_deck = hud_icon("pd2_generic_tickbox",
+        "intentional bootstrap icon replaced by the equipped specialization icon"),
+
+    calm = intentional_fallback("official producer has no dedicated HUDList visual"),
+    cc_passive_damage_reduction = intentional_fallback("legacy direct ID has no verified dedicated asset"),
+    movement_dodge = intentional_fallback("source value is represented by the total dodge composite"),
+    self_healer_debuff = intentional_fallback("legacy direct ID has no verified dedicated asset"),
+    some_invulnerability_debuff = intentional_fallback("dynamic invulnerability source has no stable native icon"),
+    virtue_debuff = intentional_fallback("legacy direct ID has no verified dedicated asset"),
+}
+
+for id, visual in pairs(VISUALS) do
+    local definition = Catalog.definitions[id] or {
+        class = "BuffItemBase",
+        priority = string.match(id, "_debuff$") and 8 or 4,
+    }
+    Catalog.definitions[id] = definition
+    if visual.skill_id or visual.skills_new or visual.skills or visual.perks or visual.texture then
+        definition.hud_tweak = nil
+    end
+    for key, value in pairs(visual) do definition[key] = value end
+    if definition.hud_tweak == "pd2_generic_tickbox" and id == "equipped_perk_deck" then
+        definition.intentional_fallback = true
+        definition.fallback_reason = "replaced at runtime by the equipped specialization icon"
+    end
+end
+
 local DYNAMIC_IDS = {
     grenade = {
         chico_injector = { public_id = "chico_injector_debuff", type = "ability",
