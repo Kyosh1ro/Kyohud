@@ -1,0 +1,58 @@
+{
+    "menu_id": "kyohud_buffs_ghost",
+    "parent_menu_id": "kyohud_buffs_menu",
+    "title": "ky_opt_buff_cat_ghost",
+    "description": "ky_opt_buff_cat_ghost_desc",
+    "items": [
+        {
+            "type": "toggle",
+            "id": "ky_buff_dire_need",
+            "title": "ky_opt_buff_dire_need",
+            "description": "ky_opt_buff_dire_need_desc",
+            "value": "dire_need",
+            "callback": "KY_ToggleBuff_dire_need",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_second_wind",
+            "title": "ky_opt_buff_second_wind",
+            "description": "ky_opt_buff_second_wind_desc",
+            "value": "second_wind",
+            "callback": "KY_ToggleBuff_second_wind",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_sixth_sense",
+            "title": "ky_opt_buff_sixth_sense",
+            "description": "ky_opt_buff_sixth_sense_desc",
+            "value": "sixth_sense",
+            "callback": "KY_ToggleBuff_sixth_sense",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_old_sixth_sense",
+            "title": "ky_opt_buff_old_sixth_sense",
+            "description": "ky_opt_buff_old_sixth_sense_desc",
+            "value": "old_sixth_sense",
+            "callback": "KY_ToggleBuff_old_sixth_sense",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_unseen_strike",
+            "title": "ky_opt_buff_unseen_strike",
+            "description": "ky_opt_buff_unseen_strike_desc",
+            "value": "unseen_strike",
+            "callback": "KY_ToggleBuff_unseen_strike",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        }
+    ]
+}

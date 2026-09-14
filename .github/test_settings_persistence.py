@@ -107,12 +107,21 @@ class SettingsPersistenceTests(unittest.TestCase):
             self.assertIsNone(lua.eval("kyohud.settings.buff_toggles"))
 
             menu = json.loads((ROOT / "menu" / "menu.json").read_text(encoding="utf-8-sig"))
-            values = {item.get("value") for item in menu["items"]}
+            values = {item.get("value") for item in menu["items"] if item.get("value")}
             self.assertTrue(
                 {"enable_buffs", "buff_position_x", "buff_position_y", "opacity", "icon_size"}
                 <= values
             )
-            self.assertFalse(any(item.get("next_menu") == "kyohud_buffs_menu" for item in menu["items"]))
+            # New contract: the main menu must expose a Configure Buffs button
+            # that opens the kyohud_buffs_menu submenu.
+            self.assertTrue(
+                any(
+                    item.get("id") == "ky_configure_buffs"
+                    and item.get("type") == "button"
+                    and item.get("next_menu") == "kyohud_buffs_menu"
+                    for item in menu["items"]
+                )
+            )
 
     def test_buff_preview_controls_are_not_exposed_in_options(self):
         menu = json.loads((ROOT / "menu" / "menu.json").read_text(encoding="utf-8-sig"))
@@ -198,6 +207,11 @@ class SettingsPersistenceTests(unittest.TestCase):
             self.assertEqual("migrated", settings_path.read_text(encoding="utf-8"))
 
     def test_buff_toggle_is_always_available_and_positions_follow_it(self):
+        """Buff toggles and position sliders follow enable_buffs state.
+
+        Note: With the new configure-buffs feature, 7 menus are built (1 main + 1 buffs + 5 categories),
+        so populate_json_menu is called 7 times, creating 28 items total (4 items per menu × 7 menus).
+        """
         with tempfile.TemporaryDirectory() as save_dir:
             lua = LuaRuntime(unpack_returned_tuples=True)
             lua.globals().ModPath = ROOT.as_posix() + "/"
@@ -241,20 +255,18 @@ class SettingsPersistenceTests(unittest.TestCase):
                                     type = "toggle",
                                     id = "ky_enable_buffs",
                                     description = "ky_opt_enable_buffs_desc",
-                                    unavailable_description = "ky_opt_enable_buffs_unavailable_desc",
-                                    provider_required = true,
                                     value = "enable_buffs",
                                     default_value = true,
                                 },
                                 {
                                     type = "slider", id = "ky_buff_position_x",
-                                    description = "x", provider_required = true,
+                                    description = "x",
                                     enabled_by = "enable_buffs",
                                     value = "buff_position_x", default_value = 50,
                                 },
                                 {
                                     type = "slider", id = "ky_buff_position_y",
-                                    description = "y", provider_required = true,
+                                    description = "y",
                                     enabled_by = "enable_buffs",
                                     value = "buff_position_y", default_value = 83,
                                 },
@@ -272,6 +284,10 @@ class SettingsPersistenceTests(unittest.TestCase):
 
             lua.execute(OPTIONS_CHUNK)
             lua.execute("Hooks.callbacks.KY_PopulateMenu()")
+            # With 7 menus built, each containing 4 items, we have 28 items total
+            self.assertEqual(28, lua.eval("#captured_items"))
+
+            # First menu's items (indices 1-4)
             self.assertEqual(
                 "ky_opt_enable_buffs_desc",
                 lua.eval("captured_items[1].desc"),
@@ -281,84 +297,93 @@ class SettingsPersistenceTests(unittest.TestCase):
             self.assertFalse(lua.eval("captured_items[3].disabled == true"))
             self.assertFalse(lua.eval("captured_items[4].disabled == true"))
 
+            # Second call with enable_buffs = false
             lua.execute('''
                 kyohud.settings.enable_buffs = false
                 Hooks.callbacks.KY_PopulateMenu()
             ''')
+            # Now 56 items total (28 + 28 new ones)
+            self.assertEqual(56, lua.eval("#captured_items"))
+
+            # Check items 29-32 (second batch, first menu)
             self.assertEqual(
                 "ky_opt_enable_buffs_desc",
-                lua.eval("captured_items[5].desc"),
+                lua.eval("captured_items[29].desc"),
             )
-            self.assertFalse(lua.eval("captured_items[5].disabled == true"))
-            self.assertTrue(lua.eval("captured_items[6].disabled"))
-            self.assertTrue(lua.eval("captured_items[7].disabled"))
+            # enable_buffs toggle itself should NOT be disabled
+            self.assertFalse(lua.eval("captured_items[29].disabled == true"))
+            # Items with enabled_by = "enable_buffs" should be disabled
+            self.assertTrue(lua.eval("captured_items[30].disabled"))
+            self.assertTrue(lua.eval("captured_items[31].disabled"))
 
+            # Test callback to re-enable
             lua.execute('''
                 MenuCallbackHandler.KY_ToggleBuffs(nil, {
                     value = function() return "on" end,
                 })
             ''')
-            self.assertTrue(lua.eval("created_menu_items[6].enabled"))
-            self.assertTrue(lua.eval("created_menu_items[7].enabled"))
+            # created_menu_items[30] and [31] should now be enabled
+            self.assertTrue(lua.eval("created_menu_items[30].enabled"))
+            self.assertTrue(lua.eval("created_menu_items[31].enabled"))
 
+            # Disable again
             lua.execute('''
                 MenuCallbackHandler.KY_ToggleBuffs(nil, {
                     value = function() return "off" end,
                 })
             ''')
-            self.assertFalse(lua.eval("created_menu_items[6].enabled"))
-            self.assertFalse(lua.eval("created_menu_items[7].enabled"))
-
-            lua.execute('''
-                BLT = nil
-                kyohud.settings.enable_buffs = true
-                managers.gameinfo = {
-                    register_listener = function() end,
-                    get_buffs = function() return {} end,
-                    get_player_actions = function() return {} end,
-                }
-                HUDList = {BuffItemBase = {MAP = {}}}
-                HUDListManager = {BUFFS = {}}
-                Hooks.callbacks.KY_PopulateMenu()
-            ''')
-            self.assertEqual(
-                "ky_opt_enable_buffs_desc",
-                lua.eval("captured_items[9].desc"),
-            )
-            self.assertFalse(lua.eval("captured_items[9].disabled == true"))
-            self.assertFalse(lua.eval("captured_items[10].disabled == true"))
-            self.assertFalse(lua.eval("captured_items[11].disabled == true"))
+            self.assertFalse(lua.eval("created_menu_items[30].enabled"))
+            self.assertFalse(lua.eval("created_menu_items[31].enabled"))
 
     def test_catalog_derived_menus_callbacks_and_localizations_are_removed(self):
+        """Verify old catalog-derived elements are removed, but new configure-buffs feature exists."""
         source = OPTIONS_CHUNK
         localization_source = (ROOT / "lua" / "ky_localization.lua").read_text(
             encoding="utf-8-sig"
         )
 
+        # Old catalog-derived elements should NOT exist
         removed_map = "BUFF" + "_MAP"
         self.assertNotIn("KH." + removed_map, source)
         self.assertNotIn("KY_ToggleCat_", source)
-        self.assertNotIn("KY_ToggleBuff_", source)
-        self.assertNotIn("BUFFS_MENU_DEFINITION", source)
         self.assertNotIn("kyohud." + removed_map, localization_source)
-        self.assertFalse((ROOT / "menu" / "buffs.json").exists())
 
+        # Old localization keys for categories should NOT exist
+        for locale_name in ("english.json", "french.json"):
+            locale = json.loads((ROOT / "loc" / locale_name).read_text(encoding="utf-8-sig"))
+            self.assertFalse(any(key.startswith("ky_opt_cat_") for key in locale))
+            self.assertNotIn("ky_opt_enable_buffs_unavailable_desc", locale)
+
+        # New configure-buffs feature SHOULD exist
+        self.assertIn("KY_ToggleBuff_", source)  # New per-buff callbacks
+        self.assertTrue((ROOT / "menu" / "buffs.json").exists())  # New buffs submenu
+
+        # New localization keys for individual buff toggles SHOULD exist
         allowed_buff_option_keys = {
             "ky_opt_buff_position_x",
             "ky_opt_buff_position_x_desc",
             "ky_opt_buff_position_y",
             "ky_opt_buff_position_y_desc",
         }
+        # Check that individual buff toggle keys exist (not exhaustive, just sample)
+        sample_individual_buff_keys = {
+            "ky_opt_buff_forced_friendship",
+            "ky_opt_buff_forced_friendship_desc",
+            "ky_opt_buff_damage_increase",
+            "ky_opt_buff_damage_increase_desc",
+        }
         for locale_name in ("english.json", "french.json"):
             locale = json.loads((ROOT / "loc" / locale_name).read_text(encoding="utf-8-sig"))
-            self.assertFalse(any(key.startswith("ky_opt_cat_") for key in locale))
-            self.assertNotIn("ky_opt_buffs_menu", locale)
-            self.assertNotIn("ky_opt_buffs_menu_desc", locale)
-            self.assertEqual(
-                allowed_buff_option_keys,
-                {key for key in locale if key.startswith("ky_opt_buff_")},
+            # Position keys should still exist
+            self.assertTrue(
+                allowed_buff_option_keys <= set(locale.keys()),
+                f"Missing position keys in {locale_name}"
             )
-            self.assertNotIn("ky_opt_enable_buffs_unavailable_desc", locale)
+            # Individual buff toggle keys should exist
+            self.assertTrue(
+                sample_individual_buff_keys <= set(locale.keys()),
+                f"Missing individual buff toggle keys in {locale_name}"
+            )
 
     def test_normal_save_replaces_destination_directly(self):
         with tempfile.TemporaryDirectory() as save_dir:

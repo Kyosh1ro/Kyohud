@@ -62,6 +62,14 @@
       "default_value": true
     },
     {
+      "type": "button",
+      "id": "ky_configure_buffs",
+      "title": "ky_opt_configure_buffs",
+      "description": "ky_opt_configure_buffs_desc",
+      "next_menu": "kyohud_buffs_menu",
+      "enabled_by": "enable_buffs"
+    },
+    {
       "type": "slider",
       "id": "ky_killfeed_size",
       "title": "ky_opt_killfeed_size",

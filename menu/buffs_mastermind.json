@@ -1,0 +1,128 @@
+{
+    "menu_id": "kyohud_buffs_mastermind",
+    "parent_menu_id": "kyohud_buffs_menu",
+    "title": "ky_opt_buff_cat_mastermind",
+    "description": "ky_opt_buff_cat_mastermind_desc",
+    "items": [
+        {
+            "type": "toggle",
+            "id": "ky_buff_forced_friendship",
+            "title": "ky_opt_buff_forced_friendship",
+            "description": "ky_opt_buff_forced_friendship_desc",
+            "value": "forced_friendship",
+            "callback": "KY_ToggleBuff_forced_friendship",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_aggressive_reload_aced",
+            "title": "ky_opt_buff_aggressive_reload_aced",
+            "description": "ky_opt_buff_aggressive_reload_aced_desc",
+            "value": "aggressive_reload_aced",
+            "callback": "KY_ToggleBuff_aggressive_reload_aced",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_combat_medic",
+            "title": "ky_opt_buff_combat_medic",
+            "description": "ky_opt_buff_combat_medic_desc",
+            "value": "combat_medic",
+            "callback": "KY_ToggleBuff_combat_medic",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_combat_medic_passive",
+            "title": "ky_opt_buff_combat_medic_passive",
+            "description": "ky_opt_buff_combat_medic_passive_desc",
+            "value": "combat_medic_passive",
+            "callback": "KY_ToggleBuff_combat_medic_passive",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_hostage_taker",
+            "title": "ky_opt_buff_hostage_taker",
+            "description": "ky_opt_buff_hostage_taker_desc",
+            "value": "hostage_taker",
+            "callback": "KY_ToggleBuff_hostage_taker",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_inspire",
+            "title": "ky_opt_buff_inspire",
+            "description": "ky_opt_buff_inspire_desc",
+            "value": "inspire",
+            "callback": "KY_ToggleBuff_inspire",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_painkiller",
+            "title": "ky_opt_buff_painkiller",
+            "description": "ky_opt_buff_painkiller_desc",
+            "value": "painkiller",
+            "callback": "KY_ToggleBuff_painkiller",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_partner_in_crime",
+            "title": "ky_opt_buff_partner_in_crime",
+            "description": "ky_opt_buff_partner_in_crime_desc",
+            "value": "partner_in_crime",
+            "callback": "KY_ToggleBuff_partner_in_crime",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_quick_fix",
+            "title": "ky_opt_buff_quick_fix",
+            "description": "ky_opt_buff_quick_fix_desc",
+            "value": "quick_fix",
+            "callback": "KY_ToggleBuff_quick_fix",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_uppers",
+            "title": "ky_opt_buff_uppers",
+            "description": "ky_opt_buff_uppers_desc",
+            "value": "uppers",
+            "callback": "KY_ToggleBuff_uppers",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_inspire_debuff",
+            "title": "ky_opt_buff_inspire_debuff",
+            "description": "ky_opt_buff_inspire_debuff_desc",
+            "value": "inspire_debuff",
+            "callback": "KY_ToggleBuff_inspire_debuff",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_inspire_revive_debuff",
+            "title": "ky_opt_buff_inspire_revive_debuff",
+            "description": "ky_opt_buff_inspire_revive_debuff_desc",
+            "value": "inspire_revive_debuff",
+            "callback": "KY_ToggleBuff_inspire_revive_debuff",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        }
+    ]
+}

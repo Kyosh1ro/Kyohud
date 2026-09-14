@@ -1,0 +1,68 @@
+{
+    "menu_id": "kyohud_buffs_enforcer",
+    "parent_menu_id": "kyohud_buffs_menu",
+    "title": "ky_opt_buff_cat_enforcer",
+    "description": "ky_opt_buff_cat_enforcer_desc",
+    "items": [
+        {
+            "type": "toggle",
+            "id": "ky_buff_bulletproof",
+            "title": "ky_opt_buff_bulletproof",
+            "description": "ky_opt_buff_bulletproof_desc",
+            "value": "bulletproof",
+            "callback": "KY_ToggleBuff_bulletproof",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_bullet_storm",
+            "title": "ky_opt_buff_bullet_storm",
+            "description": "ky_opt_buff_bullet_storm_desc",
+            "value": "bullet_storm",
+            "callback": "KY_ToggleBuff_bullet_storm",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_die_hard",
+            "title": "ky_opt_buff_die_hard",
+            "description": "ky_opt_buff_die_hard_desc",
+            "value": "die_hard",
+            "callback": "KY_ToggleBuff_die_hard",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_overkill",
+            "title": "ky_opt_buff_overkill",
+            "description": "ky_opt_buff_overkill_desc",
+            "value": "overkill",
+            "callback": "KY_ToggleBuff_overkill",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_underdog",
+            "title": "ky_opt_buff_underdog",
+            "description": "ky_opt_buff_underdog_desc",
+            "value": "underdog",
+            "callback": "KY_ToggleBuff_underdog",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_bullseye_debuff",
+            "title": "ky_opt_buff_bullseye_debuff",
+            "description": "ky_opt_buff_bullseye_debuff_desc",
+            "value": "bullseye_debuff",
+            "callback": "KY_ToggleBuff_bullseye_debuff",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        }
+    ]
+}

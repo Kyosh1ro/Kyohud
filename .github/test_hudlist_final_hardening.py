@@ -999,8 +999,11 @@ class DocumentedLimitsTests(unittest.TestCase):
         self.assertIn("hudlist_catalog.lua", codex)
         self.assertIn("ky_buff_presentation.lua", codex)
         self.assertIn("HUDList", codex)
-        self.assertIn("HUDListManager", codex)
         self.assertIn("GameInfoManager", codex)
+        self.assertIn("provider autonome", codex)
+        self.assertIn("API natives", codex)
+        self.assertNotIn("managers.gameinfo", codex)
+        self.assertNotIn("HUDListManager.BUFFS", codex)
 
 
 if __name__ == "__main__":

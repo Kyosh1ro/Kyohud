@@ -431,11 +431,18 @@ local function frame_color_for_buff(buff_id)
 end
 
 -- ═══════════════════════════════════════════════════
--- Checks if the autonomous definition allows this buff.
+-- KyoHUD's individual toggles take priority over the autonomous catalog for
+-- configured IDs; unlisted IDs retain their catalog visibility.
 -- ═══════════════════════════════════════════════════
 function KH:is_buff_visible(buff_id)
     if not self.settings or not self.settings.enable_buffs then return false end
 
+    -- KyoHUD's individual toggles are authoritative for configured buff IDs.
+    if self._BUFF_TOGGLE_SET and self._BUFF_TOGGLE_SET[buff_id] then
+        return self.settings[buff_id] ~= false
+    end
+
+    -- For unlisted IDs, fall back to the autonomous catalog definition.
     if self._gameinfo_bridge_active then
         local runtime_definition = self:GetVanillaHUDBuffDefinition(buff_id)
         if runtime_definition then
