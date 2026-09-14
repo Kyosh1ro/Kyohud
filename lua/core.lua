@@ -81,6 +81,7 @@ KH.KYO_BUFF_PRESENTATION = KYO_BUFF_PRESENTATION
 local EMPTY_BUFF_CANDIDATES = {}
 
 local FRAME_ANIM_CACHE = {}
+local RENDER_CACHES = { chevrons = {}, edge_points = {}, progress = {}, combo_colors = {} }
 for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
     local _anim = _pres.frame_animation
     if _anim and _pres.frame_color
@@ -1295,8 +1296,6 @@ end
 
 -- Solid decorative chevrons, reserved for special announcements (dozer, boss).
 -- Triangles are cached in RENDER_CACHES.chevrons to avoid Vector3 allocations.
-local RENDER_CACHES = { chevrons = {}, edge_points = {}, progress = {}, combo_colors = {} }
-
 local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
     local count = SPECIAL_CHEVRON_SLOTS
     local arrow_w = style and style.arrow_w or SPECIAL_CHEVRON_W
