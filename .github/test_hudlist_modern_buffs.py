@@ -368,7 +368,7 @@ class HUDListModernBuffTests(unittest.TestCase):
     def test_contexts_install_exact_non_destructive_hooks_and_no_tag_team_listener(self):
         expected = {
             "lib/managers/playermanager": 25,
-            "lib/units/beings/player/playerdamage": 4,
+            "lib/units/beings/player/playerdamage": 6,
             "lib/units/beings/player/playerinventory": 4,
             "lib/utils/temporarypropertymanager": 2,
             "lib/player_actions/skills/playeractiontagteam": 0,

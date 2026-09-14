@@ -41,8 +41,15 @@ kyohud.KYO_BUFF_CONFIG = {
             label = { fallback = "[AI]", placement = "top" },
         },
         crew_health_regen = {
+            value_format = "health_per_interval",
             label = { fallback = "[AI]", placement = "top" },
         },
+        muscle_regen = { value_format = "health_per_interval" },
+        hostage_taker = { value_format = "health_per_interval" },
+        berserker = { value_format = "bonus_fraction" },
+        berserker_aced = { value_format = "bonus_fraction" },
+        yakuza_recovery = { value_format = "reduction_fraction" },
+        yakuza_speed = { value_format = "bonus_fraction" },
         damage_increase = {
             fixed_slot = 6,
             color = "damage_increase",

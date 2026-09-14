@@ -157,5 +157,60 @@ class HUDListPresentationTests(unittest.TestCase):
         ''')
 
 
+    def test_passive_values_use_semantic_formats_without_neutral_noise(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            assert(kyohud:TryRegisterGameInfoBridge() == true)
+            local weapon_base = {weapon_tweak_data = function()
+                return {categories = {"rifle"}, ignore_damage_upgrades = false}
+            end}
+            local weapon = {base = function() return weapon_base end}
+            local inventory = {equipped_unit = function() return weapon end}
+            local player = {inventory = function() return inventory end}
+            managers.player = {
+                player_unit = function() return player end,
+                upgrade_value = function(self, category, upgrade, default) return default end,
+            }
+            kyohud.hudlist:event("buff", "activate", "berserker", {value = 1.25})
+            kyohud.hudlist:event("buff", "activate", "yakuza_recovery", {value = 0.3})
+            kyohud.hudlist:event("buff", "activate", "muscle_regen", {
+                value = 0.03, interval = 5,
+            })
+            assert(kyohud._buffs.berserker == nil)
+            assert(kyohud._buffs.melee_damage_increase.value_text == "x2.25")
+            assert(kyohud._buffs.yakuza_recovery.value_text == "-30%")
+            assert(kyohud._buffs.muscle_regen.value_text == "3% / 5s")
+            kyohud.hudlist:event("buff", "activate", "berserker_aced", {value = 0.5})
+            assert(kyohud._buffs.berserker_aced.value_text == "+50%")
+            assert(kyohud._buffs.damage_increase.value_text == "+50%")
+            kyohud.hudlist:event("buff", "deactivate", "berserker_aced", {})
+            kyohud.hudlist:event("buff", "activate", "berserker_aced", {value = 0/0})
+            assert(kyohud._buffs.berserker_aced == nil)
+        ''')
+
+    def test_feature_seven_visuals_have_verified_metadata(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            for _, id in ipairs({"muscle_regen", "hostage_taker", "crew_health_regen",
+                    "berserker", "berserker_aced", "yakuza_recovery", "yakuza_speed"}) do
+                local definition = kyohud.hudlist_catalog.definitions[id]
+                assert(definition and definition.icon_provenance)
+                assert(definition.skills_new or definition.perks or definition.hud_tweak)
+                assert(definition.value_kind and definition.display_mode)
+            end
+        ''')
+
+
+    def test_yakuza_uses_the_verified_base_specialization_atlas(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            for _, id in ipairs({"yakuza_recovery", "yakuza_speed"}) do
+                local definition = kyohud.hudlist_catalog.definitions[id]
+                assert(definition.texture_bundle_folder == nil)
+                assert(definition.perks[1] == 2 and definition.perks[2] == 7)
+            end
+        ''')
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1971,14 +1971,9 @@ local function source_applies_to_weapon(source_id, categories)
 end
 
 local function health_ratio_damage_multiplier(source_id, value)
-    if source_id == "berserker" then
-        return 1 + value * (tonumber(player_upgrade_value(
-            "player", "melee_damage_health_ratio_multiplier", 0
-        )) or 0)
-    elseif source_id == "berserker_aced" then
-        return 1 + value * (tonumber(player_upgrade_value(
-            "player", "damage_health_ratio_multiplier", 0
-        )) or 0)
+    if source_id == "berserker" or source_id == "berserker_aced" then
+        -- The autonomous provider already exposes the effective bonus fraction.
+        return 1 + value
     end
     return value
 end
@@ -2076,6 +2071,14 @@ local function calculated_base_dodge(include_sicario)
         local armor_id = managers.blackmarket and managers.blackmarket:equipped_armor(true, true)
         local armor_upgrade = armor_id and tostring(armor_id) .. "_dodge_addend"
         local risk_upgrade = pm:upgrade_value("player", "detection_risk_add_dodge_chance", 0)
+        local player = pm.player_unit and pm:player_unit()
+        local movement = alive(player) and player:movement()
+        local movement_dodge = movement and (
+            (movement:running() and pm:upgrade_value("player", "run_dodge_chance", 0) or 0)
+            + (movement:crouching() and pm:upgrade_value("player", "crouch_dodge_chance", 0) or 0)
+            + (movement:zipline_unit()
+                and pm:upgrade_value("player", "on_zipline_dodge_chance", 0) or 0)
+        ) or 0
         return (pm:body_armor_value("dodge") or 0)
             + (pm:upgrade_value("player", "passive_dodge_chance", 0) or 0)
             + (armor_upgrade and pm:upgrade_value("player", armor_upgrade, 0) or 0)
@@ -2083,6 +2086,7 @@ local function calculated_base_dodge(include_sicario)
             + (pm:get_value_from_risk_upgrade(risk_upgrade) or 0)
             + (pm:upgrade_value("team", "crew_add_dodge", 0) or 0)
             + (include_sicario and pm:upgrade_value("player", "sicario_multiplier", 0) or 0)
+            + movement_dodge
     end)
     return math.max(0, value + (ok and tonumber(calculated) or 0))
 end
@@ -2139,6 +2143,28 @@ local BUFF_VALUE_FORMATTERS = {
     negative_number_1 = function(sources)
         local value = largest_source_value(sources)
         return value and string.format("-%.1f", math.abs(value)) or nil
+    end,
+    bonus_fraction = function(sources)
+        local value = largest_source_value(sources)
+        return value and value > 0 and string.format("%+.0f%%", value * 100) or nil
+    end,
+    reduction_fraction = function(sources)
+        local value = largest_source_value(sources)
+        return value and value > 0 and string.format("-%.0f%%", value * 100) or nil
+    end,
+    health_per_interval = function(sources)
+        local source
+        for _, candidate in pairs(sources) do
+            if tonumber(candidate.value) and tonumber(candidate.interval) then
+                source = candidate
+                break
+            end
+        end
+        if not source or source.value <= 0 or source.interval <= 0 then return nil end
+        local suffix = source.value_kind == "health_points_per_tick" and " HP" or "%"
+        local value = source.value_kind == "health_points_per_tick"
+            and source.value or source.value * 100
+        return compact_number(value) .. suffix .. " / " .. compact_number(source.interval) .. "s"
     end,
     damage_increase = damage_increase_text,
     damage_reduction = damage_reduction_text,

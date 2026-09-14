@@ -16,6 +16,7 @@ Provider._listeners = Provider._listeners or {}
 Provider._arrival_order = Provider._arrival_order or {}
 Provider._team_sources = Provider._team_sources or {}
 Provider._sources = Provider._sources or {}
+Provider._composite_sources = Provider._composite_sources or {}
 Provider._next_stack_id = Provider._next_stack_id or 0
 
 local function finite_number(value)
@@ -110,9 +111,73 @@ function Provider:reset()
     self._arrival_order = {}
     self._team_sources = {}
     self._sources = {}
+    self._composite_sources = {}
     self._next_stack_id = 0
     self._next_position_buff_check_t = 0
     self._active_grenade_cooldown_id = nil
+end
+
+function Provider:get_composite_source_count(id)
+    local count = 0
+    for _ in pairs(self._composite_sources[id] or {}) do count = count + 1 end
+    return count
+end
+
+function Provider:_recalculate_composite(id)
+    local sources = self._composite_sources[id]
+    if not sources or not next(sources) then
+        self._composite_sources[id] = nil
+        self:_deactivate("buff", id, { reason = "last_composite_source_removed" })
+        return
+    end
+
+    local definition = Catalog.definitions[id]
+    local operation = definition and definition.composite_operation
+    local value = operation == "multiply" and 1 or nil
+    for _, contribution in pairs(sources) do
+        if operation == "multiply" then
+            value = value * contribution.value
+        elseif operation == "replace" then
+            value = contribution.value
+        end
+    end
+
+    local entry = self._buffs[id]
+    if not entry then
+        entry = { id = id, source = "buff", active = true }
+        self._buffs[id] = entry
+        self._arrival_order[#self._arrival_order + 1] = id
+    end
+    entry.value = value
+    entry.value_kind = definition.value_kind
+    entry.source_count = self:get_composite_source_count(id)
+    self:_notify("buff", "activate", id, entry)
+end
+
+function Provider:set_composite_contribution(id, source_id, operation, value)
+    local definition = type(id) == "string" and Catalog.definitions[id]
+    value = finite_number(value)
+    if not definition or definition.state ~= "composite"
+            or definition.composite_operation ~= operation
+            or type(source_id) ~= "string" or source_id == ""
+            or value == nil then
+        return false
+    end
+    local sources = self._composite_sources[id] or {}
+    self._composite_sources[id] = sources
+    sources[source_id] = { value = value }
+    self:_recalculate_composite(id)
+    return true
+end
+
+function Provider:remove_composite_contribution(id, source_id)
+    local sources = type(id) == "string" and self._composite_sources[id]
+    if not sources or type(source_id) ~= "string" or not sources[source_id] then
+        return false
+    end
+    sources[source_id] = nil
+    self:_recalculate_composite(id)
+    return true
 end
 
 function Provider:get_source_count(id)
@@ -375,6 +440,7 @@ function Provider:event(source, event, id, data)
     if source ~= "buff" or type(id) ~= "string" or id == "" then return end
 
     data = type(data) == "table" and data or {}
+    if data.value ~= nil and finite_number(data.value) == nil then return end
     local entry = self._buffs[id]
     if event == "deactivate" then
         self:_deactivate(source, id, data)
@@ -432,6 +498,8 @@ function Provider:event(source, event, id, data)
         entry.best_peer = finite_number(data.best_peer)
         entry.provenance = data.provenance
         entry.source_count = finite_number(data.source_count)
+        entry.interval = finite_number(data.interval)
+        entry.value_kind = data.value_kind or entry.value_kind
     end
     self:_notify(source, event, id, entry)
 end
@@ -852,6 +920,140 @@ local function emit_new_grinder_stacks(damage)
     end
 end
 
+local PASSIVE_REGEN_INTERVAL = 5
+local passive_health_ratios = setmetatable({}, { __mode = "k" })
+
+local function set_passive_value(id, value, data)
+    value = finite_number(value)
+    if not value or value <= 0 then
+        Provider:event("buff", "deactivate", id)
+        return
+    end
+    data = data or {}
+    local expire_t = finite_number(data.expire_t)
+    local current = Provider._buffs[id]
+    local same_expiry = current and ((current.expire_t == nil and expire_t == nil)
+        or (current.expire_t and expire_t
+            and math.abs(current.expire_t - expire_t) <= 0.001))
+    if current and current.value == value and same_expiry
+            and current.interval == data.interval then
+        return
+    end
+    data.value = value
+    data.value_kind = Catalog.definitions[id].value_kind
+    Provider:event("buff", "activate", id, data)
+    Provider._buffs[id].interval = data.interval
+    Provider._buffs[id].value_kind = Catalog.definitions[id].value_kind
+end
+
+local function player_upgrade(manager, upgrade, default)
+    local owned_ok, owned = pcall(function()
+        return manager:has_category_upgrade("player", upgrade)
+    end)
+    if not owned_ok or not owned then return nil end
+    local value_ok, value = pcall(function()
+        return manager:upgrade_value("player", upgrade, default)
+    end)
+    return value_ok and finite_number(value) or nil
+end
+
+local function clear_passive_values()
+    for _, id in ipairs({ "berserker", "berserker_aced", "yakuza_recovery",
+            "yakuza_speed", "muscle_regen", "hostage_taker", "crew_health_regen" }) do
+        Provider:event("buff", "deactivate", id)
+    end
+end
+
+local function update_health_ratio_buffs(damage)
+    local ratio_ok, ratio = pcall(function() return damage:health_ratio() end)
+    ratio = ratio_ok and finite_number(ratio) or nil
+    if ratio == nil or passive_health_ratios[damage] == ratio then return end
+    passive_health_ratios[damage] = ratio
+    local manager = managers and managers.player
+    if not manager then return end
+
+    local function update(id, upgrade, category)
+        local multiplier = player_upgrade(manager, upgrade, 0)
+        local ratio_value
+        if multiplier then
+            local ok, value = pcall(function()
+                return manager:get_damage_health_ratio(ratio, category)
+            end)
+            ratio_value = ok and finite_number(value) or nil
+        end
+        set_passive_value(id, ratio_value and multiplier * ratio_value or nil)
+    end
+    update("berserker", "melee_damage_health_ratio_multiplier", "melee")
+    update("berserker_aced", "damage_health_ratio_multiplier", "damage")
+    update("yakuza_recovery", "armor_regen_damage_health_ratio_multiplier", "armor_regen")
+    update("yakuza_speed", "movement_speed_damage_health_ratio_multiplier", "movement_speed")
+end
+
+local function update_passive_regen(damage)
+    local health_ok, health, maximum = pcall(function()
+        return damage:get_real_health(), damage:_max_health()
+    end)
+    health, maximum = finite_number(health), finite_number(maximum)
+    local maximum_reduction = finite_number(damage._max_health_reduction) or 1
+    local effective_maximum = maximum and maximum * maximum_reduction or nil
+    local full_tolerance = effective_maximum
+        and math.max(0.001, effective_maximum * 0.000001) or 0
+    if not health_ok or not health or not maximum or maximum <= 0
+            or not effective_maximum or effective_maximum <= 0
+            or health <= 0 or health >= effective_maximum - full_tolerance then
+        set_passive_value("muscle_regen", nil)
+        set_passive_value("hostage_taker", nil)
+        set_passive_value("crew_health_regen", nil)
+        return
+    end
+    local manager = managers and managers.player
+    if not manager then return end
+    local timer = finite_number(damage._health_regen_update_timer)
+    local data = {
+        interval = PASSIVE_REGEN_INTERVAL,
+        expire_t = timer and current_time() + math.max(0, timer) or nil,
+    }
+    set_passive_value("muscle_regen",
+        player_upgrade(manager, "passive_health_regen", 0), data)
+    local hostage_owned = player_upgrade(manager, "hostage_health_regen_addend", 0)
+    local hostage_ok, hostage_value = pcall(function()
+        return manager:get_hostage_bonus_addend("health_regen")
+    end)
+    set_passive_value("hostage_taker",
+        hostage_owned and hostage_ok and finite_number(hostage_value) or nil, data)
+    local fixed_ok, fixed = pcall(function()
+        if manager.fixed_health_regen then return manager:fixed_health_regen(health / maximum) end
+        return manager:team_upgrade_value("team", "crew_health_regen", 0)
+    end)
+    set_passive_value("crew_health_regen", fixed_ok and finite_number(fixed) or nil, data)
+end
+
+local function update_passive_health(damage)
+    update_health_ratio_buffs(damage)
+    update_passive_regen(damage)
+end
+
+local function clear_passives_on_bleedout(damage)
+    local ok, health = pcall(function() return damage:get_real_health() end)
+    if ok and finite_number(health) and health <= 0 then
+        passive_health_ratios[damage] = nil
+        clear_passive_values()
+    end
+end
+
+local function update_passives_after_skills(manager)
+    local ok, damage = pcall(function()
+        local player = manager:player_unit()
+        return alive(player) and player:character_damage()
+    end)
+    if ok and damage then
+        passive_health_ratios[damage] = nil
+        update_passive_health(damage)
+    else
+        clear_passive_values()
+    end
+end
+
 KH._hudlist_loaded_scripts = KH._hudlist_loaded_scripts or {}
 if RequiredScript == "lib/managers/playermanager"
         and not KH._hudlist_loaded_scripts[RequiredScript] then
@@ -941,6 +1143,7 @@ if RequiredScript == "lib/managers/playermanager"
     Hooks:PostHook(PlayerManager, "check_skills",
         "KyoHUD_HUDList_CheckMessiahCharges", function(manager)
             update_messiah(manager)
+            update_passives_after_skills(manager)
         end)
 
     Hooks:PostHook(PlayerManager, "use_messiah_charge",
@@ -1018,8 +1221,15 @@ elseif RequiredScript == "lib/units/beings/player/playerdamage"
         "KyoHUD_HUDList_GrinderSnapshot", snapshot_grinder)
     Hooks:PostHook(PlayerDamage, "add_damage_to_hot",
         "KyoHUD_HUDList_GrinderEmit", emit_new_grinder_stacks)
+    Hooks:PostHook(PlayerDamage, "set_health",
+        "KyoHUD_HUDList_UpdatePassiveHealth", update_passive_health)
+    Hooks:PostHook(PlayerDamage, "_upd_health_regen",
+        "KyoHUD_HUDList_UpdatePassiveRegen", update_passive_regen)
     Hooks:PreHook(PlayerDamage, "_check_bleed_out",
-        "KyoHUD_HUDList_UppersSnapshot", snapshot_uppers)
+        "KyoHUD_HUDList_BleedoutSnapshot", function(damage)
+            snapshot_uppers(damage)
+            clear_passives_on_bleedout(damage)
+        end)
     Hooks:PostHook(PlayerDamage, "_check_bleed_out",
         "KyoHUD_HUDList_UppersCooldown", update_uppers_cooldown)
 elseif RequiredScript == "lib/units/beings/player/playerinventory"

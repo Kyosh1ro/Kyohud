@@ -192,6 +192,7 @@ class CombatStateTests(unittest.TestCase):
 
             local base_dodge = 0
             local sicario_dodge = 0
+            local running = false
             managers.blackmarket = {equipped_armor = function() return nil end}
             managers.player = {
                 body_armor_value = function(_, name)
@@ -201,9 +202,19 @@ class CombatStateTests(unittest.TestCase):
                     if category == 'player' and upgrade == 'sicario_multiplier' then
                         return sicario_dodge
                     end
+                    if category == 'player' and upgrade == 'run_dodge_chance' then
+                        return 0.1
+                    end
                     return default
                 end,
                 get_value_from_risk_upgrade = function() return 0 end,
+                player_unit = function()
+                    return {movement = function() return {
+                        running = function() return running end,
+                        crouching = function() return false end,
+                        zipline_unit = function() return nil end,
+                    } end}
+                end,
             }
 
             local function source(id, value, calculated)
@@ -214,6 +225,9 @@ class CombatStateTests(unittest.TestCase):
                 {name = 'base-only', base = 0.2, sources = {
                     base = source('base_dodge', nil, true),
                 }, expected = '20%'},
+                {name = 'running-dodge', base = 0.2, running = true, sources = {
+                    base = source('base_dodge', nil, true),
+                }, expected = '30%'},
                 {name = 'smoke-only', base = 0, sources = {
                     smoke = source('smoke_screen_grenade'),
                 }, expected = '50%'},
@@ -235,6 +249,7 @@ class CombatStateTests(unittest.TestCase):
             for _, case in ipairs(cases) do
                 base_dodge = case.base or 0
                 sicario_dodge = case.sicario or 0
+                running = case.running == true
                 kyohud._buffs = {}
                 kyohud._buff_sources = {total_dodge_chance = case.sources}
                 kyohud:_refresh_source_target('total_dodge_chance')
