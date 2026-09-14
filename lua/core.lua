@@ -1100,47 +1100,33 @@ end
 
 -- Tactical frame inspired by Battlefield notifications: asymmetric strokes,
 -- four detached brackets, and chevrons converging toward the content.
+-- Each bracket is drawn as two filled rectangles (one horizontal arm, one
+-- vertical arm) instead of a polyline: `panel:rect` takes relative coords
+-- and allocates no Vector3, sparing the twelve Vector3 + four tables that
+-- the previous polyline path produced per call.
 local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer, style)
     local extension = style and style.extension or 4
     local arm_x = style and style.arm_x or math.min(18, w * 0.08)
     local arm_y = style and style.arm_y or math.min(11, h * 0.3)
-    local line_width = style and style.line_width or 1
+    local lw = style and style.line_width or 1
     local left = x - extension
     local right = x + w + extension
     local top = y - extension
     local bottom = y + h + extension
-    local corners = {
-        {
-            Vector3(left + arm_x, top, 0),
-            Vector3(left, top, 0),
-            Vector3(left, top + arm_y, 0),
-        },
-        {
-            Vector3(right - arm_x, top, 0),
-            Vector3(right, top, 0),
-            Vector3(right, top + arm_y, 0),
-        },
-        {
-            Vector3(left, bottom - arm_y, 0),
-            Vector3(left, bottom, 0),
-            Vector3(left + arm_x, bottom, 0),
-        },
-        {
-            Vector3(right, bottom - arm_y, 0),
-            Vector3(right, bottom, 0),
-            Vector3(right - arm_x, bottom, 0),
-        },
-    }
+    local v_bar_h = math.max(0, arm_y - lw)
 
-    for _, points in ipairs(corners) do
-        panel:polyline({
-            points = points,
-            line_width = line_width,
-            color = color,
-            alpha = alpha,
-            layer = layer,
-        })
-    end
+    -- Top-left
+    panel:rect({ x = left, y = top, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = left, y = top + lw, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Top-right
+    panel:rect({ x = right - arm_x, y = top, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = right - lw, y = top + lw, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Bottom-left
+    panel:rect({ x = left, y = bottom - lw, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = left, y = bottom - arm_y, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Bottom-right
+    panel:rect({ x = right - arm_x, y = bottom - lw, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = right - lw, y = bottom - arm_y, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
 end
 
 -- ── Banner Chevrons ──
@@ -1301,15 +1287,23 @@ local function draw_multikill_chevrons(panel, x, y, direction, color, alpha, lay
 end
 
 -- Solid decorative chevrons, reserved for special announcements (dozer, boss).
+-- Triangles are cached in RENDER_CACHES.chevrons to avoid Vector3 allocations.
+local RENDER_CACHES = { chevrons = {}, edge_points = {}, progress = {} }
+
 local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
     local count = SPECIAL_CHEVRON_SLOTS
     local arrow_w = style and style.arrow_w or SPECIAL_CHEVRON_W
     local arrow_h = style and style.arrow_h or SPECIAL_CHEVRON_H
     local gap = style and style.gap or SPECIAL_CHEVRON_GAP
-
-    for i = 0, count - 1 do
-        local arrow_x = x + i * (arrow_w + gap)
-        local triangles
+    local dir_key = direction > 0 and 1 or -1
+    local size_key = arrow_w .. ":" .. arrow_h
+    local bucket = RENDER_CACHES.chevrons[size_key]
+    if not bucket then
+        bucket = {}
+        RENDER_CACHES.chevrons[size_key] = bucket
+    end
+    local triangles = bucket[dir_key]
+    if not triangles then
         if direction > 0 then
             triangles = {
                 Vector3(0, 0, 0),
@@ -1323,6 +1317,11 @@ local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
                 Vector3(0, arrow_h * 0.5, 0),
             }
         end
+        bucket[dir_key] = triangles
+    end
+
+    for i = 0, count - 1 do
+        local arrow_x = x + i * (arrow_w + gap)
 
         local prominence
         if direction > 0 then
@@ -1432,6 +1431,12 @@ local function align_buff_cell_rect(x, y, w, h)
         math.max(min_size, math.floor(y + h + 0.5) - top)
 end
 
+-- `edge_points` is built once per (color, alpha) pair: buff cells share the same
+-- riser gradient, and KH:draw may render several per frame. The cache key is a
+-- plain string — color reference plus alpha rounded to three digits — so a
+-- repeated alpha during the same frame reuses the existing table instead of
+-- allocating a new one. Inlined in draw_buff_cell_frame to avoid a top-level local.
+
 local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
     local left, top, width, height = align_buff_cell_rect(x, y, w, h)
     local has_custom_outline = color ~= nil
@@ -1451,13 +1456,18 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
         layer = layer,
     })
 
-    -- A single point table shared by both risers: they carry exactly the same
-    -- gradient and `KH:draw` must not allocate twice.
-    local edge_points = {
-        0,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
-        0.55, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
-        1,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
-    }
+    -- Risers share the same gradient points table; `panel:gradient` accepts the
+    -- same reference for both without modification.
+    local edge_key = tostring(color) .. ":" .. string.format("%.3f", alpha)
+    local edge_points = RENDER_CACHES.edge_points[edge_key]
+    if not edge_points then
+        edge_points = {
+            0,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
+            0.55, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
+            1,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+        }
+        RENDER_CACHES.edge_points[edge_key] = edge_points
+    end
     panel:gradient({
         x = left,
         y = top,
@@ -1550,6 +1560,11 @@ local function append_progress_segment(points, remaining_length, x1, y1, x2, y2,
     return remaining_length - visible_length
 end
 
+-- Shared progress-points buffer. `append_progress_segment` only reads/writes
+-- `points[n]` for n up to the current count, and `draw_timed_buff_progress`
+-- is the sole consumer. A per-draw clear is achieved by resetting the length
+-- to zero in-place without allocating a new table.
+
 local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alpha, layer)
     progress = clamp(tonumber(progress) or 0, 0, 1)
     if progress <= 0 then return end
@@ -1560,7 +1575,12 @@ local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alph
     local line_width = clamp(math.min(w, h) * 0.055, 2, 3)
     local remaining_length = (w * 2 + h * 2) * progress
     local half_w = w * 0.5
-    local points = {}
+
+    -- Reuse the buffer in place: clear it without allocating a new table.
+    local points = RENDER_CACHES.progress
+    for i = #points, 1, -1 do
+        points[i] = nil
+    end
     remaining_length = append_progress_segment(
         points, remaining_length, x + half_w, y, x + w, y, half_w
     )
