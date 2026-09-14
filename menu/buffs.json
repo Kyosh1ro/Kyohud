@@ -1,0 +1,101 @@
+{
+    "menu_id": "kyohud_buffs_menu",
+    "parent_menu_id": "kyohud_options",
+    "title": "ky_opt_configure_buffs",
+    "description": "ky_opt_configure_buffs_desc",
+    "items": [
+        {
+            "type": "button",
+            "id": "ky_buff_cat_mastermind",
+            "title": "ky_opt_buff_cat_mastermind",
+            "description": "ky_opt_buff_cat_mastermind_desc",
+            "next_menu": "kyohud_buffs_mastermind",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "button",
+            "id": "ky_buff_cat_enforcer",
+            "title": "ky_opt_buff_cat_enforcer",
+            "description": "ky_opt_buff_cat_enforcer_desc",
+            "next_menu": "kyohud_buffs_enforcer",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "button",
+            "id": "ky_buff_cat_technician",
+            "title": "ky_opt_buff_cat_technician",
+            "description": "ky_opt_buff_cat_technician_desc",
+            "next_menu": "kyohud_buffs_technician",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "button",
+            "id": "ky_buff_cat_ghost",
+            "title": "ky_opt_buff_cat_ghost",
+            "description": "ky_opt_buff_cat_ghost_desc",
+            "next_menu": "kyohud_buffs_ghost",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "button",
+            "id": "ky_buff_cat_fugitive",
+            "title": "ky_opt_buff_cat_fugitive",
+            "description": "ky_opt_buff_cat_fugitive_desc",
+            "next_menu": "kyohud_buffs_fugitive",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "divider"
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_damage_increase",
+            "title": "ky_opt_buff_damage_increase",
+            "description": "ky_opt_buff_damage_increase_desc",
+            "value": "damage_increase",
+            "default_value": true,
+            "callback": "KY_ToggleBuff_damage_increase",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_damage_reduction",
+            "title": "ky_opt_buff_damage_reduction",
+            "description": "ky_opt_buff_damage_reduction_desc",
+            "value": "damage_reduction",
+            "default_value": true,
+            "callback": "KY_ToggleBuff_damage_reduction",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_total_dodge_chance",
+            "title": "ky_opt_buff_total_dodge_chance",
+            "description": "ky_opt_buff_total_dodge_chance_desc",
+            "value": "total_dodge_chance",
+            "default_value": true,
+            "callback": "KY_ToggleBuff_total_dodge_chance",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_melee_damage_increase",
+            "title": "ky_opt_buff_melee_damage_increase",
+            "description": "ky_opt_buff_melee_damage_increase_desc",
+            "value": "melee_damage_increase",
+            "default_value": true,
+            "callback": "KY_ToggleBuff_melee_damage_increase",
+            "enabled_by": "enable_buffs"
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_passive_health_regen",
+            "title": "ky_opt_buff_passive_health_regen",
+            "description": "ky_opt_buff_passive_health_regen_desc",
+            "value": "passive_health_regen",
+            "default_value": true,
+            "callback": "KY_ToggleBuff_passive_health_regen",
+            "enabled_by": "enable_buffs"
+        }
+    ]
+}

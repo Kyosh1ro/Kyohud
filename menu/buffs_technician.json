@@ -1,0 +1,18 @@
+{
+    "menu_id": "kyohud_buffs_technician",
+    "parent_menu_id": "kyohud_buffs_menu",
+    "title": "ky_opt_buff_cat_technician",
+    "description": "ky_opt_buff_cat_technician_desc",
+    "items": [
+        {
+            "type": "toggle",
+            "id": "ky_buff_lock_n_load",
+            "title": "ky_opt_buff_lock_n_load",
+            "description": "ky_opt_buff_lock_n_load_desc",
+            "value": "lock_n_load",
+            "callback": "KY_ToggleBuff_lock_n_load",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        }
+    ]
+}
