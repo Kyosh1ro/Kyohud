@@ -278,23 +278,70 @@ class BuffRowLayoutTests(unittest.TestCase):
             local has_health_green_frame = false
             for _, gradient in ipairs(panel.gradients) do
                 for _, point in ipairs(gradient.gradient_points or {}) do
-                    if type(point) == "table" and point.r == "4ADE9B" then
+                    if type(point) == "table" and type(point.r) == "number"
+                        and point.r > 0.25 and point.r < 0.55
+                        and point.g > 0.80 and point.g < 1.0
+                        and point.b > 0.55 and point.b < 0.85 then
                         has_health_green_frame = true
                     end
                 end
             end
             assert(has_health_green_frame,
-                "renderer did not use the PV+ green for the health regeneration frame")
+                "renderer did not use an animated PV+ green for the health regeneration frame")
 
             local green_outline_strokes = 0
             for _, rect in ipairs(panel.rects) do
-                if rect.color and rect.color.r == "4ADE9B" then
+                if rect.color and type(rect.color.r) == "number"
+                    and rect.color.r > 0.25 and rect.color.r < 0.55
+                    and rect.color.g > 0.80 and rect.color.g < 1.0
+                    and rect.color.b > 0.55 and rect.color.b < 0.85 then
                     green_outline_strokes = green_outline_strokes + 1
                 end
             end
             assert(green_outline_strokes == 4,
                 "PV+ must have a complete visible green outline, got "
                 .. tostring(green_outline_strokes) .. " strokes")
+
+            local first_outline_color = panel.rects[1].color
+            local static_frame_color
+            for _, gradient in ipairs(panel.gradients) do
+                for _, point in ipairs(gradient.gradient_points or {}) do
+                    if type(point) == "table" and point.r == 0.52
+                        and point.g == 0.88 and point.b == 0.92 then
+                        static_frame_color = point
+                        break
+                    end
+                end
+                if static_frame_color then break end
+            end
+            assert(static_frame_color, "renderer did not retain a generic static frame")
+
+            game_t = game_t + kyohud._frame_anim_cache.passive_health_regen.period * 0.25
+            kyohud:draw()
+            local second_outline_color = panel.rects[1] and panel.rects[1].color
+            assert(second_outline_color,
+                "renderer removed the PV+ outline on the next animation frame")
+            assert(first_outline_color.r ~= second_outline_color.r
+                or first_outline_color.g ~= second_outline_color.g
+                or first_outline_color.b ~= second_outline_color.b,
+                "rendered PV+ outline color did not change over time")
+
+            local static_frame_color_after
+            for _, gradient in ipairs(panel.gradients) do
+                for _, point in ipairs(gradient.gradient_points or {}) do
+                    if type(point) == "table" and point.r == 0.52
+                        and point.g == 0.88 and point.b == 0.92 then
+                        static_frame_color_after = point
+                        break
+                    end
+                end
+                if static_frame_color_after then break end
+            end
+            assert(static_frame_color_after
+                and static_frame_color_after.r == static_frame_color.r
+                and static_frame_color_after.g == static_frame_color.g
+                and static_frame_color_after.b == static_frame_color.b,
+                "animation changed another buff's generic frame color")
         ''')
 
     def test_draw_uses_layout_and_renders_exact_overflow_count(self):

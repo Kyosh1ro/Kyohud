@@ -17,6 +17,7 @@ kyohud.KYO_BUFF_CONFIG = {
         damage_reduction = "6C8CFF",
         melee_damage_increase = "D66BFF",
         passive_health_regen = "4ADE9B",
+        passive_health_regen_pulse = "70F5C0",
         total_dodge_chance = "2E8B57",
     },
     buffs = {
@@ -95,6 +96,10 @@ kyohud.KYO_BUFF_CONFIG = {
             fixed_slot = 3,
             color = "passive_health_regen",
             frame_color = "passive_health_regen",
+            frame_animation = {
+                color_b = "passive_health_regen_pulse",
+                period = 2.5,
+            },
             value_format = "passive_health_regen",
             label = {
                 id = "ky_hud_buff_label_health_regen",

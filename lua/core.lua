@@ -79,6 +79,47 @@ local KYO_BUFF_PRESENTATION = assert(KYO_BUFF_CONFIG.buffs, "KyoHUD buff present
 KH.KYO_BUFF_PRESENTATION = KYO_BUFF_PRESENTATION
 local EMPTY_BUFF_CANDIDATES = {}
 
+local FRAME_ANIM_CACHE = {}
+for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
+    local _anim = _pres.frame_animation
+    if _anim and _pres.frame_color
+        and type(_anim.period) == "number" and _anim.period > 0 then
+        local _hex_a = KYO_BUFF_COLORS[_pres.frame_color] or _pres.frame_color
+        local _hex_b = KYO_BUFF_COLORS[_anim.color_b] or _anim.color_b
+        if type(_hex_a) == "string" and #_hex_a == 6
+            and type(_hex_b) == "string" and #_hex_b == 6 then
+            FRAME_ANIM_CACHE[_buff_id] = {
+                r1 = tonumber(_hex_a:sub(1, 2), 16) / 255,
+                g1 = tonumber(_hex_a:sub(3, 4), 16) / 255,
+                b1 = tonumber(_hex_a:sub(5, 6), 16) / 255,
+                r2 = tonumber(_hex_b:sub(1, 2), 16) / 255,
+                g2 = tonumber(_hex_b:sub(3, 4), 16) / 255,
+                b2 = tonumber(_hex_b:sub(5, 6), 16) / 255,
+                period = _anim.period,
+            }
+        end
+    end
+end
+KH._frame_anim_cache = FRAME_ANIM_CACHE
+
+function KH:_compute_frame_color(buff_id, t)
+    local anim = FRAME_ANIM_CACHE[buff_id]
+    if not anim then return nil end
+    local factor = (math.sin(2 * math.pi * t / anim.period) + 1) * 0.5
+    local r = anim.r1 + (anim.r2 - anim.r1) * factor
+    local g = anim.g1 + (anim.g2 - anim.g1) * factor
+    local b = anim.b1 + (anim.b2 - anim.b1) * factor
+    return r, g, b, factor
+end
+
+local function draw_frame_color(buff, t)
+    local anim = FRAME_ANIM_CACHE[buff.id]
+    if not anim then return buff.frame_color end
+    local r, g, b = KH:_compute_frame_color(buff.id, t)
+    if not r then return buff.frame_color end
+    return Color(r, g, b)
+end
+
 local function killfeed_size(settings)
     local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
     return math.floor(clamp(value, 1, MAX_KILLFEED_SIZE))
@@ -3765,7 +3806,7 @@ function KH:draw()
                     frame_h,
                     buff_alpha * (0.72 + 0.28 * state.emphasis),
                     98,
-                    buff.frame_color
+                    draw_frame_color(buff, t)
                 )
 
                 -- Hourly perimeter outline, reserved for temporary buffs:
