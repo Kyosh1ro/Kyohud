@@ -3755,14 +3755,17 @@ function KH:draw()
         end
     end
 
-    -- Purge expired kills
-    local i = 1
-    while i <= #self._kills do
-        if self._kills[i].t_end and self._kills[i].t_end <= t then
-            table.remove(self._kills, i)
-        else
-            i = i + 1
+    -- Purge expired kills in a single pass (O(n) instead of O(n²) with table.remove)
+    local write = 1
+    for read = 1, #self._kills do
+        local kill = self._kills[read]
+        if not (kill.t_end and kill.t_end <= t) then
+            self._kills[write] = kill
+            write = write + 1
         end
+    end
+    for i = write, #self._kills do
+        self._kills[i] = nil
     end
     -- End of continuous burst: the row score restarts from zero. The total
     -- and best burst total of the heist, however, survive — they are
