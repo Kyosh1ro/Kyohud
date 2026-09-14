@@ -943,11 +943,18 @@ local function combo_label(count, variant_index)
     return localized_text("ky_hud_combo_chain", "KILL CHAIN") .. " x" .. tostring(count)
 end
 
+-- Cache combo colors to avoid Color() allocation on every frame
 local function combo_color(count)
-    if count == 2 then return Color(1, 0.85, 0.2) end
-    if count == 3 then return Color(1, 0.55, 0.1) end
-    if count == 4 then return Color(1, 0.2, 0.1) end
-    return Color(0.208, 0.906, 1) -- electric cyan #35E7FF starting at 5 kills
+    local cached = RENDER_CACHES.combo_colors[count]
+    if cached then return cached end
+    local color
+    if count == 2 then color = Color(1, 0.85, 0.2)
+    elseif count == 3 then color = Color(1, 0.55, 0.1)
+    elseif count == 4 then color = Color(1, 0.2, 0.1)
+    else color = Color(0.208, 0.906, 1) -- electric cyan #35E7FF starting at 5 kills
+    end
+    RENDER_CACHES.combo_colors[count] = color
+    return color
 end
 
 -- A banner directly carries its label and color. `KH:draw` therefore
@@ -1288,7 +1295,7 @@ end
 
 -- Solid decorative chevrons, reserved for special announcements (dozer, boss).
 -- Triangles are cached in RENDER_CACHES.chevrons to avoid Vector3 allocations.
-local RENDER_CACHES = { chevrons = {}, edge_points = {}, progress = {} }
+local RENDER_CACHES = { chevrons = {}, edge_points = {}, progress = {}, combo_colors = {} }
 
 local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
     local count = SPECIAL_CHEVRON_SLOTS
@@ -3875,17 +3882,18 @@ function KH:draw()
 
                 local params = {
                     layer = 101,
-                    w     = buff_size,
-                    h     = buff_size,
-                    x     = pos.x - buff_size / 2,
-                    y     = pos.y - buff_size / 2,
+                    w = buff_size,
+                    h = buff_size,
+                    x = pos.x - buff_size / 2,
+                    y = pos.y - buff_size / 2,
                 }
 
                 if buff.icon.rect then
-                    params.texture      = buff.icon.texture
+                    params.texture = buff.icon.texture
                     params.texture_rect = buff.icon.rect
                 else
                     params.texture = buff.icon.texture
+                    params.texture_rect = nil
                 end
 
                 local bmp = self._panel:bitmap(params)
