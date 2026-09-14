@@ -908,28 +908,6 @@ class ExpirationBoundaryTests(unittest.TestCase):
                 "all stacks should expire at exact boundary")
         ''')
 
-    def test_composite_contribution_removal_recalculates_immediately(self):
-        lua = _catalog_runtime()
-        lua.execute(HUDLIST)
-        lua.execute('''
-            local provider = kyohud.hudlist
-            provider:set_composite_contribution("damage_increase", "src1",
-                "multiply", 1.5)
-            provider:set_composite_contribution("damage_increase", "src2",
-                "multiply", 1.2)
-            assert(provider:get_buffs().damage_increase ~= nil)
-            assert(provider:get_composite_source_count("damage_increase") == 2)
-
-            provider:remove_composite_contribution("damage_increase", "src1")
-            assert(provider:get_composite_source_count("damage_increase") == 1)
-            assert(provider:get_buffs().damage_increase ~= nil)
-
-            provider:remove_composite_contribution("damage_increase", "src2")
-            assert(provider:get_composite_source_count("damage_increase") == 0)
-            assert(provider:get_buffs().damage_increase == nil,
-                "composite should deactivate when last source removed")
-        ''')
-
     def test_multiple_sources_expire_independently(self):
         lua = _catalog_runtime()
         lua.execute(HUDLIST)

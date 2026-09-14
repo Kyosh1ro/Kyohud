@@ -166,6 +166,63 @@ class HUDListStacksTeamTests(unittest.TestCase):
             assert(managers.gameinfo == nil)
         ''')
 
+    def test_composite_contribution_set_and_remove_recalculates_immediately(self):
+        lua = self.runtime()
+        lua.execute('''
+            local catalog = kyohud.hudlist_catalog
+            local composite_id
+            for id, def in pairs(catalog.definitions) do
+                if def.state == "composite" then
+                    composite_id = id
+                    break
+                end
+            end
+            if not composite_id then
+                catalog.definitions["test_composite"] = {
+                    state = "composite", composite_operation = "multiply",
+                    class = "BuffItemBase", priority = 4,
+                }
+                composite_id = "test_composite"
+            end
+            local p = kyohud.hudlist
+            assert(p:set_composite_contribution(composite_id, "src_a", "multiply", 1.5))
+            local buff = p:get_buff(composite_id)
+            assert(buff ~= nil and buff.value == 1.5)
+            assert(p:set_composite_contribution(composite_id, "src_b", "multiply", 2.0))
+            buff = p:get_buff(composite_id)
+            assert(buff.value == 3.0)
+            assert(p:get_composite_source_count(composite_id) == 2)
+            assert(p:remove_composite_contribution(composite_id, "src_a"))
+            buff = p:get_buff(composite_id)
+            assert(buff.value == 2.0)
+            assert(p:get_composite_source_count(composite_id) == 1)
+            assert(p:remove_composite_contribution(composite_id, "src_b"))
+            assert(p:get_buff(composite_id) == nil)
+        ''')
+
+    def test_composite_contributions_update_without_duplication_and_preserve_order(self):
+        lua = self.runtime()
+        lua.execute('''
+            local catalog = kyohud.hudlist_catalog
+            catalog.definitions["test_additive"] = {
+                state = "composite", composite_operation = "multiply",
+                class = "BuffItemBase", priority = 4,
+            }
+            local p = kyohud.hudlist
+            p:event("buff", "activate", "other", {t = 99})
+            assert(p:set_composite_contribution("test_additive", "x", "multiply", 1.2))
+            assert(p:set_composite_contribution("test_additive", "y", "multiply", 1.3))
+            local buff = p:get_buff("test_additive")
+            assert(math.abs(buff.value - 1.56) < 0.001)
+            assert(p:set_composite_contribution("test_additive", "x", "multiply", 1.5))
+            buff = p:get_buff("test_additive")
+            assert(math.abs(buff.value - 1.95) < 0.001)
+            local order = p:get_arrival_order()
+            assert(order[1] == "other")
+            assert(order[2] == "test_additive")
+            assert(order[3] == nil)
+        ''')
+
 
 if __name__ == "__main__":
     unittest.main()

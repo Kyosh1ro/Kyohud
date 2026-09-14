@@ -19,68 +19,19 @@ class HUDListPassiveValueTests(unittest.TestCase):
         ''')
         self.lua.execute((ROOT / "lua" / "hudlist.lua").read_text(encoding="utf-8-sig"))
 
-    def test_composite_contributions_update_without_duplication_and_preserve_order(self):
+    def test_stat_cards_are_not_composite_targets(self):
         self.lua.execute('''
-            local provider = kyohud.hudlist
-            assert(provider:set_composite_contribution(
-                "damage_increase", "overkill", "multiply", 1.75
-            ))
-            local first = provider:get_buffs().damage_increase
-            assert(first and first.value == 1.75)
-            assert(provider:get_composite_source_count("damage_increase") == 1)
-            assert(provider:get_arrival_order()[1] == "damage_increase")
-
-            assert(provider:set_composite_contribution(
-                "damage_increase", "overkill", "multiply", 1.5
-            ))
-            assert(provider:get_buffs().damage_increase == first)
-            assert(first.value == 1.5)
-            assert(provider:get_composite_source_count("damage_increase") == 1)
-            assert(provider:get_arrival_order()[1] == "damage_increase")
-
-            assert(provider:set_composite_contribution(
-                "damage_increase", "underdog", "multiply", 1.15
-            ))
-            assert(math.abs(first.value - 1.725) < 0.000001)
-            assert(provider:remove_composite_contribution("damage_increase", "overkill"))
-            assert(provider:get_buffs().damage_increase.value == 1.15)
-            assert(provider:remove_composite_contribution("damage_increase", "underdog"))
-            assert(provider:get_buffs().damage_increase == nil)
-        ''')
-
-    def test_composite_operations_are_explicit_and_invalid_values_are_ignored(self):
-        self.lua.execute('''
-            local provider = kyohud.hudlist
-            assert(provider:set_composite_contribution(
-                "damage_reduction", "frenzy", "multiply", 0.75
-            ))
-            assert(provider:set_composite_contribution(
-                "damage_reduction", "underdog_aced", "multiply", 0.9
-            ))
-            assert(math.abs(provider:get_buff("damage_reduction").value - 0.675) < 0.000001)
-            assert(provider:set_composite_contribution(
-                "total_dodge_chance", "native_final", "replace", 0.35
-            ))
-            assert(provider:get_buff("total_dodge_chance").value == 0.35)
-            assert(not provider:set_composite_contribution(
-                "damage_reduction", "bad", "multiply", 0/0
-            ))
-            assert(not provider:set_composite_contribution(
-                "damage_reduction", "wrong", "sum", 0.1
-            ))
-            assert(provider:get_composite_source_count("damage_reduction") == 2)
-        ''')
-
-    def test_composite_internal_contributions_are_not_exposed(self):
-        self.lua.execute('''
-            local provider = kyohud.hudlist
-            provider:set_composite_contribution(
-                "damage_increase", "overkill", "multiply", 1.75
-            )
-            local public = provider:get_buff("damage_increase")
-            assert(public.contributions == nil)
-            public.value = 99
-            assert(provider:get_buff("damage_increase").value == 1.75)
+            local catalog = kyohud.hudlist_catalog
+            for _, targets in pairs(catalog.routes) do
+                for _, target_id in ipairs(targets) do
+                    assert(target_id ~= "damage_increase"
+                        and target_id ~= "damage_reduction"
+                        and target_id ~= "melee_damage_increase"
+                        and target_id ~= "total_dodge_chance"
+                        and target_id ~= "passive_health_regen",
+                        "route should not target stat card: " .. target_id)
+                end
+            end
         ''')
 
 
@@ -91,18 +42,16 @@ class HUDListPassiveValueTests(unittest.TestCase):
             assert(#routes.copycat_health_invul == 1
                 and routes.copycat_health_invul[1] == "copycat_health_invul")
             assert(routes.copycat_health_invul_passive == nil)
-            assert(#routes.chico_injector == 2
-                and routes.chico_injector[2] == "damage_reduction")
         ''')
 
 
-    def test_berserker_routes_melee_and_weapon_damage_without_duplicate_basic_card(self):
+    def test_berserker_does_not_route_to_stat_cards(self):
         self.lua.execute('''
             local routes = kyohud.hudlist_catalog.routes
-            assert(#routes.berserker == 1 and routes.berserker[1] == "melee_damage_increase")
-            assert(#routes.berserker_aced == 2)
-            assert(routes.berserker_aced[1] == "berserker_aced")
-            assert(routes.berserker_aced[2] == "damage_increase")
+            assert(routes.berserker == nil,
+                "berserker should not have a route (stat cards compute natively)")
+            assert(routes.berserker_aced == nil,
+                "berserker_aced should not have a route (stat cards compute natively)")
         ''')
 
 

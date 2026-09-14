@@ -17,7 +17,7 @@ kyohud.KYO_BUFF_CONFIG = {
         damage_reduction = "6C8CFF",
         melee_damage_increase = "D66BFF",
         passive_health_regen = "4ADE9B",
-        total_dodge_chance = "F5D547",
+        total_dodge_chance = "2E8B57",
     },
     buffs = {
         inspire_debuff = {
@@ -80,22 +80,25 @@ kyohud.KYO_BUFF_CONFIG = {
                 placement = "timer",
             },
         },
-        passive_health_regen = {
-            fixed_slot = 3,
-            color = "passive_health_regen",
-            value_format = "passive_health_regen",
-            label = {
-                id = "ky_hud_buff_label_health_regen",
-                fallback = "HP+",
-                placement = "timer",
-            },
-        },
         total_dodge_chance = {
+            fixed_slot = 9,
             color = "total_dodge_chance",
             value_format = "total_dodge_chance",
             label = {
                 id = "ky_hud_buff_label_dodge_chance",
                 fallback = "Dodge",
+                placement = "timer",
+            },
+        },
+
+        passive_health_regen = {
+            fixed_slot = 3,
+            color = "passive_health_regen",
+            frame_color = "passive_health_regen",
+            value_format = "passive_health_regen",
+            label = {
+                id = "ky_hud_buff_label_health_regen",
+                fallback = "HP+",
                 placement = "timer",
             },
         },

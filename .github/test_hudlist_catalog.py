@@ -162,6 +162,21 @@ class HUDListCatalogTests(unittest.TestCase):
             assert(team.provenance == "modern_verified")
         ''')
 
+    def test_passive_health_regen_uses_specialization_17_tier_3_icon(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local def = kyohud.hudlist_catalog.definitions.passive_health_regen
+            assert(def.perks ~= nil, "passive_health_regen must have perks")
+            assert(def.perks[1] == 1, "perks[1] must be 1")
+            assert(def.perks[2] == 0, "perks[2] must be 0")
+            assert(def.texture_bundle_folder == "chico",
+                "texture_bundle_folder must be chico, got " .. tostring(def.texture_bundle_folder))
+            assert(def.hud_tweak == nil,
+                "passive_health_regen must not have hud_tweak, got " .. tostring(def.hud_tweak))
+            assert(def.icon_provenance == "skilltreetweakdata specialization 17 tier 3 chico icon_xy {1, 0}",
+                "unexpected provenance: " .. tostring(def.icon_provenance))
+        ''')
+
     def test_external_hud_tables_are_not_mutated_or_replaced(self):
         lua = self.make_runtime()
         lua.execute('''

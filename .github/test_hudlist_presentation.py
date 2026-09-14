@@ -49,11 +49,11 @@ class HUDListPresentationTests(unittest.TestCase):
             HUDList = {BuffItemBase = {MAP = {
                 overkill = {texture = "external/wrong", priority = 99},
             }}}
-            HUDListManager = {BUFFS = {overkill = {"external_target"}}}
+            HUDListManager = {BUFFS = {overkill_damage_multiplier = {"overkill"}}}
             local definition = kyohud:GetVanillaHUDBuffDefinition("overkill")
             assert(definition ~= nil and definition.priority == 4)
             local targets = kyohud:GetVanillaHUDBuffTargets("overkill")
-            assert(#targets == 2 and targets[1] == "overkill" and targets[2] == "damage_increase")
+            assert(#targets == 1 and targets[1] == "overkill")
         ''')
 
     def test_partner_in_crime_aced_merges_without_duplicate_stack_badge(self):
@@ -91,6 +91,18 @@ class HUDListPresentationTests(unittest.TestCase):
             assert(buffs.damage_increase.fixed_slot == 6)
             assert(buffs.damage_reduction.fixed_slot == 7)
             assert(buffs.melee_damage_increase.fixed_slot == 8)
+            assert(buffs.total_dodge_chance.fixed_slot == 9)
+        ''')
+
+    def test_dodge_uses_dark_clover_green_and_health_regen_has_green_frame(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local config = kyohud.KYO_BUFF_CONFIG
+            assert(config.colors.total_dodge_chance == "2E8B57")
+            assert(config.colors.passive_health_regen == "4ADE9B")
+            assert(config.colors.total_dodge_chance ~= config.colors.passive_health_regen)
+            assert(config.buffs.total_dodge_chance.color == "total_dodge_chance")
+            assert(config.buffs.passive_health_regen.frame_color == "passive_health_regen")
         ''')
 
     def test_produced_modern_buffs_have_local_visual_metadata(self):
@@ -161,28 +173,17 @@ class HUDListPresentationTests(unittest.TestCase):
         lua = self.make_runtime()
         lua.execute('''
             assert(kyohud:TryRegisterGameInfoBridge() == true)
-            local weapon_base = {weapon_tweak_data = function()
-                return {categories = {"rifle"}, ignore_damage_upgrades = false}
-            end}
-            local weapon = {base = function() return weapon_base end}
-            local inventory = {equipped_unit = function() return weapon end}
-            local player = {inventory = function() return inventory end}
-            managers.player = {
-                player_unit = function() return player end,
-                upgrade_value = function(self, category, upgrade, default) return default end,
-            }
             kyohud.hudlist:event("buff", "activate", "berserker", {value = 1.25})
             kyohud.hudlist:event("buff", "activate", "yakuza_recovery", {value = 0.3})
             kyohud.hudlist:event("buff", "activate", "muscle_regen", {
                 value = 0.03, interval = 5,
             })
-            assert(kyohud._buffs.berserker == nil)
-            assert(kyohud._buffs.melee_damage_increase.value_text == "x2.25")
+            assert(kyohud._buffs.berserker.value_text == "+125%")
             assert(kyohud._buffs.yakuza_recovery.value_text == "-30%")
             assert(kyohud._buffs.muscle_regen.value_text == "3% / 5s")
+            kyohud.hudlist:event("buff", "deactivate", "berserker", {})
             kyohud.hudlist:event("buff", "activate", "berserker_aced", {value = 0.5})
             assert(kyohud._buffs.berserker_aced.value_text == "+50%")
-            assert(kyohud._buffs.damage_increase.value_text == "+50%")
             kyohud.hudlist:event("buff", "deactivate", "berserker_aced", {})
             kyohud.hudlist:event("buff", "activate", "berserker_aced", {value = 0/0})
             assert(kyohud._buffs.berserker_aced == nil)
@@ -209,6 +210,99 @@ class HUDListPresentationTests(unittest.TestCase):
                 assert(definition.texture_bundle_folder == nil)
                 assert(definition.perks[1] == 2 and definition.perks[2] == 7)
             end
+        ''')
+
+    def test_total_dodge_chance_uses_burglar_perk_icon_without_bundle(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local def = kyohud.hudlist_catalog.definitions.total_dodge_chance
+            assert(def ~= nil, "total_dodge_chance definition missing")
+            assert(def.perks ~= nil, "total_dodge_chance must use perks icon")
+            assert(def.perks[1] == 7 and def.perks[2] == 3,
+                "total_dodge_chance perks must be {7, 3} (Burglar deck 5), got {"
+                .. def.perks[1] .. ", " .. def.perks[2] .. "}")
+            assert(def.texture_bundle_folder == nil,
+                "total_dodge_chance must have no DLC bundle folder")
+            assert(def.hud_tweak == nil,
+                "total_dodge_chance must not use hud_tweak")
+            assert(def.skills_new == nil and def.skills == nil and def.skill_id == nil,
+                "total_dodge_chance must not use skill icons")
+            assert(type(def.icon_provenance) == "string" and def.icon_provenance ~= "",
+                "total_dodge_chance must have explicit provenance")
+        ''')
+
+    def test_melee_damage_increase_uses_throwing_axe_hud_icon(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local def = kyohud.hudlist_catalog.definitions.melee_damage_increase
+            assert(def ~= nil, "melee_damage_increase definition missing")
+            assert(def.hud_tweak == "throwing_axe",
+                "melee_damage_increase must use hud_tweak throwing_axe, got "
+                .. tostring(def.hud_tweak))
+            assert(def.skills_new == nil and def.skills == nil,
+                "melee_damage_increase must not use skill atlas icons")
+            assert(def.skill_id == nil,
+                "melee_damage_increase must not have a concurrent skill_id")
+            assert(def.icon_rotation == -90,
+                "melee_damage_increase must have icon_rotation = -90, got "
+                .. tostring(def.icon_rotation))
+            assert(type(def.icon_provenance) == "string" and def.icon_provenance ~= "",
+                "melee_damage_increase must have explicit provenance")
+        ''')
+
+    def test_icon_for_buff_carries_rotation_only_when_declared(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            function Idstring(value) return value end
+            DB = {has = function() return true end}
+            tweak_data = {
+                skilltree = {skills = setmetatable({}, {__index = function(t, k)
+                    return {icon_xy = {1, 1}}
+                end})},
+                hud_icons = {get_icon_data = function(self, id)
+                    return "native/" .. id, {0, 0, 32, 32}
+                end},
+            }
+        ''')
+        lua.execute('''
+            local melee = kyohud.hudlist_catalog.definitions.melee_damage_increase
+            local dodge = kyohud.hudlist_catalog.definitions.total_dodge_chance
+            local overkill = kyohud.hudlist_catalog.definitions.overkill
+
+            kyohud:add_buff("melee_damage_increase", nil, 10, nil, false, false, nil, nil)
+            local melee_card = kyohud._buffs.melee_damage_increase
+            assert(melee_card ~= nil and melee_card.icon ~= nil)
+            assert(melee_card.icon.rotation == -90,
+                "melee card icon must carry rotation -90, got "
+                .. tostring(melee_card.icon.rotation))
+
+            kyohud:add_buff("total_dodge_chance", nil, 10, nil, false, false, nil, nil)
+            local dodge_card = kyohud._buffs.total_dodge_chance
+            assert(dodge_card ~= nil and dodge_card.icon ~= nil)
+            assert(dodge_card.icon.rotation == nil,
+                "dodge card icon must have no rotation, got "
+                .. tostring(dodge_card.icon.rotation))
+
+            kyohud:add_buff("overkill", nil, 10, nil, false, false, nil, nil)
+            local overkill_card = kyohud._buffs.overkill
+            assert(overkill_card ~= nil and overkill_card.icon ~= nil)
+            assert(overkill_card.icon.rotation == nil,
+                "non-rotated icon must not carry rotation metadata")
+        ''')
+
+    def test_icon_provenance_records_exact_source_for_dodge_and_melee(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local dodge = kyohud.hudlist_catalog.definitions.total_dodge_chance
+            local melee = kyohud.hudlist_catalog.definitions.melee_damage_increase
+            assert(dodge.icon_provenance:find("Burglar") or dodge.icon_provenance:find("specialization 7"),
+                "dodge provenance must reference Burglar / specialization 7")
+            assert(dodge.icon_provenance:find("{7, 3}") or dodge.icon_provenance:find("7, 3"),
+                "dodge provenance must reference coordinates {7, 3}")
+            assert(melee.icon_provenance:find("throwing_axe"),
+                "melee provenance must reference throwing_axe")
+            assert(melee.icon_provenance:find("equipment_02"),
+                "melee provenance must reference the native equipment atlas")
         ''')
 
 
