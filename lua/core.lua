@@ -81,7 +81,18 @@ KH.KYO_BUFF_PRESENTATION = KYO_BUFF_PRESENTATION
 local EMPTY_BUFF_CANDIDATES = {}
 
 local FRAME_ANIM_CACHE = {}
-local RENDER_CACHES = { chevrons = {}, edge_points = {}, progress = {}, combo_colors = {} }
+local RENDER_CACHES = {
+    chevrons = {},
+    edge_points = {},
+    progress = {},
+    combo_colors = {},
+    buff_cell_bg = {},
+    buff_cell_footer = {},
+    buff_cell_outline = {},
+    tactical_bg = {},
+    killfeed_bg = {},
+    killfeed_top_edge = {}
+}
 for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
     local _anim = _pres.frame_animation
     if _anim and _pres.frame_color
@@ -1362,19 +1373,26 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
     local glow_alpha = style and style.glow_alpha or 0.16
     local inset = style and style.inset or 2
 
+    local bg_key = string.format("%.3f", alpha)
+    local bg_gradient = RENDER_CACHES.tactical_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0,    Color.black:with_alpha(alpha * 0.16),
+            0.2,  Color.black:with_alpha(alpha * 0.62),
+            0.5,  Color.black:with_alpha(alpha * 0.78),
+            0.82, Color.black:with_alpha(alpha * 0.58),
+            1,    Color.black:with_alpha(alpha * 0.1),
+        }
+        RENDER_CACHES.tactical_bg[bg_key] = bg_gradient
+    end
+
     panel:gradient({
         x = x + inset,
         y = y + inset,
         w = w - inset * 2,
         h = h - inset * 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.16),
-            0.2, Color.black:with_alpha(alpha * 0.62),
-            0.5, Color.black:with_alpha(alpha * 0.78),
-            0.82, Color.black:with_alpha(alpha * 0.58),
-            1, Color.black:with_alpha(alpha * 0.1),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
 
@@ -1448,23 +1466,31 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
     local has_custom_outline = color ~= nil
     color = color or HUD_ACCENT_COLOR
 
+    -- Cache background gradient par alpha
+    local bg_key = string.format("%.3f", alpha)
+    local bg_gradient = RENDER_CACHES.buff_cell_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0, Color.black:with_alpha(0),
+            0.45, Color.black:with_alpha(alpha * 0.3),
+            1, Color.black:with_alpha(alpha * 0.82),
+        }
+        RENDER_CACHES.buff_cell_bg[bg_key] = bg_gradient
+    end
+
     panel:gradient({
         x = left,
         y = top,
         w = width,
         h = height,
         orientation = "vertical",
-        gradient_points = {
-            0, Color.black:with_alpha(0),
-            0.45, Color.black:with_alpha(alpha * 0.3),
-            1, Color.black:with_alpha(alpha * 0.82),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
 
     -- Risers share the same gradient points table; `panel:gradient` accepts the
     -- same reference for both without modification.
-    local edge_key = tostring(color) .. ":" .. string.format("%.3f", alpha)
+    local edge_key = tostring(color) .. ":" .. bg_key
     local edge_points = RENDER_CACHES.edge_points[edge_key]
     if not edge_points then
         edge_points = {
@@ -1492,23 +1518,38 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
         gradient_points = edge_points,
         layer = layer + 1,
     })
+
+    -- Cache footer gradient par color+alpha
+    local footer_key = tostring(color) .. ":" .. bg_key
+    local footer_gradient = RENDER_CACHES.buff_cell_footer[footer_key]
+    if not footer_gradient then
+        footer_gradient = {
+            0,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+            0.5, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+            1,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+        }
+        RENDER_CACHES.buff_cell_footer[footer_key] = footer_gradient
+    end
+
     panel:gradient({
         x = left,
         y = top + height - BUFF_CELL_LINE_WIDTH,
         w = width,
         h = BUFF_CELL_LINE_WIDTH,
         orientation = "horizontal",
-        gradient_points = {
-            0,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
-            0.5, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
-            1,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
-        },
+        gradient_points = footer_gradient,
         layer = layer + 1,
     })
 
     if has_custom_outline then
         local stroke = 2
-        local outline_color = color:with_alpha(math.min(1, alpha * 1.15))
+        -- Cache outline_color par color+alpha
+        local outline_key = footer_key
+        local outline_color = RENDER_CACHES.buff_cell_outline[outline_key]
+        if not outline_color then
+            outline_color = color:with_alpha(math.min(1, alpha * 1.15))
+            RENDER_CACHES.buff_cell_outline[outline_key] = outline_color
+        end
         local outline_layer = layer + 1
         panel:rect({
             x = left,
@@ -1727,26 +1768,53 @@ local function resolve_buff_state(buff, t)
 end
 
 local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
+    -- Background gradient avec cache
+    local bg_key = string.format("%.3f", alpha)
+    local bg_gradient = RENDER_CACHES.killfeed_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0, Color.black:with_alpha(alpha * 0.68),
+            0.72, Color.black:with_alpha(alpha * 0.42),
+            1, Color.black:with_alpha(alpha * 0.05),
+        }
+        RENDER_CACHES.killfeed_bg[bg_key] = bg_gradient
+    end
+
     panel:gradient({
         x = x,
         y = y + 1,
         w = w,
         h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.68),
-            0.72, Color.black:with_alpha(alpha * 0.42),
-            1, Color.black:with_alpha(alpha * 0.05),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
+
+    -- Top edge avec cache
+    local top_edge_key = tostring(color) .. ":" .. bg_key
+    local top_edge_gradient = RENDER_CACHES.killfeed_top_edge[top_edge_key]
+    if not top_edge_gradient then
+        top_edge_gradient = {
+            0, color:with_alpha(alpha * 0.9),
+            0.5, color:with_alpha(alpha * 0.5),
+            1, color:with_alpha(alpha * 0.9),
+        }
+        RENDER_CACHES.killfeed_top_edge[top_edge_key] = top_edge_gradient
+    end
+
+    panel:gradient({
+        x = x + 2,
+        y = y + 1,
+        w = w - 4,
+        h = 1,
+        orientation = "horizontal",
+        gradient_points = top_edge_gradient,
+        layer = layer + 1,
+    })
+
     panel:rect({
         x = x, y = y + 2, w = 2, h = h - 4,
         color = color, alpha = alpha * 0.9, layer = layer + 1,
-    })
-    panel:rect({
-        x = x + 2, y = y + 1, w = w - 4, h = 1,
-        color = color, alpha = alpha * 0.5, layer = layer + 1,
     })
     panel:rect({
         x = x + 2, y = y + h - 2, w = w - 4, h = 1,
