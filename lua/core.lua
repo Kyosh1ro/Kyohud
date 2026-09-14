@@ -61,6 +61,7 @@ local KILLFEED_ENTRY_DURATION = 5
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
 local KILLFEED_FRAME_CLEARANCE = 1.5
+local PASSIVE_REGEN_INTERVAL = 5
 local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
 -- The medal lives in the killfeed and stays visible a bit longer than priority announcements so its tier remains readable during action.
@@ -2107,7 +2108,25 @@ local function native_passive_health_regen_fraction()
         local ratio = tonumber(pm:health_regen()) or 0
         local fixed = tonumber(pm:fixed_health_regen(damage:health_ratio())) or 0
         local healing_mul = tonumber(damage._healing_reduction) or 1
-        return math.max(0, (ratio + fixed / maximum) * healing_mul)
+        local base_fraction = (ratio + fixed / maximum) * healing_mul
+
+        -- Grinder heals a fixed amount per stack and tick. Normalize its
+        -- active throughput to the same five-second interval as PV+.
+        local grinder_fraction = 0
+        local grinder_stacks = damage._damage_to_hot_stack
+        if grinder_stacks and #grinder_stacks > 0 then
+            local grinder_value = tonumber(pm:upgrade_value(
+                "player", "damage_to_hot", 0)) or 0
+            local grinder_tick_time = tonumber(damage._doh_data
+                and damage._doh_data.tick_time) or 1
+            if grinder_tick_time > 0 then
+                local hp_per_interval = #grinder_stacks * grinder_value
+                    * PASSIVE_REGEN_INTERVAL / grinder_tick_time
+                grinder_fraction = hp_per_interval / maximum * healing_mul
+            end
+        end
+
+        return math.max(0, base_fraction + grinder_fraction)
     end)
     return ok and tonumber(fraction) or 0
 end

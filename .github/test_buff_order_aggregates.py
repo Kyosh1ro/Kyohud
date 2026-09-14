@@ -198,6 +198,83 @@ class StatCardNativeComputationTests(unittest.TestCase):
             assert(kyohud._buffs.passive_health_regen.value_text == "8.0%")
         ''')
 
+    def test_passive_health_regen_includes_active_grinder_stacks(self):
+        lua = make_runtime()
+        lua.execute('''
+            local damage = {
+                _damage_to_hot_stack = {{}, {}, {}},
+                _doh_data = {tick_time = 0.5},
+                _healing_reduction = 0.8,
+                _max_health = function() return 40 end,
+                health_ratio = function() return 0.5 end,
+            }
+            managers.player = {
+                player_unit = function() return {
+                    character_damage = function() return damage end,
+                } end,
+                health_regen = function() return 0.025 end,
+                fixed_health_regen = function() return 0 end,
+                damage_reduction_skill_multiplier = function() return 1 end,
+                temporary_upgrade_value = function(self, c, u, d) return d end,
+                get_property = function(self, p, d) return d end,
+                upgrade_value = function(self, category, upgrade, default)
+                    if category == "player" and upgrade == "damage_to_hot" then
+                        return 0.4
+                    end
+                    return default
+                end,
+                has_category_upgrade = function() return false end,
+                get_melee_dmg_multiplier = function() return 1 end,
+                body_armor_value = function() return 0 end,
+                skill_dodge_chance = function() return 0 end,
+                _smoke_screen_effects = {},
+            }
+            managers.blackmarket = {equipped_melee_weapon = function() return nil end}
+            tweak_data.player = {damage = {DODGE_INIT = 0}}
+            tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0}}
+            tweak_data.blackmarket = {melee_weapons = {}}
+            kyohud:RefreshCalculatedBuffValues()
+            -- Passive: 2.5% * 80% = 2%. Grinder over five seconds:
+            -- 3 * 0.4 HP * (5 / 0.5) / 40 HP * 80% = 24%.
+            assert(kyohud._buffs.passive_health_regen.value_text == "26.0%")
+        ''')
+
+    def test_passive_health_regen_ignores_grinder_without_active_stacks(self):
+        lua = make_runtime()
+        lua.execute('''
+            local damage = {
+                _damage_to_hot_stack = {},
+                _doh_data = {tick_time = 0.3},
+                _max_health = function() return 100 end,
+                health_ratio = function() return 0.5 end,
+            }
+            managers.player = {
+                player_unit = function() return {
+                    character_damage = function() return damage end,
+                } end,
+                health_regen = function() return 0 end,
+                fixed_health_regen = function() return 0 end,
+                damage_reduction_skill_multiplier = function() return 1 end,
+                temporary_upgrade_value = function(self, c, u, d) return d end,
+                get_property = function(self, p, d) return d end,
+                upgrade_value = function(self, category, upgrade, default)
+                    if upgrade == "damage_to_hot" then return 0.4 end
+                    return default
+                end,
+                has_category_upgrade = function() return false end,
+                get_melee_dmg_multiplier = function() return 1 end,
+                body_armor_value = function() return 0 end,
+                skill_dodge_chance = function() return 0 end,
+                _smoke_screen_effects = {},
+            }
+            managers.blackmarket = {equipped_melee_weapon = function() return nil end}
+            tweak_data.player = {damage = {DODGE_INIT = 0}}
+            tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0}}
+            tweak_data.blackmarket = {melee_weapons = {}}
+            kyohud:RefreshCalculatedBuffValues()
+            assert(kyohud._buffs.passive_health_regen.value_text == "0.0%")
+        ''')
+
     def test_damage_increase_uses_native_temporaries(self):
         lua = make_runtime()
         lua.execute('''
