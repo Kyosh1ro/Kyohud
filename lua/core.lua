@@ -91,7 +91,8 @@ local RENDER_CACHES = {
     buff_cell_outline = {},
     tactical_bg = {},
     killfeed_bg = {},
-    killfeed_top_edge = {}
+    killfeed_top_edge = {},
+    frame_colors = {}
 }
 for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
     local _anim = _pres.frame_animation
@@ -128,9 +129,21 @@ end
 local function draw_frame_color(buff, t)
     local anim = FRAME_ANIM_CACHE[buff.id]
     if not anim then return buff.frame_color end
-    local r, g, b = KH:_compute_frame_color(buff.id, t)
+    
+    local r, g, b, factor = KH:_compute_frame_color(buff.id, t)
     if not r then return buff.frame_color end
-    return Color(r, g, b)
+    
+    -- Cache par (buff_id, factor_arrondi_2_decimales)
+    local factor_key = math.floor(factor * 100)
+    local cache_key = buff.id .. ":" .. factor_key
+    local cached = RENDER_CACHES.frame_colors[cache_key]
+    
+    if not cached then
+        cached = Color(r, g, b)
+        RENDER_CACHES.frame_colors[cache_key] = cached
+    end
+    
+    return cached
 end
 
 local function killfeed_size(settings)
