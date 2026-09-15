@@ -85,14 +85,32 @@ local RENDER_CACHES = {
     chevrons = {},
     edge_points = {},
     progress = {},
-    combo_colors = {},
     buff_cell_bg = {},
     buff_cell_footer = {},
     buff_cell_outline = {},
     tactical_bg = {},
     killfeed_bg = {},
     killfeed_top_edge = {},
-    frame_colors = {}
+    frame_colors = {},
+    -- Reusable buffers for per-frame allocations; mutated in-place each frame.
+    layout = { positions = {} },
+    buff_list = {},
+    extra_buffs = {},
+    extra_buffs_scan = {},
+    extra_buff_members = setmetatable({}, { __mode = "k" }),
+    extra_buff_generation = 0,
+    heist_score_bg_gradient = {},
+    heist_score_edge_gradient = {},
+    medal_frame_gradient = {},
+    -- Pre-allocated color constants to avoid Color() allocations
+    combo_colors = {
+        [2] = Color(1, 0.85, 0.2),
+        [3] = Color(1, 0.55, 0.1),
+        [4] = Color(1, 0.2, 0.1),
+        [5] = Color(0.208, 0.906, 1), -- 5+
+    },
+    killfeed_name_color = Color(0.86, 0.96, 1),
+    killfeed_negative_score_color = Color(1, 0.36, 0.3)
 }
 for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
     local _anim = _pres.frame_animation
@@ -974,17 +992,9 @@ local function combo_label(count, variant_index)
 end
 
 -- Cache combo colors to avoid Color() allocation on every frame
+-- Bounded to 4 entries: keys 2,3,4,5 (where 5 represents 5+)
 local function combo_color(count)
-    local cached = RENDER_CACHES.combo_colors[count]
-    if cached then return cached end
-    local color
-    if count == 2 then color = Color(1, 0.85, 0.2)
-    elseif count == 3 then color = Color(1, 0.55, 0.1)
-    elseif count == 4 then color = Color(1, 0.2, 0.1)
-    else color = Color(0.208, 0.906, 1) -- electric cyan #35E7FF starting at 5 kills
-    end
-    RENDER_CACHES.combo_colors[count] = color
-    return color
+    return RENDER_CACHES.combo_colors[math.min(math.max(count, 2), 5)]
 end
 
 -- A banner directly carries its label and color. `KH:draw` therefore
@@ -1910,19 +1920,30 @@ local function draw_medal_edge(panel, x, y, w, color, alpha, layer)
     })
 end
 
+-- Cache medal frame gradient colors by alpha to avoid per-frame allocations
+function RENDER_CACHES.medal_frame_gradient_for(alpha)
+    -- Round alpha to 2 decimal places for cache key
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local cached = RENDER_CACHES.medal_frame_gradient[alpha_key]
+    if cached then return cached end
+    cached = {
+        0,    Color.black:with_alpha(alpha * 0.14),
+        0.26, Color.black:with_alpha(alpha * 0.7),
+        0.5,  Color.black:with_alpha(alpha * 0.82),
+        0.74, Color.black:with_alpha(alpha * 0.7),
+        1,    Color.black:with_alpha(alpha * 0.14),
+    }
+    RENDER_CACHES.medal_frame_gradient[alpha_key] = cached
+    return cached
+end
+
 local function draw_medal_frame(panel, x, y, w, h, color, alpha, layer)
     -- Symmetric background: the medal reads as a block, while kill cards keep
     -- their right-oriented asymmetric gradient.
     panel:gradient({
         x = x, y = y + 1, w = w, h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0,    Color.black:with_alpha(alpha * 0.14),
-            0.26, Color.black:with_alpha(alpha * 0.7),
-            0.5,  Color.black:with_alpha(alpha * 0.82),
-            0.74, Color.black:with_alpha(alpha * 0.7),
-            1,    Color.black:with_alpha(alpha * 0.14),
-        },
+        gradient_points = RENDER_CACHES.medal_frame_gradient_for(alpha),
         layer = layer,
     })
 
@@ -3436,7 +3457,9 @@ local BUFF_ROW_MIN_ICON_SIZE = 20
 
 function KH.compute_buff_row_layout(
         count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y,
-        top_label_height)
+        top_label_height, layout)
+    layout = layout or { positions = {} }
+    local positions = layout.positions
     count = math.max(0, math.floor(tonumber(count) or 0))
     panel_w = math.max(0, tonumber(panel_w) or 0)
     panel_h = math.max(0, tonumber(panel_h) or 0)
@@ -3444,7 +3467,6 @@ function KH.compute_buff_row_layout(
     frame_pad_x = math.max(0, tonumber(frame_pad_x) or 0)
     frame_pad_y = math.max(0, tonumber(frame_pad_y) or 0)
 
-    local positions = {}
     local preferred_cell_w = icon_size + frame_pad_x * 2
     local preferred_gap = clamp(icon_size * 0.25, 4, 12)
     local available_w = math.max(0, panel_w - BUFF_ROW_EDGE_MARGIN * 2)
@@ -3457,19 +3479,22 @@ function KH.compute_buff_row_layout(
     local slot_count = count
 
     if count == 0 then
-        return {
-            positions = positions,
-            effective_size = effective_size,
-            frame_pad_x = frame_pad_x,
-            frame_pad_y = frame_pad_y,
-            cell_w = cell_w,
-            gap = gap,
-            pitch = cell_w + gap,
-            scale = scale,
-            visible_count = 0,
-            hidden_count = 0,
-            slot_count = 0,
-        }
+        -- Trim any leftover slots from a previous larger frame
+        for i = 1, #positions do
+            positions[i] = nil
+        end
+        layout.effective_size = effective_size
+        layout.frame_pad_x = frame_pad_x
+        layout.frame_pad_y = frame_pad_y
+        layout.cell_w = cell_w
+        layout.gap = gap
+        layout.pitch = cell_w + gap
+        layout.scale = scale
+        layout.visible_count = 0
+        layout.hidden_count = 0
+        layout.slot_count = 0
+        layout.overflow_text = nil
+        return layout
     end
 
     local preferred_row_w = preferred_cell_w * count
@@ -3532,24 +3557,35 @@ function KH.compute_buff_row_layout(
     local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
     local first_x = row_left + cell_w * 0.5
 
-    for i = 0, slot_count - 1 do
-        positions[#positions + 1] = { x = first_x + pitch * i, y = y }
+    -- Reuse the module-level positions buffer to avoid allocating
+    -- per-frame {x,y} tables. The consumer only reads positions
+    -- during the current frame.
+    for i = 1, slot_count do
+        local slot = positions[i]
+        if not slot then
+            slot = { x = 0, y = 0 }
+            positions[i] = slot
+        end
+        slot.x = first_x + pitch * (i - 1)
+        slot.y = y
+    end
+    -- Trim trailing slots left over from a larger previous frame
+    for i = slot_count + 1, #positions do
+        positions[i] = nil
     end
 
-    return {
-        positions = positions,
-        effective_size = effective_size,
-        frame_pad_x = frame_pad_x,
-        frame_pad_y = frame_pad_y,
-        cell_w = cell_w,
-        gap = gap,
-        pitch = pitch,
-        scale = scale,
-        visible_count = visible_count,
-        hidden_count = hidden_count,
-        slot_count = slot_count,
-        overflow_text = hidden_count > 0 and ("+" .. tostring(hidden_count)) or nil,
-    }
+    layout.effective_size = effective_size
+    layout.frame_pad_x = frame_pad_x
+    layout.frame_pad_y = frame_pad_y
+    layout.cell_w = cell_w
+    layout.gap = gap
+    layout.pitch = pitch
+    layout.scale = scale
+    layout.visible_count = visible_count
+    layout.hidden_count = hidden_count
+    layout.slot_count = slot_count
+    layout.overflow_text = hidden_count > 0 and ("+" .. tostring(hidden_count)) or nil
+    return layout
 end
 
 local function compare_buff_arrival(a, b)
@@ -3566,6 +3602,38 @@ local HEIST_SCORE_LABEL_COLOR = Color(0.86, 0.96, 1)
 local HEIST_SCORE_BEST_VALUE_COLOR = Color(1, 1, 1)
 local HEIST_SCORE_EDGE_MARGIN = 6
 
+-- Cache heist score frame gradient points to avoid per-frame allocations
+function RENDER_CACHES.heist_score_bg_gradient_for(alpha)
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local cached = RENDER_CACHES.heist_score_bg_gradient[alpha_key]
+    if cached then return cached end
+    cached = {
+        0, Color.black:with_alpha(alpha * 0.7),
+        0.58, Color.black:with_alpha(alpha * 0.46),
+        1, Color.black:with_alpha(0),
+    }
+    RENDER_CACHES.heist_score_bg_gradient[alpha_key] = cached
+    return cached
+end
+
+function RENDER_CACHES.heist_score_edge_gradient_for(color, alpha)
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local color_cache = RENDER_CACHES.heist_score_edge_gradient[color]
+    if not color_cache then
+        color_cache = {}
+        RENDER_CACHES.heist_score_edge_gradient[color] = color_cache
+    end
+    local cached = color_cache[alpha_key]
+    if cached then return cached end
+    cached = {
+        0, color:with_alpha(alpha * 0.5),
+        0.72, color:with_alpha(alpha * 0.2),
+        1, color:with_alpha(0),
+    }
+    color_cache[alpha_key] = cached
+    return cached
+end
+
 local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
     panel:gradient({
         x = x,
@@ -3573,28 +3641,21 @@ local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
         w = w,
         h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.7),
-            0.58, Color.black:with_alpha(alpha * 0.46),
-            1, Color.black:with_alpha(0),
-        },
+        gradient_points = RENDER_CACHES.heist_score_bg_gradient_for(alpha),
         layer = layer,
     })
     panel:rect({
         x = x, y = y + 2, w = 2, h = h - 4,
         color = color, alpha = alpha * 0.9, layer = layer + 1,
     })
+    local edge_gradient = RENDER_CACHES.heist_score_edge_gradient_for(color, alpha)
     panel:gradient({
         x = x + 2,
         y = y + 1,
         w = w - 2,
         h = 1,
         orientation = "horizontal",
-        gradient_points = {
-            0, color:with_alpha(alpha * 0.5),
-            0.72, color:with_alpha(alpha * 0.2),
-            1, color:with_alpha(0),
-        },
+        gradient_points = edge_gradient,
         layer = layer + 1,
     })
     panel:gradient({
@@ -3603,11 +3664,7 @@ local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
         w = w - 2,
         h = 1,
         orientation = "horizontal",
-        gradient_points = {
-            0, color:with_alpha(alpha * 0.5),
-            0.72, color:with_alpha(alpha * 0.2),
-            1, color:with_alpha(0),
-        },
+        gradient_points = edge_gradient,
         layer = layer + 1,
     })
 end
@@ -3852,7 +3909,9 @@ function KH:draw()
 
     -- ── Draw buffs ──
     if s.enable_buffs and self._gameinfo_bridge_active then
-        local buff_list = {}
+        -- Reuse module-level buffers to avoid per-frame allocations.
+        local buff_list = RENDER_CACHES.buff_list
+        for index = #buff_list, 1, -1 do buff_list[index] = nil end
         local promoted_perk_buff_id
 
         -- Priority indicators open the row in chosen order,
@@ -3868,23 +3927,41 @@ function KH:draw()
                     buff = self._buffs[buff_id]
                 end
                 if buff and buff.icon then
-                    table.insert(buff_list, buff)
+                    buff_list[#buff_list + 1] = buff
                 end
             end
         end
 
-        local extra_buffs = {}
+        local extra_buffs = RENDER_CACHES.extra_buffs
+        local extra_buffs_scan = RENDER_CACHES.extra_buffs_scan
+        for index = #extra_buffs_scan, 1, -1 do extra_buffs_scan[index] = nil end
+        RENDER_CACHES.extra_buff_generation = RENDER_CACHES.extra_buff_generation + 1
+        local extra_buff_generation = RENDER_CACHES.extra_buff_generation
         for _, b in pairs(self._buffs) do
             if b.icon and b.id ~= promoted_perk_buff_id
                     and not STATIC_BUFF_SLOT_SET[b.id] and self:is_buff_visible(b.id) then
-                table.insert(extra_buffs, b)
+                extra_buffs_scan[#extra_buffs_scan + 1] = b
+                RENDER_CACHES.extra_buff_members[b] = extra_buff_generation
             end
         end
-        -- Sort by arrival order: new buffs are added after
-        -- fixed slots, without reordering existing icons.
-        table.sort(extra_buffs, compare_buff_arrival)
+        local extra_buffs_changed = #extra_buffs_scan ~= #extra_buffs
+        if not extra_buffs_changed then
+            for index = 1, #extra_buffs do
+                if RENDER_CACHES.extra_buff_members[extra_buffs[index]] ~= extra_buff_generation then
+                    extra_buffs_changed = true
+                    break
+                end
+            end
+        end
+        if extra_buffs_changed then
+            for index = #extra_buffs, 1, -1 do extra_buffs[index] = nil end
+            for index = 1, #extra_buffs_scan do extra_buffs[index] = extra_buffs_scan[index] end
+            -- Sort only when the visible membership changes. Arrival metadata is
+            -- stable for the lifetime of an entry.
+            table.sort(extra_buffs, compare_buff_arrival)
+        end
         for _, buff in ipairs(extra_buffs) do
-            table.insert(buff_list, buff)
+            buff_list[#buff_list + 1] = buff
         end
 
         local preferred_frame_pad_x = clamp(size * 0.16, 4, 9)
@@ -3911,7 +3988,8 @@ function KH:draw()
             size,
             preferred_frame_pad_x,
             preferred_frame_pad_y,
-            top_label_height
+            top_label_height,
+            RENDER_CACHES.layout
         )
         local buff_size = layout.effective_size
         local frame_pad_x = layout.frame_pad_x
@@ -4578,7 +4656,7 @@ function KH:draw()
                 text = kill.display_text or kill.name,
                 font = kill_font,
                 font_size = kill_font_size,
-                color = kill.special_kind and item_color or Color(0.86, 0.96, 1),
+                color = kill.special_kind and item_color or RENDER_CACHES.killfeed_name_color,
                 align = score_text and "right" or "center",
                 vertical = "center",
                 x = text_x,
@@ -4591,7 +4669,7 @@ function KH:draw()
 
             if score_text then
                 local score_color = kill.score and kill.score < 0
-                    and Color(1, 0.36, 0.3)
+                    and RENDER_CACHES.killfeed_negative_score_color
                     or item_color
                 self._panel:text({
                     text = score_text,
