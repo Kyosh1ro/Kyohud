@@ -148,7 +148,7 @@ class StatCardNativeComputationTests(unittest.TestCase):
                 "expected -20% reduction, got: " .. tostring(buff.value_text))
         ''')
 
-    def test_damage_reduction_neutral_shows_zero(self):
+    def test_damage_reduction_neutral_is_hidden(self):
         lua = make_runtime()
         lua.execute('''
             managers.player = {
@@ -156,10 +156,8 @@ class StatCardNativeComputationTests(unittest.TestCase):
                 damage_reduction_skill_multiplier = function() return 1 end,
             }
             kyohud:RefreshCalculatedBuffValues()
-            local buff = kyohud._buffs.damage_reduction
-            assert(buff ~= nil, "damage_reduction must be visible even at neutral")
-            assert(buff.value_text == "-0%",
-                "expected -0% at neutral, got: " .. tostring(buff.value_text))
+            assert(kyohud._buffs.damage_reduction == nil,
+                "neutral damage reduction must be hidden")
         ''')
 
     def test_passive_health_regen_combines_native_ratio_and_fixed_regen(self):
@@ -272,7 +270,8 @@ class StatCardNativeComputationTests(unittest.TestCase):
             tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0}}
             tweak_data.blackmarket = {melee_weapons = {}}
             kyohud:RefreshCalculatedBuffValues()
-            assert(kyohud._buffs.passive_health_regen.value_text == "0.0%")
+            assert(kyohud._buffs.passive_health_regen == nil,
+                "neutral passive health regeneration must be hidden")
         ''')
 
     def test_damage_increase_uses_native_temporaries(self):
@@ -524,7 +523,10 @@ class StatCardNativeComputationTests(unittest.TestCase):
                 inventory = function() return {
                     equipped_unit = function() return nil end
                 } end,
-                character_damage = function() return {} end,
+                character_damage = function() return {
+                    _max_health = function() return 100 end,
+                    health_ratio = function() return 1 end,
+                } end,
                 movement = function() return {
                     running = function() return false end,
                     crouching = function() return false end,
@@ -535,13 +537,21 @@ class StatCardNativeComputationTests(unittest.TestCase):
             managers.player = {
                 player_unit = function() return player_unit end,
                 get_current_state = function() return player_state end,
-                damage_reduction_skill_multiplier = function() return 1 end,
-                temporary_upgrade_value = function(s,c,u,d) return d end,
+                damage_reduction_skill_multiplier = function() return 0.8 end,
+                temporary_upgrade_value = function(s,c,u,d)
+                    if u == "dmg_multiplier_outnumbered" then return 1.15 end
+                    return d
+                end,
                 get_damage_health_ratio = function() return 0 end,
                 get_property = function(s,p,d) return d end,
-                upgrade_value = function(s,c,u,d) return d end,
-                body_armor_value = function() return 0 end,
-                skill_dodge_chance = function() return 0 end,
+                upgrade_value = function(s,c,u,d)
+                    if u == "non_special_melee_multiplier" then return 1.25 end
+                    return d
+                end,
+                health_regen = function() return 0.02 end,
+                fixed_health_regen = function() return 0 end,
+                body_armor_value = function() return 0.1 end,
+                skill_dodge_chance = function() return 0.1 end,
                 has_category_upgrade = function() return false end,
                 get_melee_dmg_multiplier = function() return 1 end,
                 _smoke_screen_effects = {},
@@ -551,11 +561,45 @@ class StatCardNativeComputationTests(unittest.TestCase):
             tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0}}
             tweak_data.blackmarket = {melee_weapons = {}}
             kyohud:RefreshCalculatedBuffValues()
-            for _, id in ipairs({"damage_increase", "damage_reduction",
-                    "melee_damage_increase", "total_dodge_chance"}) do
+            for _, id in ipairs({"passive_health_regen", "damage_increase",
+                    "damage_reduction", "melee_damage_increase", "total_dodge_chance"}) do
                 local buff = kyohud._buffs[id]
                 assert(buff ~= nil, id .. " must be visible")
                 assert(buff.persistent == true, id .. " must be persistent")
+            end
+        ''')
+
+    def test_neutral_stat_cards_are_removed(self):
+        lua = make_runtime()
+        lua.execute('''
+            managers.player = {
+                player_unit = function() return nil end,
+                damage_reduction_skill_multiplier = function() return 1 end,
+                temporary_upgrade_value = function(s,c,u,d) return d end,
+                get_damage_health_ratio = function() return 0 end,
+                get_property = function(s,p,d) return d end,
+                upgrade_value = function(s,c,u,d) return d end,
+                health_regen = function() return 0 end,
+                fixed_health_regen = function() return 0 end,
+                body_armor_value = function() return 0 end,
+                skill_dodge_chance = function() return 0 end,
+                has_category_upgrade = function() return false end,
+                get_melee_dmg_multiplier = function() return 1 end,
+                get_current_state = function() return nil end,
+                _smoke_screen_effects = {},
+            }
+            managers.blackmarket = {equipped_melee_weapon = function() return nil end}
+            tweak_data.player = {damage = {DODGE_INIT = 0}}
+            tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0}}
+            tweak_data.blackmarket = {melee_weapons = {}}
+            for _, id in ipairs({"passive_health_regen", "damage_increase",
+                    "damage_reduction", "melee_damage_increase", "total_dodge_chance"}) do
+                kyohud._buffs[id] = {id = id, persistent = true}
+            end
+            kyohud:RefreshCalculatedBuffValues()
+            for _, id in ipairs({"passive_health_regen", "damage_increase",
+                    "damage_reduction", "melee_damage_increase", "total_dodge_chance"}) do
+                assert(kyohud._buffs[id] == nil, id .. " must be hidden at its neutral value")
             end
         ''')
 
@@ -886,7 +930,7 @@ class StatCardNativeComputationTests(unittest.TestCase):
         lua.execute('''
             managers.player = {
                 player_unit = function() return nil end,
-                damage_reduction_skill_multiplier = function() return 1 end,
+                damage_reduction_skill_multiplier = function() return 0.8 end,
                 temporary_upgrade_value = function(s,c,u,d) return d end,
                 get_damage_health_ratio = function() return 0 end,
                 get_property = function(s,p,d) return d end,
@@ -903,7 +947,7 @@ class StatCardNativeComputationTests(unittest.TestCase):
             tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0}}
             tweak_data.blackmarket = {melee_weapons = {}}
             kyohud:RefreshCalculatedBuffValues()
-            assert(kyohud._buffs.damage_increase ~= nil)
+            assert(kyohud._buffs.damage_reduction ~= nil)
             kyohud.settings = {enable_buffs = false}
             kyohud:RefreshCalculatedBuffValues()
             assert(kyohud._buffs.damage_increase == nil,

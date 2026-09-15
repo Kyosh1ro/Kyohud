@@ -2667,11 +2667,11 @@ local STAT_CARD_BUFF_IDS = {
 }
 
 local STAT_CARD_VALUE_TEXT = {
-    passive_health_regen = passive_health_regen_text,
-    damage_increase = damage_increase_text,
-    damage_reduction = damage_reduction_text,
-    melee_damage_increase = melee_damage_increase_text,
-    total_dodge_chance = total_dodge_chance_text,
+    passive_health_regen = { formatter = passive_health_regen_text, neutral = "0.0%" },
+    damage_increase = { formatter = damage_increase_text, neutral = "+0%" },
+    damage_reduction = { formatter = damage_reduction_text, neutral = "-0%" },
+    melee_damage_increase = { formatter = melee_damage_increase_text, neutral = "x1" },
+    total_dodge_chance = { formatter = total_dodge_chance_text, neutral = "0%" },
 }
 
 function KH:RefreshCalculatedBuffValues()
@@ -2679,13 +2679,18 @@ function KH:RefreshCalculatedBuffValues()
 
     for _, buff_id in ipairs(STAT_CARD_BUFF_IDS) do
         if self:is_buff_visible(buff_id) then
-            local value_text = STAT_CARD_VALUE_TEXT[buff_id]()
-            local existing = self._buffs[buff_id]
-            if not existing then
-                self:add_buff(buff_id, nil, nil, nil, true, false, value_text)
+            local presentation = STAT_CARD_VALUE_TEXT[buff_id]
+            local value_text = presentation.formatter()
+            if value_text == presentation.neutral then
+                self:remove_buff(buff_id)
             else
-                existing.value_text = value_text
-                existing.persistent = true
+                local existing = self._buffs[buff_id]
+                if not existing then
+                    self:add_buff(buff_id, nil, nil, nil, true, false, value_text)
+                else
+                    existing.value_text = value_text
+                    existing.persistent = true
+                end
             end
         else
             self:remove_buff(buff_id)
