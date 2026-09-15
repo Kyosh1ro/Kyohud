@@ -1,5 +1,5 @@
 -- ky_options.lua — BLT Menu + settings save/load
--- Fixed JSON structure with a single MenuHelper:BuildMenu call.
+-- Declarative JSON structure for the main menu and buff submenus.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -8,7 +8,7 @@ local MY_MOD_PATH = ModPath
 local KILLFEED_OFFSET_MIN = 128
 local KILLFEED_OFFSET_MAX = 291
 local best_streak_menu_item = nil
-local buff_position_menu_items = {}
+local buff_dependent_menu_items = {}
 local update_buff_position_menu_enabled
 
 local function update_best_streak_menu_enabled()
@@ -37,6 +37,51 @@ KH._defaults = {
     show_best_streak = true,
     opacity         = 0.9,
     icon_size       = 32,
+    -- Individual buff toggles (Cerveau/Mastermind)
+    forced_friendship = true,
+    aggressive_reload_aced = true,
+    combat_medic = true,
+    combat_medic_passive = false,
+    hostage_taker = false,
+    inspire = true,
+    painkiller = false,
+    partner_in_crime = false,
+    quick_fix = false,
+    uppers = true,
+    inspire_debuff = true,
+    inspire_revive_debuff = true,
+    -- Individual buff toggles (Exécuteur/Enforcer)
+    bulletproof = true,
+    bullet_storm = true,
+    die_hard = false,
+    overkill = false,
+    underdog = false,
+    bullseye_debuff = true,
+    -- Individual buff toggles (Technicien/Technician)
+    lock_n_load = true,
+    -- Individual buff toggles (Fantôme/Ghost)
+    dire_need = true,
+    second_wind = true,
+    sixth_sense = true,
+    old_sixth_sense = false,
+    unseen_strike = true,
+    -- Individual buff toggles (Fugitif/Fugitive)
+    berserker = true,
+    bloodthirst_basic = false,
+    bloodthirst_aced = true,
+    desperado = true,
+    frenzy = false,
+    messiah = true,
+    running_from_death = true,
+    swan_song = false,
+    trigger_happy = false,
+    up_you_go = false,
+    -- Composite buff toggles
+    damage_increase = true,
+    damage_reduction = true,
+    total_dodge_chance = true,
+    melee_damage_increase = true,
+    passive_health_regen = true,
 }
 
 local HUD_DEFAULT_LAYOUTS = {
@@ -249,6 +294,39 @@ MenuCallbackHandler.KY_SetIconSize    = make_slider_cb("icon_size", true)
 MenuCallbackHandler.KY_ResetDefaults  = function() KH.ResetDefaults() end
 MenuCallbackHandler.KY_BackCallback   = function() end
 
+-- Buff toggle callbacks. Each one sets KH.settings[buff_id] explicitly,
+-- preserving false, then saves and optionally refreshes the HUD.
+local BUFF_TOGGLE_IDS = {
+    -- Cerveau (Mastermind)
+    "forced_friendship", "aggressive_reload_aced", "combat_medic",
+    "combat_medic_passive", "hostage_taker", "inspire", "painkiller",
+    "partner_in_crime", "quick_fix", "uppers", "inspire_debuff",
+    "inspire_revive_debuff",
+    -- Exécuteur (Enforcer)
+    "bulletproof", "bullet_storm", "die_hard", "overkill", "underdog",
+    "bullseye_debuff",
+    -- Technicien (Technician)
+    "lock_n_load",
+    -- Fantôme (Ghost)
+    "dire_need", "second_wind", "sixth_sense", "old_sixth_sense",
+    "unseen_strike",
+    -- Fugitif (Fugitive)
+    "berserker", "bloodthirst_basic", "bloodthirst_aced", "desperado",
+    "frenzy", "messiah", "running_from_death", "swan_song",
+    "trigger_happy", "up_you_go",
+    -- Composites
+    "damage_increase", "damage_reduction", "total_dodge_chance",
+    "melee_damage_increase", "passive_health_regen",
+}
+KH._BUFF_TOGGLE_IDS = BUFF_TOGGLE_IDS
+KH._BUFF_TOGGLE_SET = {}
+
+for _, buff_id in ipairs(BUFF_TOGGLE_IDS) do
+    KH._BUFF_TOGGLE_SET[buff_id] = true
+    local callback_name = "KY_ToggleBuff_" .. buff_id
+    MenuCallbackHandler[callback_name] = make_toggle_cb(buff_id)
+end
+
 local function load_menu_definition(filename)
     local path = MY_MOD_PATH .. "menu/" .. filename
     local file = io.open(path, "r")
@@ -274,7 +352,7 @@ end
 
 update_buff_position_menu_enabled = function()
     local enabled = KH.settings.enable_buffs ~= false
-    for _, item in ipairs(buff_position_menu_items) do
+    for _, item in ipairs(buff_dependent_menu_items) do
         if item and item.set_enabled then item:set_enabled(enabled) end
     end
 end
@@ -283,12 +361,32 @@ local MAIN_MENU_DEFINITION = load_menu_definition("menu.json")
 local MENU_ID = MAIN_MENU_DEFINITION and MAIN_MENU_DEFINITION.menu_id or "kyohud_options"
 
 -- ═══════════════════════════════════════════════════
+-- Sub-menus: Configure Buffs and its category submenus
+-- ═══════════════════════════════════════════════════
+local BUFFS_MENU_DEFINITION = load_menu_definition("buffs.json")
+local BUFFS_MENU_ID = BUFFS_MENU_DEFINITION and BUFFS_MENU_DEFINITION.menu_id or "kyohud_buffs_menu"
+
+local BUFF_CATEGORY_MENU_DEFINITIONS = {
+    load_menu_definition("buffs_mastermind.json"),
+    load_menu_definition("buffs_enforcer.json"),
+    load_menu_definition("buffs_technician.json"),
+    load_menu_definition("buffs_ghost.json"),
+    load_menu_definition("buffs_fugitive.json"),
+}
+
+local BUFF_CATEGORY_MENU_IDS = {}
+for _, def in ipairs(BUFF_CATEGORY_MENU_DEFINITIONS) do
+    if def then
+        table.insert(BUFF_CATEGORY_MENU_IDS, def.menu_id)
+    end
+end
+
+-- ═══════════════════════════════════════════════════
 -- 3) Menu construction
 -- ═══════════════════════════════════════════════════
 local function populate_json_menu(definition)
     if not definition then return end
 
-    buff_position_menu_items = {}
     local items = definition.items
     local item_count = #items
     for index, item in ipairs(items) do
@@ -321,6 +419,9 @@ local function populate_json_menu(definition)
             if item.id == "ky_show_best_streak" then
                 best_streak_menu_item = created_item
             end
+            if item.enabled_by == "enable_buffs" and created_item then
+                table.insert(buff_dependent_menu_items, created_item)
+            end
         elseif item_type == "slider" then
             local created_item = MenuHelper:AddSlider({
                 id = item.id, title = item.title, desc = description,
@@ -332,14 +433,18 @@ local function populate_json_menu(definition)
                 menu_id = definition.menu_id, priority = priority,
             })
             if item.enabled_by == "enable_buffs" and created_item then
-                table.insert(buff_position_menu_items, created_item)
+                table.insert(buff_dependent_menu_items, created_item)
             end
         elseif item_type == "button" then
-            MenuHelper:AddButton({
+            local created_item = MenuHelper:AddButton({
                 id = item.id, title = item.title, desc = description,
                 callback = item.callback, next_node = item.next_menu,
+                disabled = item.enabled_by and KH.settings[item.enabled_by] == false,
                 menu_id = definition.menu_id, priority = priority,
             })
+            if item.enabled_by == "enable_buffs" and created_item then
+                table.insert(buff_dependent_menu_items, created_item)
+            end
         elseif item_type == "divider" then
             MenuHelper:AddDivider({
                 id = "ky_divider_" .. tostring(index), size = item.size,
@@ -357,11 +462,25 @@ end
 Hooks:Add("MenuManagerSetupCustomMenus", "KY_SetupMenu", function(menu_manager, nodes)
     if not MAIN_MENU_DEFINITION then return end
     MenuHelper:NewMenu(MENU_ID)
+
+    if BUFFS_MENU_DEFINITION then
+        MenuHelper:NewMenu(BUFFS_MENU_ID)
+    end
+
+    for _, menu_id in ipairs(BUFF_CATEGORY_MENU_IDS) do
+        MenuHelper:NewMenu(menu_id)
+    end
 end)
 
--- ── HOOK 2: Populate (main menu items only) ──
+-- ── HOOK 2: Populate (all menu items) ──
 Hooks:Add("MenuManagerPopulateCustomMenus", "KY_PopulateMenu", function()
+    buff_dependent_menu_items = {}
     populate_json_menu(MAIN_MENU_DEFINITION)
+    populate_json_menu(BUFFS_MENU_DEFINITION)
+
+    for _, definition in ipairs(BUFF_CATEGORY_MENU_DEFINITIONS) do
+        populate_json_menu(definition)
+    end
 end)
 
 -- ── HOOK 3 : Build ──
@@ -389,6 +508,35 @@ Hooks:Add("MenuManagerBuildCustomMenus", "KY_BuildMenu", function(menu_manager, 
         )
     else
         log("[KyoHUD] Parent menu not found: " .. tostring(parent_id))
+    end
+
+    -- Build the Configure Buffs submenu
+    if BUFFS_MENU_DEFINITION then
+        local buffs_ok, buffs_err = pcall(function()
+            nodes[BUFFS_MENU_ID] = MenuHelper:BuildMenu(BUFFS_MENU_ID, {
+                back_callback = "KY_BackCallback",
+            })
+        end)
+
+        if not buffs_ok then
+            log("[KyoHUD] Buffs menu error: " .. tostring(buffs_err))
+        end
+    end
+
+    -- Build each category submenu
+    for _, definition in ipairs(BUFF_CATEGORY_MENU_DEFINITIONS) do
+        if definition then
+            local menu_id = definition.menu_id
+            local cat_ok, cat_err = pcall(function()
+                nodes[menu_id] = MenuHelper:BuildMenu(menu_id, {
+                    back_callback = "KY_BackCallback",
+                })
+            end)
+
+            if not cat_ok then
+                log("[KyoHUD] Category menu error: " .. tostring(cat_err))
+            end
+        end
     end
 
     log("[KyoHUD] JSON menu built.")

@@ -1,8 +1,13 @@
+r24 (15.09.2026):
+-Buffs are fully configurable from the options menu.
+-HP+ gained a green health layer and the Grinder's regeneration is now tracked in HP+.
+-Rendering has been optimized to reduce GC pressure, and killfeed purge complexity has been brought down from O(n^2) to O(n).
+
 r23 (11.09.2026):
 -Fixed buff menu availability so Enable Buffs remains selectable and the X/Y position controls follow its state in the main menu and in game.
 
 r22 (11.09.2026):
--Migrated buffs to the VanillaHUD+ runtime provider.
+-Migrated buffs to KyoHUD's own native runtime provider, driven by PAYDAY 2's buff APIs and HUDList.
 
 r21 (10.09.2026):
 -Prevented kill detection errors when an enemy unit's alive check fails;
@@ -79,7 +84,7 @@ r9 (21.08.2026):
 r8 (20.08.2026):
 - Buff cells were reworked into lighter, clearly separated tactical cells: subtle black background, corner accents, a glowing outline that drains around the icon in proportion to remaining duration, and a styled bottom bar.
 - The options menu is now organized from JSON files, with buff filters grouped into a dedicated submenu, and a README was added.
-- A fresh installation now detects Void UI and VanillaHUD+ to align the buff row and the multikill/killfeed block with their default positions.
+- A fresh installation now detects Void UI to align the buff row and the multikill/killfeed block with its default position.
 - Perk-deck buffs now surface in the first slot: Confident's Joker counter, Anarchist's armor-break invulnerability, and the Hacker deck's Pocket ECM count and recharge cooldown.
 
 r7 (19.08.2026):
@@ -89,13 +94,13 @@ r7 (19.08.2026):
 - The cumulative elimination score now appears as a compact tactical card to the left of the killfeed, amber-tinted (red when negative), updating with each card and resetting when the last expires.
 
 r6 (18.08.2026):
-- Each buff type now has a distinct color drawn from the Kyosh1ro palette, which stays active even with VanillaHUD+ installed.
+- Each buff type now has a distinct color drawn from the Kyosh1ro palette, rendered independently of any other HUD mod.
 - Buffs now display their values (including passive health regeneration), and the buff row opens with seven static slots (equipped perk deck, regenerations, cooldowns, damage modifiers) followed by other buffs chronologically.
 - Priority indicators stay hidden while inactive, the equipped perk deck holds the first slot and gives way to its active effect, and AI-teammate buffs show an `[AI]` marker.
 - Each eliminated unit now shows its points in the killfeed (with civilian penalties), frames fit their width to the name and score, and local eliminations are detected even when joining another player's game.
 
 r5 (17.08.2026):
-- Added autonomous detection of temporary buffs, cooldowns, and regeneration effects exposed by PAYDAY 2 and VanillaHUD+, with dynamic icon resolution and a fallback texture.
+- Added autonomous detection of temporary buffs, cooldowns, and regeneration effects exposed by PAYDAY 2's native APIs and HUDList, with dynamic icon resolution and a fallback texture.
 - Buffs and the killfeed are now laid out as configurable horizontal rows, with a killfeed limit of 1, 2, or 3 entries and harmonized frames.
 - Removed the gray killfeed square and reworked its frame.
 
@@ -114,6 +119,6 @@ r2 (04.04.2026):
 - Fixed the language fallback that forced English instead of French.
 
 r1 (03.04.2026):
-- Mod created, with an icon catalog inspired by VanillaHUD+ and an initial buff map.
+- Mod created, with a self-built icon catalog and an initial buff map.
 - Added filtering by category and individual buff, backed by the `KH.BUFF_MAP` catalog and `KH.UPGRADE_TO_BUFF` mappings.
 - Added localizations and fallbacks for menu descriptions and buff options.

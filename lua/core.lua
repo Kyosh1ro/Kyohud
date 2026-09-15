@@ -1,6 +1,6 @@
 -- core.lua — KyoHUD state, combat HUD and buff rendering
 -- Buffs displayed side-by-side on a configurable horizontal row.
--- Buff state and metadata are provided at runtime by VanillaHUD+.
+-- Buff state and metadata are provided by KyoHUD's namespaced provider.
 
 if not kyohud then kyohud = Kyosh1roHUD or {} end
 Kyosh1roHUD = kyohud
@@ -61,6 +61,7 @@ local KILLFEED_ENTRY_DURATION = 5
 local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
 local KILLFEED_FRAME_CLEARANCE = 1.5
+local PASSIVE_REGEN_INTERVAL = 5
 local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
 -- The medal lives in the killfeed and stays visible a bit longer than priority announcements so its tier remains readable during action.
@@ -78,6 +79,90 @@ local KYO_BUFF_COLORS = assert(KYO_BUFF_CONFIG.colors, "KyoHUD buff colors are m
 local KYO_BUFF_PRESENTATION = assert(KYO_BUFF_CONFIG.buffs, "KyoHUD buff presentation is missing")
 KH.KYO_BUFF_PRESENTATION = KYO_BUFF_PRESENTATION
 local EMPTY_BUFF_CANDIDATES = {}
+
+local FRAME_ANIM_CACHE = {}
+local RENDER_CACHES = {
+    chevrons = {},
+    edge_points = {},
+    progress = {},
+    buff_cell_bg = {},
+    buff_cell_footer = {},
+    buff_cell_outline = {},
+    tactical_bg = {},
+    killfeed_bg = {},
+    killfeed_top_edge = {},
+    frame_colors = {},
+    -- Reusable buffers for per-frame allocations; mutated in-place each frame.
+    layout = { positions = {} },
+    buff_list = {},
+    extra_buffs = {},
+    extra_buffs_scan = {},
+    extra_buff_members = setmetatable({}, { __mode = "k" }),
+    extra_buff_generation = 0,
+    heist_score_bg_gradient = {},
+    heist_score_edge_gradient = {},
+    medal_frame_gradient = {},
+    -- Pre-allocated color constants to avoid Color() allocations
+    combo_colors = {
+        [2] = Color(1, 0.85, 0.2),
+        [3] = Color(1, 0.55, 0.1),
+        [4] = Color(1, 0.2, 0.1),
+        [5] = Color(0.208, 0.906, 1), -- 5+
+    },
+    killfeed_name_color = Color(0.86, 0.96, 1),
+    killfeed_negative_score_color = Color(1, 0.36, 0.3)
+}
+for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
+    local _anim = _pres.frame_animation
+    if _anim and _pres.frame_color
+        and type(_anim.period) == "number" and _anim.period > 0 then
+        local _hex_a = KYO_BUFF_COLORS[_pres.frame_color] or _pres.frame_color
+        local _hex_b = KYO_BUFF_COLORS[_anim.color_b] or _anim.color_b
+        if type(_hex_a) == "string" and #_hex_a == 6
+            and type(_hex_b) == "string" and #_hex_b == 6 then
+            FRAME_ANIM_CACHE[_buff_id] = {
+                r1 = tonumber(_hex_a:sub(1, 2), 16) / 255,
+                g1 = tonumber(_hex_a:sub(3, 4), 16) / 255,
+                b1 = tonumber(_hex_a:sub(5, 6), 16) / 255,
+                r2 = tonumber(_hex_b:sub(1, 2), 16) / 255,
+                g2 = tonumber(_hex_b:sub(3, 4), 16) / 255,
+                b2 = tonumber(_hex_b:sub(5, 6), 16) / 255,
+                period = _anim.period,
+            }
+        end
+    end
+end
+KH._frame_anim_cache = FRAME_ANIM_CACHE
+
+function KH:_compute_frame_color(buff_id, t)
+    local anim = FRAME_ANIM_CACHE[buff_id]
+    if not anim then return nil end
+    local factor = (math.sin(2 * math.pi * t / anim.period) + 1) * 0.5
+    local r = anim.r1 + (anim.r2 - anim.r1) * factor
+    local g = anim.g1 + (anim.g2 - anim.g1) * factor
+    local b = anim.b1 + (anim.b2 - anim.b1) * factor
+    return r, g, b, factor
+end
+
+local function draw_frame_color(buff, t)
+    local anim = FRAME_ANIM_CACHE[buff.id]
+    if not anim then return buff.frame_color end
+    
+    local r, g, b, factor = KH:_compute_frame_color(buff.id, t)
+    if not r then return buff.frame_color end
+    
+    -- Cache par (buff_id, factor_arrondi_2_decimales)
+    local factor_key = math.floor(factor * 100)
+    local cache_key = buff.id .. ":" .. factor_key
+    local cached = RENDER_CACHES.frame_colors[cache_key]
+    
+    if not cached then
+        cached = Color(r, g, b)
+        RENDER_CACHES.frame_colors[cache_key] = cached
+    end
+    
+    return cached
+end
 
 local function killfeed_size(settings)
     local value = tonumber(settings and settings.killfeed_size) or MAX_KILLFEED_SIZE
@@ -255,8 +340,8 @@ end
 -- Icon Resolution for a buff_id
 -- ═══════════════════════════════════════════════════
 function KH:GetVanillaHUDBuffDefinition(buff_id)
-    local map = HUDList and HUDList.BuffItemBase and HUDList.BuffItemBase.MAP
-    return map and map[buff_id] or nil
+    local local_definitions = self.hudlist_catalog and self.hudlist_catalog.definitions
+    return local_definitions and local_definitions[buff_id] or nil
 end
 
 function KH:GetKyoEquippedPerkBuffCandidates(specialization_id)
@@ -265,14 +350,10 @@ function KH:GetKyoEquippedPerkBuffCandidates(specialization_id)
 end
 
 function KH:HasVanillaHUDBuffProvider()
-    return managers and managers.gameinfo
-        and managers.gameinfo.register_listener
-        and managers.gameinfo.get_buffs
-        and managers.gameinfo.get_player_actions
-        and HUDList and HUDList.BuffItemBase
-        and type(HUDList.BuffItemBase.MAP) == "table"
-        and HUDListManager
-        and type(HUDListManager.BUFFS) == "table"
+    return self.hudlist and self.hudlist.register_listener
+            and self.hudlist.get_buffs and self.hudlist.get_player_actions
+            and self.hudlist_catalog and type(self.hudlist_catalog.definitions) == "table"
+            and type(self.hudlist_catalog.routes) == "table"
         or false
 end
 
@@ -284,7 +365,7 @@ function KH:GetVanillaHUDBuffTargets(source_id)
         targets[1] = source_id
         return targets
     end
-    local groups = HUDListManager and HUDListManager.BUFFS
+    local groups = self.hudlist_catalog and self.hudlist_catalog.routes
     local mapped = groups and groups[source_id]
     if type(mapped) ~= "table" then
         local composite_parent = groups
@@ -312,7 +393,11 @@ local function icon_for_buff(buff_id)
     local map_entry = KH:GetVanillaHUDBuffDefinition(buff_id)
     if map_entry then
         local tex, rect = get_icon_data(map_entry)
-        return { texture = tex, rect = rect }
+        local descriptor = { texture = tex, rect = rect }
+        if map_entry.icon_rotation then
+            descriptor.rotation = map_entry.icon_rotation
+        end
+        return descriptor
     end
     return { texture = FALLBACK_TEXTURE }
 end
@@ -372,8 +457,7 @@ local function color_from_presentation(value)
     return ok and color or nil
 end
 
--- VanillaHUD+ provides icons and events, never the KyoHUD-specific tint.
--- The visible palette remains exclusively owned by KyoHUD presentation.
+-- Provider metadata never owns the KyoHUD-specific tint.
 local function color_for_buff(buff_id, is_debuff)
     if is_debuff then
         return color_from_presentation("debuff")
@@ -385,12 +469,24 @@ local function color_for_buff(buff_id, is_debuff)
         or Color.white
 end
 
+local function frame_color_for_buff(buff_id)
+    local presentation = KYO_BUFF_PRESENTATION[buff_id]
+    return color_from_presentation(presentation and presentation.frame_color)
+end
+
 -- ═══════════════════════════════════════════════════
--- Checks if the integration and VanillaHUD+ definition allow this buff.
+-- KyoHUD's individual toggles take priority over the autonomous catalog for
+-- configured IDs; unlisted IDs retain their catalog visibility.
 -- ═══════════════════════════════════════════════════
 function KH:is_buff_visible(buff_id)
     if not self.settings or not self.settings.enable_buffs then return false end
 
+    -- KyoHUD's individual toggles are authoritative for configured buff IDs.
+    if self._BUFF_TOGGLE_SET and self._BUFF_TOGGLE_SET[buff_id] then
+        return self.settings[buff_id] ~= false
+    end
+
+    -- For unlisted IDs, fall back to the autonomous catalog definition.
     if self._gameinfo_bridge_active then
         local runtime_definition = self:GetVanillaHUDBuffDefinition(buff_id)
         if runtime_definition then
@@ -412,6 +508,14 @@ end
 local STATIC_BUFF_SLOT_SET = {}
 for _, buff_id in ipairs(STATIC_BUFF_SLOTS) do
     STATIC_BUFF_SLOT_SET[buff_id] = true
+end
+
+function KH:get_static_buff_slots()
+    return STATIC_BUFF_SLOTS
+end
+
+function KH:get_static_buff_slot_set()
+    return STATIC_BUFF_SLOT_SET
 end
 
 local function equipped_perk_deck_entry(hud)
@@ -472,9 +576,14 @@ end
 -- Optional cell label, bypassing value_text. AI buffs retain their historical marker above the icon; others have one only if KyoHUD presentation declares `label`, whose `placement` field chooses between BUFF_LABEL_TOP and BUFF_LABEL_TIMER. Text and placement are returned separately: KH:draw allocates no table and translation is resolved once per identifier, not per frame.
 local BUFF_LABEL_TOP = "top"
 local BUFF_LABEL_TIMER = "timer"
+
 local function buff_label(buff)
-    return buff.label_text or buff.title_text,
-        buff.label_text and buff.label_placement or BUFF_LABEL_TOP
+    if buff.label_text then
+        return buff.label_text, buff.label_placement or BUFF_LABEL_TOP
+    elseif buff.title_text then
+        return buff.title_text, BUFF_LABEL_TOP
+    end
+    return nil, BUFF_LABEL_TOP
 end
 
 local heist_score_labels_cache = nil
@@ -882,11 +991,10 @@ local function combo_label(count, variant_index)
     return localized_text("ky_hud_combo_chain", "KILL CHAIN") .. " x" .. tostring(count)
 end
 
+-- Cache combo colors to avoid Color() allocation on every frame
+-- Bounded to 4 entries: keys 2,3,4,5 (where 5 represents 5+)
 local function combo_color(count)
-    if count == 2 then return Color(1, 0.85, 0.2) end
-    if count == 3 then return Color(1, 0.55, 0.1) end
-    if count == 4 then return Color(1, 0.2, 0.1) end
-    return Color(0.208, 0.906, 1) -- electric cyan #35E7FF starting at 5 kills
+    return RENDER_CACHES.combo_colors[math.min(math.max(count, 2), 5)]
 end
 
 -- A banner directly carries its label and color. `KH:draw` therefore
@@ -1039,47 +1147,33 @@ end
 
 -- Tactical frame inspired by Battlefield notifications: asymmetric strokes,
 -- four detached brackets, and chevrons converging toward the content.
+-- Each bracket is drawn as two filled rectangles (one horizontal arm, one
+-- vertical arm) instead of a polyline: `panel:rect` takes relative coords
+-- and allocates no Vector3, sparing the twelve Vector3 + four tables that
+-- the previous polyline path produced per call.
 local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer, style)
     local extension = style and style.extension or 4
     local arm_x = style and style.arm_x or math.min(18, w * 0.08)
     local arm_y = style and style.arm_y or math.min(11, h * 0.3)
-    local line_width = style and style.line_width or 1
+    local lw = style and style.line_width or 1
     local left = x - extension
     local right = x + w + extension
     local top = y - extension
     local bottom = y + h + extension
-    local corners = {
-        {
-            Vector3(left + arm_x, top, 0),
-            Vector3(left, top, 0),
-            Vector3(left, top + arm_y, 0),
-        },
-        {
-            Vector3(right - arm_x, top, 0),
-            Vector3(right, top, 0),
-            Vector3(right, top + arm_y, 0),
-        },
-        {
-            Vector3(left, bottom - arm_y, 0),
-            Vector3(left, bottom, 0),
-            Vector3(left + arm_x, bottom, 0),
-        },
-        {
-            Vector3(right, bottom - arm_y, 0),
-            Vector3(right, bottom, 0),
-            Vector3(right - arm_x, bottom, 0),
-        },
-    }
+    local v_bar_h = math.max(0, arm_y - lw)
 
-    for _, points in ipairs(corners) do
-        panel:polyline({
-            points = points,
-            line_width = line_width,
-            color = color,
-            alpha = alpha,
-            layer = layer,
-        })
-    end
+    -- Top-left
+    panel:rect({ x = left, y = top, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = left, y = top + lw, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Top-right
+    panel:rect({ x = right - arm_x, y = top, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = right - lw, y = top + lw, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Bottom-left
+    panel:rect({ x = left, y = bottom - lw, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = left, y = bottom - arm_y, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Bottom-right
+    panel:rect({ x = right - arm_x, y = bottom - lw, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = right - lw, y = bottom - arm_y, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
 end
 
 -- ── Banner Chevrons ──
@@ -1240,15 +1334,21 @@ local function draw_multikill_chevrons(panel, x, y, direction, color, alpha, lay
 end
 
 -- Solid decorative chevrons, reserved for special announcements (dozer, boss).
+-- Triangles are cached in RENDER_CACHES.chevrons to avoid Vector3 allocations.
 local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
     local count = SPECIAL_CHEVRON_SLOTS
     local arrow_w = style and style.arrow_w or SPECIAL_CHEVRON_W
     local arrow_h = style and style.arrow_h or SPECIAL_CHEVRON_H
     local gap = style and style.gap or SPECIAL_CHEVRON_GAP
-
-    for i = 0, count - 1 do
-        local arrow_x = x + i * (arrow_w + gap)
-        local triangles
+    local dir_key = direction > 0 and 1 or -1
+    local size_key = arrow_w .. ":" .. arrow_h
+    local bucket = RENDER_CACHES.chevrons[size_key]
+    if not bucket then
+        bucket = {}
+        RENDER_CACHES.chevrons[size_key] = bucket
+    end
+    local triangles = bucket[dir_key]
+    if not triangles then
         if direction > 0 then
             triangles = {
                 Vector3(0, 0, 0),
@@ -1262,6 +1362,11 @@ local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
                 Vector3(0, arrow_h * 0.5, 0),
             }
         end
+        bucket[dir_key] = triangles
+    end
+
+    for i = 0, count - 1 do
+        local arrow_x = x + i * (arrow_w + gap)
 
         local prominence
         if direction > 0 then
@@ -1296,19 +1401,27 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
     local glow_alpha = style and style.glow_alpha or 0.16
     local inset = style and style.inset or 2
 
+    -- P4+P6: clé numérique bornée (2 décimales = 100 valeurs max)
+    local bg_key = math.floor(alpha * 100 + 0.5)
+    local bg_gradient = RENDER_CACHES.tactical_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0,    Color.black:with_alpha(alpha * 0.16),
+            0.2,  Color.black:with_alpha(alpha * 0.62),
+            0.5,  Color.black:with_alpha(alpha * 0.78),
+            0.82, Color.black:with_alpha(alpha * 0.58),
+            1,    Color.black:with_alpha(alpha * 0.1),
+        }
+        RENDER_CACHES.tactical_bg[bg_key] = bg_gradient
+    end
+
     panel:gradient({
         x = x + inset,
         y = y + inset,
         w = w - inset * 2,
         h = h - inset * 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.16),
-            0.2, Color.black:with_alpha(alpha * 0.62),
-            0.5, Color.black:with_alpha(alpha * 0.78),
-            0.82, Color.black:with_alpha(alpha * 0.58),
-            1, Color.black:with_alpha(alpha * 0.1),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
 
@@ -1371,8 +1484,28 @@ local function align_buff_cell_rect(x, y, w, h)
         math.max(min_size, math.floor(y + h + 0.5) - top)
 end
 
-local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
+-- `edge_points` is built once per (color, alpha) pair: buff cells share the same
+-- riser gradient, and KH:draw may render several per frame. The cache key is a
+-- plain string — color reference plus alpha rounded to three digits — so a
+-- repeated alpha during the same frame reuses the existing table instead of
+-- allocating a new one. Inlined in draw_buff_cell_frame to avoid a top-level local.
+
+local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
     local left, top, width, height = align_buff_cell_rect(x, y, w, h)
+    local has_custom_outline = color ~= nil
+    color = color or HUD_ACCENT_COLOR
+
+    -- P4+P6: clé numérique bornée (2 décimales = 100 valeurs max)
+    local bg_key = math.floor(alpha * 100 + 0.5)
+    local bg_gradient = RENDER_CACHES.buff_cell_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0, Color.black:with_alpha(0),
+            0.45, Color.black:with_alpha(alpha * 0.3),
+            1, Color.black:with_alpha(alpha * 0.82),
+        }
+        RENDER_CACHES.buff_cell_bg[bg_key] = bg_gradient
+    end
 
     panel:gradient({
         x = left,
@@ -1380,21 +1513,24 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
         w = width,
         h = height,
         orientation = "vertical",
-        gradient_points = {
-            0, Color.black:with_alpha(0),
-            0.45, Color.black:with_alpha(alpha * 0.3),
-            1, Color.black:with_alpha(alpha * 0.82),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
 
-    -- A single point table shared by both risers: they carry exactly the same
-    -- gradient and `KH:draw` must not allocate twice.
-    local edge_points = {
-        0,    HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
-        0.55, HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
-        1,    HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
-    }
+    -- Risers share the same gradient points table; `panel:gradient` accepts the
+    -- same reference for both without modification.
+    -- P4+P6: clé numérique pour color+alpha (pas de string concat)
+    local color_key = color.r and (color.r * 0x10000 + color.g * 0x100 + color.b) or 0
+    local edge_key = color_key * 100 + bg_key
+    local edge_points = RENDER_CACHES.edge_points[edge_key]
+    if not edge_points then
+        edge_points = {
+            0, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
+            0.55, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
+            1, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+        }
+        RENDER_CACHES.edge_points[edge_key] = edge_points
+    end
     panel:gradient({
         x = left,
         y = top,
@@ -1413,26 +1549,79 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer)
         gradient_points = edge_points,
         layer = layer + 1,
     })
+
+    -- Cache footer gradient par color+alpha
+    local footer_key = color_key * 100 + bg_key
+    local footer_gradient = RENDER_CACHES.buff_cell_footer[footer_key]
+    if not footer_gradient then
+        footer_gradient = {
+            0,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+            0.5, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+            1,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+        }
+        RENDER_CACHES.buff_cell_footer[footer_key] = footer_gradient
+    end
+
     panel:gradient({
         x = left,
         y = top + height - BUFF_CELL_LINE_WIDTH,
         w = width,
         h = BUFF_CELL_LINE_WIDTH,
         orientation = "horizontal",
-        gradient_points = {
-            0,   HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
-            0.5, HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
-            1,   HUD_ACCENT_COLOR:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
-        },
+        gradient_points = footer_gradient,
         layer = layer + 1,
     })
+
+    if has_custom_outline then
+        local stroke = 2
+        -- Cache outline_color par color+alpha
+        local outline_key = footer_key
+        local outline_color = RENDER_CACHES.buff_cell_outline[outline_key]
+        if not outline_color then
+            outline_color = color:with_alpha(math.min(1, alpha * 1.15))
+            RENDER_CACHES.buff_cell_outline[outline_key] = outline_color
+        end
+        local outline_layer = layer + 1
+        panel:rect({
+            x = left,
+            y = top,
+            w = width,
+            h = stroke,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left,
+            y = top + height - stroke,
+            w = width,
+            h = stroke,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left,
+            y = top + stroke,
+            w = stroke,
+            h = height - stroke * 2,
+            color = outline_color,
+            layer = outline_layer,
+        })
+        panel:rect({
+            x = left + width - stroke,
+            y = top + stroke,
+            w = stroke,
+            h = height - stroke * 2,
+            color = outline_color,
+            layer = outline_layer,
+        })
+    end
 end
 
 -- Traces the still-active part of a temporary buff's outline. The path
 -- starts at the top edge midpoint and advances clockwise; its end thus
 -- recedes continuously as the timer approaches zero.
--- This outline is the only stroke allowed to cross the cell's top:
--- the static frame, meanwhile, stays at three sides.
+-- Generic static frames stay at three sides. A buff with an explicit frame
+-- color may use a complete static outline instead.
 local function append_progress_segment(points, remaining_length, x1, y1, x2, y2, segment_length)
     if remaining_length <= 0 or segment_length <= 0 then return remaining_length end
 
@@ -1449,6 +1638,11 @@ local function append_progress_segment(points, remaining_length, x1, y1, x2, y2,
     return remaining_length - visible_length
 end
 
+-- Shared progress-points buffer. `append_progress_segment` only reads/writes
+-- `points[n]` for n up to the current count, and `draw_timed_buff_progress`
+-- is the sole consumer. A per-draw clear is achieved by resetting the length
+-- to zero in-place without allocating a new table.
+
 local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alpha, layer)
     progress = clamp(tonumber(progress) or 0, 0, 1)
     if progress <= 0 then return end
@@ -1459,7 +1653,12 @@ local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alph
     local line_width = clamp(math.min(w, h) * 0.055, 2, 3)
     local remaining_length = (w * 2 + h * 2) * progress
     local half_w = w * 0.5
-    local points = {}
+
+    -- Reuse the buffer in place: clear it without allocating a new table.
+    local points = RENDER_CACHES.progress
+    for i = #points, 1, -1 do
+        points[i] = nil
+    end
     remaining_length = append_progress_segment(
         points, remaining_length, x + half_w, y, x + w, y, half_w
     )
@@ -1600,26 +1799,54 @@ local function resolve_buff_state(buff, t)
 end
 
 local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
+    -- P4+P6: clé numérique bornée (2 décimales)
+    local bg_key = math.floor(alpha * 100 + 0.5)
+    local bg_gradient = RENDER_CACHES.killfeed_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0, Color.black:with_alpha(alpha * 0.68),
+            0.72, Color.black:with_alpha(alpha * 0.42),
+            1, Color.black:with_alpha(alpha * 0.05),
+        }
+        RENDER_CACHES.killfeed_bg[bg_key] = bg_gradient
+    end
+
     panel:gradient({
         x = x,
         y = y + 1,
         w = w,
         h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.68),
-            0.72, Color.black:with_alpha(alpha * 0.42),
-            1, Color.black:with_alpha(alpha * 0.05),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
+
+    -- P4+P6: clé numérique pour color+alpha
+    local color_key = color.r and (color.r * 0x10000 + color.g * 0x100 + color.b) or 0
+    local top_edge_key = color_key * 100 + bg_key
+    local top_edge_gradient = RENDER_CACHES.killfeed_top_edge[top_edge_key]
+    if not top_edge_gradient then
+        top_edge_gradient = {
+            0, color:with_alpha(alpha * 0.9),
+            0.5, color:with_alpha(alpha * 0.5),
+            1, color:with_alpha(alpha * 0.9),
+        }
+        RENDER_CACHES.killfeed_top_edge[top_edge_key] = top_edge_gradient
+    end
+
+    panel:gradient({
+        x = x + 2,
+        y = y + 1,
+        w = w - 4,
+        h = 1,
+        orientation = "horizontal",
+        gradient_points = top_edge_gradient,
+        layer = layer + 1,
+    })
+
     panel:rect({
         x = x, y = y + 2, w = 2, h = h - 4,
         color = color, alpha = alpha * 0.9, layer = layer + 1,
-    })
-    panel:rect({
-        x = x + 2, y = y + 1, w = w - 4, h = 1,
-        color = color, alpha = alpha * 0.5, layer = layer + 1,
     })
     panel:rect({
         x = x + 2, y = y + h - 2, w = w - 4, h = 1,
@@ -1693,19 +1920,30 @@ local function draw_medal_edge(panel, x, y, w, color, alpha, layer)
     })
 end
 
+-- Cache medal frame gradient colors by alpha to avoid per-frame allocations
+function RENDER_CACHES.medal_frame_gradient_for(alpha)
+    -- Round alpha to 2 decimal places for cache key
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local cached = RENDER_CACHES.medal_frame_gradient[alpha_key]
+    if cached then return cached end
+    cached = {
+        0,    Color.black:with_alpha(alpha * 0.14),
+        0.26, Color.black:with_alpha(alpha * 0.7),
+        0.5,  Color.black:with_alpha(alpha * 0.82),
+        0.74, Color.black:with_alpha(alpha * 0.7),
+        1,    Color.black:with_alpha(alpha * 0.14),
+    }
+    RENDER_CACHES.medal_frame_gradient[alpha_key] = cached
+    return cached
+end
+
 local function draw_medal_frame(panel, x, y, w, h, color, alpha, layer)
     -- Symmetric background: the medal reads as a block, while kill cards keep
     -- their right-oriented asymmetric gradient.
     panel:gradient({
         x = x, y = y + 1, w = w, h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0,    Color.black:with_alpha(alpha * 0.14),
-            0.26, Color.black:with_alpha(alpha * 0.7),
-            0.5,  Color.black:with_alpha(alpha * 0.82),
-            0.74, Color.black:with_alpha(alpha * 0.7),
-            1,    Color.black:with_alpha(alpha * 0.14),
-        },
+        gradient_points = RENDER_CACHES.medal_frame_gradient_for(alpha),
         layer = layer,
     })
 
@@ -1800,6 +2038,7 @@ function KH:add_buff(buff_id, icon_data, duration, _raw_upgrade_id, persistent, 
         id       = resolved_id,
         icon     = icon_data or icon_for_buff(resolved_id),
         color    = color_for_buff(resolved_id, is_debuff),
+        frame_color = frame_color_for_buff(resolved_id),
         priority = tonumber(runtime_definition and runtime_definition.priority) or 0,
         provider_class = runtime_definition and runtime_definition.class or nil,
         title_text = title_for_buff(resolved_id),
@@ -1821,7 +2060,7 @@ function KH:remove_buff(buff_id)
 end
 
 -- ═══════════════════════════════════════════════════
--- Buff sources and optional VanillaHUD+ bridge
+-- Buff sources and autonomous provider bridge
 -- ═══════════════════════════════════════════════════
 local function application_time()
     local ok, t = pcall(function()
@@ -1925,202 +2164,217 @@ local function current_player_damage()
     return ok and player_damage or nil
 end
 
-local function passive_health_regen_source_value(source)
-    local value = source and tonumber(source.value)
-    if not value then return nil end
-
-    -- VanillaHUD+ expresses teammate regeneration in health points
-    -- internally, unlike other sources that already use a ratio.
-    if source.source_id == "crew_health_regen" then
-        local player_damage = current_player_damage()
-        local ok, max_health = pcall(function()
-            return player_damage and player_damage:_max_health()
-        end)
-        max_health = ok and tonumber(max_health) or nil
-        if not max_health or max_health <= 0 then return nil end
-        return value / (max_health * 10)
-    end
-
-    return value
-end
-
-local function equipped_weapon_context()
-    local ok, ignore_upgrades, categories = pcall(function()
-        local player = managers.player and managers.player:player_unit()
+local function native_damage_increase_multiplier()
+    local ok, multiplier = pcall(function()
+        local pm = managers.player
+        if not pm then return 1 end
+        local player = pm:player_unit()
+        local damage = alive(player) and player:character_damage()
         local inventory = alive(player) and player:inventory()
         local weapon = inventory and inventory:equipped_unit()
         local base = alive(weapon) and weapon:base()
         local tweak = base and base:weapon_tweak_data()
-        return tweak and tweak.ignore_damage_upgrades == true, tweak and tweak.categories
-    end)
-    if not ok or type(categories) ~= "table" then return nil, nil end
+        local categories = tweak and tweak.categories or {}
+        local primary_category = categories[1]
 
-    local category_set = {}
-    for _, category in ipairs(categories) do
-        category_set[category] = true
-    end
-    return ignore_upgrades, category_set
-end
+        -- BlackMarketManager:damage_multiplier() includes Trigger Happy even
+        -- though PlayerStandard applies that property to each shot. Remove it
+        -- from this fresh static query, then apply it once below.
+        local trigger_mul = tonumber(pm:get_property("trigger_happy", 1)) or 1
 
-local function source_applies_to_weapon(source_id, categories)
-    if source_id == "overkill" then
-        return categories.shotgun or categories.saw
-    elseif source_id == "overkill_aced" then
-        return not categories.shotgun and not categories.saw
-    elseif source_id == "berserker" then
-        return categories.saw == true
-    elseif source_id == "berserker_aced" then
-        return categories.saw ~= true
-    end
-    return true
-end
-
-local function health_ratio_damage_multiplier(source_id, value)
-    if source_id == "berserker" then
-        return 1 + value * (tonumber(player_upgrade_value(
-            "player", "melee_damage_health_ratio_multiplier", 0
-        )) or 0)
-    elseif source_id == "berserker_aced" then
-        return 1 + value * (tonumber(player_upgrade_value(
-            "player", "damage_health_ratio_multiplier", 0
-        )) or 0)
-    end
-    return value
-end
-
-local function damage_increase_text(sources)
-    local ignore_upgrades, categories = equipped_weapon_context()
-    if not categories then return nil end
-    if ignore_upgrades then return "(0%)" end
-
-    local multiplier = 1
-    local has_value = false
-    for _, source in pairs(sources) do
-        local value = tonumber(source.value)
-        if value and source_applies_to_weapon(source.source_id, categories) then
-            multiplier = multiplier * health_ratio_damage_multiplier(source.source_id, value)
-            has_value = true
-        end
-    end
-    return has_value and string.format("%+.0f%%", (multiplier - 1) * 100) or nil
-end
-
-local function melee_damage_increase_text(sources)
-    local multiplier = 1
-    local has_value = false
-    for _, source in pairs(sources) do
-        local value = tonumber(source.value)
-        if value then
-            multiplier = multiplier * health_ratio_damage_multiplier(source.source_id, value)
-            has_value = true
-        end
-    end
-    return has_value and ("x" .. compact_number(multiplier)) or nil
-end
-
-local function maniac_damage_multiplier(value)
-    local player_damage = current_player_damage()
-    if not player_damage then return nil end
-
-    local ok, current_armor, max_armor, max_health = pcall(function()
-        return player_damage:get_real_armor(), player_damage:_max_armor(), player_damage:_max_health()
-    end)
-    if not ok then return nil end
-    current_armor = tonumber(current_armor)
-    if not current_armor then return nil end
-    local maximum = current_armor > 0 and tonumber(max_armor) or tonumber(max_health)
-    if not maximum or maximum <= 0 then return nil end
-    return 1 - value / (maximum * 10)
-end
-
-local function damage_reduction_source_multiplier(source)
-    local value = tonumber(source.value)
-    if not value then return nil end
-
-    if source.source_id == "chico_injector" then
-        local player_damage = current_player_damage()
-        local ok, health_ratio = pcall(function()
-            return player_damage and player_damage:health_ratio()
+        local static_mul = 1
+        local ok_static, base_mul = pcall(function()
+            return base and base:damage_multiplier() or 1
         end)
-        local low_health = player_upgrade_value("player", "chico_injector_low_health_multiplier", nil)
-        local threshold = type(low_health) == "table" and tonumber(low_health[1])
-        local bonus = type(low_health) == "table" and tonumber(low_health[2])
-        if ok and tonumber(health_ratio) and threshold and bonus and health_ratio < threshold then
-            value = value + bonus
+        if ok_static and base_mul then static_mul = static_mul * base_mul end
+        if trigger_mul ~= 0 then static_mul = static_mul / trigger_mul end
+
+        local ignore = tweak and tweak.ignore_damage_multipliers
+        local combat_medic_mul = pm:temporary_upgrade_value(
+            "temporary", "combat_medic_damage_multiplier", 1)
+        if ignore then return static_mul * combat_medic_mul end
+
+        local state = pm:get_current_state()
+        local overkill_all = state and state._overkill_all_weapons or false
+        local health_ratio_mul = state and state._damage_health_ratio_mul or 0
+        local health_ratio_mul_melee = state and state._damage_health_ratio_mul_melee or 0
+
+        local mul = 1
+        mul = mul * pm:temporary_upgrade_value("temporary", "dmg_multiplier_outnumbered", 1)
+        if overkill_all or (base and base:is_category("shotgun", "saw")) then
+            mul = mul * pm:temporary_upgrade_value("temporary", "overkill_damage_multiplier", 1)
         end
-        return 1 - value
-    elseif source.source_id == "frenzy" then
-        return 1 - value
-    elseif source.source_id == "maniac" then
-        return maniac_damage_multiplier(value)
-    end
-
-    return value
-end
-
-local function damage_reduction_text(sources)
-    local multiplier = 1
-    local has_value = false
-    for _, source in pairs(sources) do
-        local value = damage_reduction_source_multiplier(source)
-        if value then
-            multiplier = multiplier * value
-            has_value = true
-        end
-    end
-    local reduction = clamp(1 - multiplier, 0, 1)
-    return has_value and string.format("-%.0f%%", reduction * 100) or nil
-end
-
-local function calculated_base_dodge(include_sicario)
-    local value = tonumber(tweak_data and tweak_data.player
-        and tweak_data.player.damage and tweak_data.player.damage.DODGE_INIT) or 0
-
-    local ok, calculated = pcall(function()
-        local pm = managers.player
-        local armor_id = managers.blackmarket and managers.blackmarket:equipped_armor(true, true)
-        local armor_upgrade = armor_id and tostring(armor_id) .. "_dodge_addend"
-        local risk_upgrade = pm:upgrade_value("player", "detection_risk_add_dodge_chance", 0)
-        return (pm:body_armor_value("dodge") or 0)
-            + (pm:upgrade_value("player", "passive_dodge_chance", 0) or 0)
-            + (armor_upgrade and pm:upgrade_value("player", armor_upgrade, 0) or 0)
-            + (pm:upgrade_value("player", "tier_dodge_chance", 0) or 0)
-            + (pm:get_value_from_risk_upgrade(risk_upgrade) or 0)
-            + (pm:upgrade_value("team", "crew_add_dodge", 0) or 0)
-            + (include_sicario and pm:upgrade_value("player", "sicario_multiplier", 0) or 0)
-    end)
-    return math.max(0, value + (ok and tonumber(calculated) or 0))
-end
-
-local function total_dodge_chance_text(sources)
-    local has_sicario_source = false
-    local has_smoke_source = false
-    local smoke_dodge
-    for _, source in pairs(sources) do
-        has_sicario_source = has_sicario_source or source.source_id == "sicario_dodge"
-        if source.source_id == "smoke_screen_grenade" then
-            has_smoke_source = true
-            local source_smoke_dodge = tonumber(source.value)
-            if source_smoke_dodge and (not smoke_dodge or source_smoke_dodge > smoke_dodge) then
-                smoke_dodge = source_smoke_dodge
+        if damage then
+            local health_ratio = damage:health_ratio()
+            local damage_health_ratio = pm:get_damage_health_ratio(health_ratio, primary_category or "primary")
+            if damage_health_ratio > 0 then
+                local upgrade = (base and base:is_category("saw") and health_ratio_mul_melee)
+                    or health_ratio_mul or 0
+                mul = mul * (1 + upgrade * damage_health_ratio)
             end
         end
-    end
+        mul = mul * pm:temporary_upgrade_value("temporary", "berserker_damage_multiplier", 1)
+        mul = mul * trigger_mul
+        mul = mul * combat_medic_mul
+        return static_mul * mul
+    end)
+    return ok and tonumber(multiplier) or 1
+end
 
-    local value = calculated_base_dodge(not has_sicario_source)
-    for _, source in pairs(sources) do
-        if not source.is_calculated and source.source_id ~= "smoke_screen_grenade" then
-            value = value + (tonumber(source.value) or 0)
+local function native_damage_reduction_multiplier()
+    local ok, multiplier = pcall(function()
+        local pm = managers.player
+        if not pm or not pm.damage_reduction_skill_multiplier then return 1 end
+        return pm:damage_reduction_skill_multiplier("bullet")
+    end)
+    return ok and tonumber(multiplier) or 1
+end
+
+local function native_passive_health_regen_fraction()
+    local ok, fraction = pcall(function()
+        local pm = managers.player
+        local damage = current_player_damage()
+        if not pm or not damage then return 0 end
+
+        local maximum = tonumber(damage:_max_health())
+        if not maximum or maximum <= 0 then return 0 end
+
+        -- health_regen() is a max-health ratio (Muscle/Gorilla,
+        -- Hostage Taker and temporary ratio sources). fixed_health_regen()
+        -- is a health-point amount (crew regeneration), normalized here.
+        local ratio = tonumber(pm:health_regen()) or 0
+        local fixed = tonumber(pm:fixed_health_regen(damage:health_ratio())) or 0
+        local healing_mul = tonumber(damage._healing_reduction) or 1
+        local base_fraction = (ratio + fixed / maximum) * healing_mul
+
+        -- Grinder heals a fixed amount per stack and tick. Normalize its
+        -- active throughput to the same five-second interval as PV+.
+        local grinder_fraction = 0
+        local grinder_stacks = damage._damage_to_hot_stack
+        if grinder_stacks and #grinder_stacks > 0 then
+            local grinder_value = tonumber(pm:upgrade_value(
+                "player", "damage_to_hot", 0)) or 0
+            local grinder_tick_time = tonumber(damage._doh_data
+                and damage._doh_data.tick_time) or 1
+            if grinder_tick_time > 0 then
+                local hp_per_interval = #grinder_stacks * grinder_value
+                    * PASSIVE_REGEN_INTERVAL / grinder_tick_time
+                grinder_fraction = hp_per_interval / maximum * healing_mul
+            end
         end
-    end
 
-    if has_smoke_source then
-        smoke_dodge = smoke_dodge or tonumber(tweak_data and tweak_data.projectiles
-            and tweak_data.projectiles.smoke_screen_grenade
-            and tweak_data.projectiles.smoke_screen_grenade.dodge_chance) or 0
-        value = 1 - (1 - value) * (1 - smoke_dodge)
-    end
+        return math.max(0, base_fraction + grinder_fraction)
+    end)
+    return ok and tonumber(fraction) or 0
+end
 
+local function native_melee_damage_multiplier()
+    local ok, multiplier = pcall(function()
+        local pm = managers.player
+        if not pm then return 1 end
+        local player = pm:player_unit()
+        local damage = alive(player) and player:character_damage()
+        local mul = 1
+        mul = mul * pm:upgrade_value("player", "non_special_melee_multiplier", 1)
+        local melee_entry = managers.blackmarket and managers.blackmarket:equipped_melee_weapon()
+        local melee_tweak = melee_entry and tweak_data.blackmarket.melee_weapons[melee_entry]
+        if melee_tweak and melee_tweak.stats then
+            local weapon_type = melee_tweak.stats.weapon_type
+            if weapon_type then
+                mul = mul * pm:upgrade_value("player",
+                    "melee_" .. tostring(weapon_type) .. "_damage_multiplier", 1)
+            end
+        end
+        if pm:has_category_upgrade("melee", "stacking_hit_damage_multiplier") then
+            local movement = alive(player) and player:movement()
+            local stack_state = movement and movement._state_data
+                and movement._state_data.stacking_dmg_mul
+                and movement._state_data.stacking_dmg_mul.melee
+            if stack_state and stack_state[1] then
+                local t = TimerManager:game():time()
+                if t < stack_state[1] then
+                    mul = mul * (1 + pm:upgrade_value("melee", "stacking_hit_damage_multiplier", 0)
+                        * (stack_state[2] or 0))
+                end
+            end
+        end
+        local state = pm:get_current_state()
+        local health_ratio_mul_melee = state and state._damage_health_ratio_mul_melee or 0
+        if damage then
+            local health_ratio = damage:health_ratio()
+            local damage_health_ratio = pm:get_damage_health_ratio(health_ratio, "melee")
+            if damage_health_ratio > 0 then
+                mul = mul * (1 + health_ratio_mul_melee * damage_health_ratio)
+            end
+        end
+        mul = mul * pm:temporary_upgrade_value("temporary", "berserker_damage_multiplier", 1)
+        mul = mul * pm:get_melee_dmg_multiplier()
+        return mul
+    end)
+    return ok and tonumber(multiplier) or 1
+end
+
+local function damage_increase_text()
+    local multiplier = native_damage_increase_multiplier()
+    local bonus = (multiplier - 1) * 100
+    if math.abs(bonus) < 0.5 then return "+0%" end
+    return string.format("%+.0f%%", bonus)
+end
+
+local function damage_reduction_text()
+    local multiplier = native_damage_reduction_multiplier()
+    local reduction = clamp(1 - multiplier, 0, 1)
+    if reduction < 0.005 then return "-0%" end
+    return string.format("-%.0f%%", reduction * 100)
+end
+
+local function passive_health_regen_text()
+    return string.format("%.1f%%", native_passive_health_regen_fraction() * 100)
+end
+
+local function melee_damage_increase_text()
+    local multiplier = native_melee_damage_multiplier()
+    return "x" .. compact_number(multiplier)
+end
+
+local function calculated_base_dodge()
+    local dodge_init = tonumber(tweak_data and tweak_data.player
+        and tweak_data.player.damage and tweak_data.player.damage.DODGE_INIT) or 0
+
+    local ok, value = pcall(function()
+        local pm = managers.player
+        local player = pm:player_unit()
+        local movement = alive(player) and player:movement()
+        local running = movement and movement:running() or false
+        local crouching = movement and movement:crouching() or false
+        local zipline = movement and movement:zipline_unit() or nil
+
+        local result = dodge_init
+            + (pm:body_armor_value("dodge") or 0)
+            + (pm:skill_dodge_chance(running, crouching, zipline) or 0)
+
+        local damage = alive(player) and player:character_damage()
+        if damage and damage._temporary_dodge_t
+                and damage._temporary_dodge_t > TimerManager:game():time() then
+            result = result + (damage._temporary_dodge or 0)
+        end
+
+        local smoke_dodge = 0
+        for _, smoke_screen in ipairs(pm._smoke_screen_effects or {}) do
+            if smoke_screen:is_in_smoke(player) then
+                smoke_dodge = tweak_data.projectiles.smoke_screen_grenade.dodge_chance or 0
+                break
+            end
+        end
+        result = 1 - (1 - result) * (1 - smoke_dodge)
+
+        return math.max(0, result)
+    end)
+    return ok and tonumber(value) or dodge_init
+end
+
+local function total_dodge_chance_text()
+    local value = calculated_base_dodge()
     return string.format("%.0f%%", math.max(value * 100, 0))
 end
 
@@ -2145,23 +2399,32 @@ local BUFF_VALUE_FORMATTERS = {
         local value = largest_source_value(sources)
         return value and string.format("-%.1f", math.abs(value)) or nil
     end,
+    bonus_fraction = function(sources)
+        local value = largest_source_value(sources)
+        return value and value > 0 and string.format("%+.0f%%", value * 100) or nil
+    end,
+    reduction_fraction = function(sources)
+        local value = largest_source_value(sources)
+        return value and value > 0 and string.format("-%.0f%%", value * 100) or nil
+    end,
+    health_per_interval = function(sources)
+        local source
+        for _, candidate in pairs(sources) do
+            if tonumber(candidate.value) and tonumber(candidate.interval) then
+                source = candidate
+                break
+            end
+        end
+        if not source or source.value <= 0 or source.interval <= 0 then return nil end
+        local suffix = source.value_kind == "health_points_per_tick" and " HP" or "%"
+        local value = source.value_kind == "health_points_per_tick"
+            and source.value or source.value * 100
+        return compact_number(value) .. suffix .. " / " .. compact_number(source.interval) .. "s"
+    end,
     damage_increase = damage_increase_text,
     damage_reduction = damage_reduction_text,
     melee_damage_increase = melee_damage_increase_text,
-    passive_health_regen = function(sources)
-        local total = 0
-        local has_value = false
-
-        for _, source in pairs(sources) do
-            local value = passive_health_regen_source_value(source)
-            if value then
-                total = total + value
-                has_value = true
-            end
-        end
-
-        return has_value and string.format("%.1f%%", total * 100) or nil
-    end,
+    passive_health_regen = passive_health_regen_text,
     total_dodge_chance = total_dodge_chance_text,
 }
 
@@ -2203,7 +2466,8 @@ local function format_buff_value(buff_id, sources)
         local maximum = tonumber(tweak_data and tweak_data.upgrades
             and tweak_data.upgrades.wild_max_triggers_per_time) or 0
         stack_text = "x" .. tostring(math.max(0, maximum - stack_count))
-    elseif runtime_definition and stack_count and stack_count > 0 then
+    elseif runtime_definition and runtime_definition.show_stack_count ~= false
+            and stack_count and stack_count > 0 then
         stack_text = "x" .. tostring(stack_count)
     end
     return value_text, stack_text
@@ -2247,14 +2511,6 @@ function KH:_refresh_source_target(buff_id)
         self:remove_buff(buff_id)
     end
 end
-
-local DYNAMIC_VALUE_BUFFS = {
-    "damage_increase",
-    "damage_reduction",
-    "melee_damage_increase",
-    "passive_health_regen",
-    "total_dodge_chance",
-}
 
 local EQUIPPED_SKILL_COUNTER_BUFFS = {}
 for buff_id, presentation in pairs(KYO_BUFF_PRESENTATION) do
@@ -2402,42 +2658,37 @@ function KH:RefreshHackerPocketECMStatus()
     existing.color = color_for_buff(POCKET_ECM_COOLDOWN_ID, true)
 end
 
+local STAT_CARD_BUFF_IDS = {
+    "passive_health_regen",
+    "damage_increase",
+    "damage_reduction",
+    "melee_damage_increase",
+    "total_dodge_chance",
+}
+
+local STAT_CARD_VALUE_TEXT = {
+    passive_health_regen = passive_health_regen_text,
+    damage_increase = damage_increase_text,
+    damage_reduction = damage_reduction_text,
+    melee_damage_increase = melee_damage_increase_text,
+    total_dodge_chance = total_dodge_chance_text,
+}
+
 function KH:RefreshCalculatedBuffValues()
     if self._debug_preview_active then return end
 
-    local buff_id = "total_dodge_chance"
-    local source_key = "calculated:base_dodge"
-    local sources = self._buff_sources[buff_id]
-    local base_dodge = calculated_base_dodge(true)
-    local has_calculated_source = sources and sources[source_key] ~= nil
-    local source_changed = false
-
-    if base_dodge > 0 and not has_calculated_source then
-        self._buff_sources[buff_id] = sources or {}
-        self._buff_sources[buff_id][source_key] = {
-            source_id = "base_dodge",
-            is_calculated = true,
-            is_debuff = false,
-        }
-        source_changed = true
-    elseif base_dodge <= 0 and has_calculated_source then
-        sources[source_key] = nil
-        if not next(sources) then self._buff_sources[buff_id] = nil end
-        source_changed = true
-    end
-
-    if source_changed then
-        self:_refresh_source_target(buff_id)
-    end
-
-    -- These values also depend on the equipped weapon, health, or
-    -- armor. Recalculating them at a low frequency without recreating entries
-    -- preserves their order and timer.
-    for _, dynamic_buff_id in ipairs(DYNAMIC_VALUE_BUFFS) do
-        local dynamic_sources = self._buff_sources[dynamic_buff_id]
-        local buff = self._buffs[dynamic_buff_id]
-        if dynamic_sources and buff then
-            buff.value_text, buff.stack_text = format_buff_value(dynamic_buff_id, dynamic_sources)
+    for _, buff_id in ipairs(STAT_CARD_BUFF_IDS) do
+        if self:is_buff_visible(buff_id) then
+            local value_text = STAT_CARD_VALUE_TEXT[buff_id]()
+            local existing = self._buffs[buff_id]
+            if not existing then
+                self:add_buff(buff_id, nil, nil, nil, true, false, value_text)
+            else
+                existing.value_text = value_text
+                existing.persistent = true
+            end
+        else
+            self:remove_buff(buff_id)
         end
     end
 end
@@ -2525,10 +2776,11 @@ function KH:handle_buff_event(event, source_id, data, source_type)
 end
 
 function KH:SyncGameInfoBuffs()
-    if self._debug_preview_active or not (managers and managers.gameinfo) then return end
+    local provider = self.hudlist
+    if self._debug_preview_active or not provider then return end
 
     local ok_buffs, buffs = pcall(function()
-        return managers.gameinfo:get_buffs()
+        return provider:get_buffs()
     end)
     if ok_buffs and type(buffs) == "table" then
         for id, data in pairs(buffs) do
@@ -2537,7 +2789,7 @@ function KH:SyncGameInfoBuffs()
     end
 
     local ok_actions, actions = pcall(function()
-        return managers.gameinfo:get_player_actions()
+        return provider:get_player_actions()
     end)
     if ok_actions and type(actions) == "table" then
         for id, data in pairs(actions) do
@@ -2553,6 +2805,7 @@ function KH:TryRegisterGameInfoBridge()
         return false
     end
 
+    local provider = self.hudlist
     local buff_events = {
         "activate", "deactivate", "set_duration", "set_progress",
         "set_stack_count", "add_timed_stack", "remove_timed_stack", "set_value",
@@ -2567,16 +2820,16 @@ function KH:TryRegisterGameInfoBridge()
 
     local ok, err = pcall(function()
         for _, event in ipairs(buff_events) do
-            managers.gameinfo:register_listener("kyohud_buff_bridge", "buff", event, buff_callback)
+            provider:register_listener("kyohud_buff_bridge", "buff", event, buff_callback)
         end
         for _, event in ipairs(action_events) do
-            managers.gameinfo:register_listener("kyohud_action_bridge", "player_action", event, action_callback)
+            provider:register_listener("kyohud_action_bridge", "player_action", event, action_callback)
         end
     end)
     if not ok then
         if not self._gameinfo_bridge_error_logged then
             self._gameinfo_bridge_error_logged = true
-            log("[KyoHUD] VanillaHUD+ bridge unavailable: " .. tostring(err))
+            log("[KyoHUD] Buff provider bridge unavailable: " .. tostring(err))
         end
         return false
     end
@@ -2589,7 +2842,7 @@ function KH:TryRegisterGameInfoBridge()
     self._gameinfo_bridge_active = true
     self._gameinfo_bridge_callbacks = { buff_callback, action_callback }
     self:SyncGameInfoBuffs()
-    log("[KyoHUD] Full detection linked to VanillaHUD+ buff manager.")
+    log("[KyoHUD] Buff presentation linked to the available provider.")
     return true
 end
 
@@ -2899,6 +3152,9 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._buffs = {}
     self._buff_sources = {}
     self._source_targets = {}
+    if rearm_bridge_sync and self.hudlist and self.hudlist.reset then
+        self.hudlist:reset()
+    end
     if self._equipped_perk_deck_buff then
         self._equipped_perk_deck_buff.value_text = nil
     end
@@ -3201,7 +3457,9 @@ local BUFF_ROW_MIN_ICON_SIZE = 20
 
 function KH.compute_buff_row_layout(
         count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y,
-        top_label_height)
+        top_label_height, layout)
+    layout = layout or { positions = {} }
+    local positions = layout.positions
     count = math.max(0, math.floor(tonumber(count) or 0))
     panel_w = math.max(0, tonumber(panel_w) or 0)
     panel_h = math.max(0, tonumber(panel_h) or 0)
@@ -3209,7 +3467,6 @@ function KH.compute_buff_row_layout(
     frame_pad_x = math.max(0, tonumber(frame_pad_x) or 0)
     frame_pad_y = math.max(0, tonumber(frame_pad_y) or 0)
 
-    local positions = {}
     local preferred_cell_w = icon_size + frame_pad_x * 2
     local preferred_gap = clamp(icon_size * 0.25, 4, 12)
     local available_w = math.max(0, panel_w - BUFF_ROW_EDGE_MARGIN * 2)
@@ -3222,19 +3479,22 @@ function KH.compute_buff_row_layout(
     local slot_count = count
 
     if count == 0 then
-        return {
-            positions = positions,
-            effective_size = effective_size,
-            frame_pad_x = frame_pad_x,
-            frame_pad_y = frame_pad_y,
-            cell_w = cell_w,
-            gap = gap,
-            pitch = cell_w + gap,
-            scale = scale,
-            visible_count = 0,
-            hidden_count = 0,
-            slot_count = 0,
-        }
+        -- Trim any leftover slots from a previous larger frame
+        for i = 1, #positions do
+            positions[i] = nil
+        end
+        layout.effective_size = effective_size
+        layout.frame_pad_x = frame_pad_x
+        layout.frame_pad_y = frame_pad_y
+        layout.cell_w = cell_w
+        layout.gap = gap
+        layout.pitch = cell_w + gap
+        layout.scale = scale
+        layout.visible_count = 0
+        layout.hidden_count = 0
+        layout.slot_count = 0
+        layout.overflow_text = nil
+        return layout
     end
 
     local preferred_row_w = preferred_cell_w * count
@@ -3297,24 +3557,35 @@ function KH.compute_buff_row_layout(
     local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
     local first_x = row_left + cell_w * 0.5
 
-    for i = 0, slot_count - 1 do
-        positions[#positions + 1] = { x = first_x + pitch * i, y = y }
+    -- Reuse the module-level positions buffer to avoid allocating
+    -- per-frame {x,y} tables. The consumer only reads positions
+    -- during the current frame.
+    for i = 1, slot_count do
+        local slot = positions[i]
+        if not slot then
+            slot = { x = 0, y = 0 }
+            positions[i] = slot
+        end
+        slot.x = first_x + pitch * (i - 1)
+        slot.y = y
+    end
+    -- Trim trailing slots left over from a larger previous frame
+    for i = slot_count + 1, #positions do
+        positions[i] = nil
     end
 
-    return {
-        positions = positions,
-        effective_size = effective_size,
-        frame_pad_x = frame_pad_x,
-        frame_pad_y = frame_pad_y,
-        cell_w = cell_w,
-        gap = gap,
-        pitch = pitch,
-        scale = scale,
-        visible_count = visible_count,
-        hidden_count = hidden_count,
-        slot_count = slot_count,
-        overflow_text = hidden_count > 0 and ("+" .. tostring(hidden_count)) or nil,
-    }
+    layout.effective_size = effective_size
+    layout.frame_pad_x = frame_pad_x
+    layout.frame_pad_y = frame_pad_y
+    layout.cell_w = cell_w
+    layout.gap = gap
+    layout.pitch = pitch
+    layout.scale = scale
+    layout.visible_count = visible_count
+    layout.hidden_count = hidden_count
+    layout.slot_count = slot_count
+    layout.overflow_text = hidden_count > 0 and ("+" .. tostring(hidden_count)) or nil
+    return layout
 end
 
 local function compare_buff_arrival(a, b)
@@ -3331,6 +3602,38 @@ local HEIST_SCORE_LABEL_COLOR = Color(0.86, 0.96, 1)
 local HEIST_SCORE_BEST_VALUE_COLOR = Color(1, 1, 1)
 local HEIST_SCORE_EDGE_MARGIN = 6
 
+-- Cache heist score frame gradient points to avoid per-frame allocations
+function RENDER_CACHES.heist_score_bg_gradient_for(alpha)
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local cached = RENDER_CACHES.heist_score_bg_gradient[alpha_key]
+    if cached then return cached end
+    cached = {
+        0, Color.black:with_alpha(alpha * 0.7),
+        0.58, Color.black:with_alpha(alpha * 0.46),
+        1, Color.black:with_alpha(0),
+    }
+    RENDER_CACHES.heist_score_bg_gradient[alpha_key] = cached
+    return cached
+end
+
+function RENDER_CACHES.heist_score_edge_gradient_for(color, alpha)
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local color_cache = RENDER_CACHES.heist_score_edge_gradient[color]
+    if not color_cache then
+        color_cache = {}
+        RENDER_CACHES.heist_score_edge_gradient[color] = color_cache
+    end
+    local cached = color_cache[alpha_key]
+    if cached then return cached end
+    cached = {
+        0, color:with_alpha(alpha * 0.5),
+        0.72, color:with_alpha(alpha * 0.2),
+        1, color:with_alpha(0),
+    }
+    color_cache[alpha_key] = cached
+    return cached
+end
+
 local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
     panel:gradient({
         x = x,
@@ -3338,28 +3641,21 @@ local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
         w = w,
         h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.7),
-            0.58, Color.black:with_alpha(alpha * 0.46),
-            1, Color.black:with_alpha(0),
-        },
+        gradient_points = RENDER_CACHES.heist_score_bg_gradient_for(alpha),
         layer = layer,
     })
     panel:rect({
         x = x, y = y + 2, w = 2, h = h - 4,
         color = color, alpha = alpha * 0.9, layer = layer + 1,
     })
+    local edge_gradient = RENDER_CACHES.heist_score_edge_gradient_for(color, alpha)
     panel:gradient({
         x = x + 2,
         y = y + 1,
         w = w - 2,
         h = 1,
         orientation = "horizontal",
-        gradient_points = {
-            0, color:with_alpha(alpha * 0.5),
-            0.72, color:with_alpha(alpha * 0.2),
-            1, color:with_alpha(0),
-        },
+        gradient_points = edge_gradient,
         layer = layer + 1,
     })
     panel:gradient({
@@ -3368,11 +3664,7 @@ local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
         w = w - 2,
         h = 1,
         orientation = "horizontal",
-        gradient_points = {
-            0, color:with_alpha(alpha * 0.5),
-            0.72, color:with_alpha(alpha * 0.2),
-            1, color:with_alpha(0),
-        },
+        gradient_points = edge_gradient,
         layer = layer + 1,
     })
 end
@@ -3542,14 +3834,17 @@ function KH:draw()
         end
     end
 
-    -- Purge expired kills
-    local i = 1
-    while i <= #self._kills do
-        if self._kills[i].t_end and self._kills[i].t_end <= t then
-            table.remove(self._kills, i)
-        else
-            i = i + 1
+    -- Purge expired kills in a single pass (O(n) instead of O(n²) with table.remove)
+    local write = 1
+    for read = 1, #self._kills do
+        local kill = self._kills[read]
+        if not (kill.t_end and kill.t_end <= t) then
+            self._kills[write] = kill
+            write = write + 1
         end
+    end
+    for i = write, #self._kills do
+        self._kills[i] = nil
     end
     -- End of continuous burst: the row score restarts from zero. The total
     -- and best burst total of the heist, however, survive — they are
@@ -3614,7 +3909,9 @@ function KH:draw()
 
     -- ── Draw buffs ──
     if s.enable_buffs and self._gameinfo_bridge_active then
-        local buff_list = {}
+        -- Reuse module-level buffers to avoid per-frame allocations.
+        local buff_list = RENDER_CACHES.buff_list
+        for index = #buff_list, 1, -1 do buff_list[index] = nil end
         local promoted_perk_buff_id
 
         -- Priority indicators open the row in chosen order,
@@ -3630,23 +3927,41 @@ function KH:draw()
                     buff = self._buffs[buff_id]
                 end
                 if buff and buff.icon then
-                    table.insert(buff_list, buff)
+                    buff_list[#buff_list + 1] = buff
                 end
             end
         end
 
-        local extra_buffs = {}
+        local extra_buffs = RENDER_CACHES.extra_buffs
+        local extra_buffs_scan = RENDER_CACHES.extra_buffs_scan
+        for index = #extra_buffs_scan, 1, -1 do extra_buffs_scan[index] = nil end
+        RENDER_CACHES.extra_buff_generation = RENDER_CACHES.extra_buff_generation + 1
+        local extra_buff_generation = RENDER_CACHES.extra_buff_generation
         for _, b in pairs(self._buffs) do
             if b.icon and b.id ~= promoted_perk_buff_id
                     and not STATIC_BUFF_SLOT_SET[b.id] and self:is_buff_visible(b.id) then
-                table.insert(extra_buffs, b)
+                extra_buffs_scan[#extra_buffs_scan + 1] = b
+                RENDER_CACHES.extra_buff_members[b] = extra_buff_generation
             end
         end
-        -- Sort by arrival order: new buffs are added after
-        -- fixed slots, without reordering existing icons.
-        table.sort(extra_buffs, compare_buff_arrival)
+        local extra_buffs_changed = #extra_buffs_scan ~= #extra_buffs
+        if not extra_buffs_changed then
+            for index = 1, #extra_buffs do
+                if RENDER_CACHES.extra_buff_members[extra_buffs[index]] ~= extra_buff_generation then
+                    extra_buffs_changed = true
+                    break
+                end
+            end
+        end
+        if extra_buffs_changed then
+            for index = #extra_buffs, 1, -1 do extra_buffs[index] = nil end
+            for index = 1, #extra_buffs_scan do extra_buffs[index] = extra_buffs_scan[index] end
+            -- Sort only when the visible membership changes. Arrival metadata is
+            -- stable for the lifetime of an entry.
+            table.sort(extra_buffs, compare_buff_arrival)
+        end
         for _, buff in ipairs(extra_buffs) do
-            table.insert(buff_list, buff)
+            buff_list[#buff_list + 1] = buff
         end
 
         local preferred_frame_pad_x = clamp(size * 0.16, 4, 9)
@@ -3673,7 +3988,8 @@ function KH:draw()
             size,
             preferred_frame_pad_x,
             preferred_frame_pad_y,
-            top_label_height
+            top_label_height,
+            RENDER_CACHES.layout
         )
         local buff_size = layout.effective_size
         local frame_pad_x = layout.frame_pad_x
@@ -3712,7 +4028,8 @@ function KH:draw()
                     frame_w,
                     frame_h,
                     buff_alpha * (0.72 + 0.28 * state.emphasis),
-                    98
+                    98,
+                    draw_frame_color(buff, t)
                 )
 
                 -- Hourly perimeter outline, reserved for temporary buffs:
@@ -3735,22 +4052,27 @@ function KH:draw()
 
                 local params = {
                     layer = 101,
-                    w     = buff_size,
-                    h     = buff_size,
-                    x     = pos.x - buff_size / 2,
-                    y     = pos.y - buff_size / 2,
+                    w = buff_size,
+                    h = buff_size,
+                    x = pos.x - buff_size / 2,
+                    y = pos.y - buff_size / 2,
                 }
 
                 if buff.icon.rect then
-                    params.texture      = buff.icon.texture
+                    params.texture = buff.icon.texture
                     params.texture_rect = buff.icon.rect
                 else
                     params.texture = buff.icon.texture
+                    params.texture_rect = nil
                 end
 
                 local bmp = self._panel:bitmap(params)
                 bmp:set_color(buff.color or Color.white)
                 bmp:set_alpha(buff_alpha)
+
+                if buff.icon.rotation then
+                    bmp:set_rotation(buff.icon.rotation)
+                end
 
                 -- A top label occupies the line just above the frame and
                 -- shifts the value down by an additional line. A placement
@@ -4334,7 +4656,7 @@ function KH:draw()
                 text = kill.display_text or kill.name,
                 font = kill_font,
                 font_size = kill_font_size,
-                color = kill.special_kind and item_color or Color(0.86, 0.96, 1),
+                color = kill.special_kind and item_color or RENDER_CACHES.killfeed_name_color,
                 align = score_text and "right" or "center",
                 vertical = "center",
                 x = text_x,
@@ -4347,7 +4669,7 @@ function KH:draw()
 
             if score_text then
                 local score_color = kill.score and kill.score < 0
-                    and Color(1, 0.36, 0.3)
+                    and RENDER_CACHES.killfeed_negative_score_color
                     or item_color
                 self._panel:text({
                     text = score_text,
@@ -4455,6 +4777,7 @@ function KH:DebugSimulate(n)
         { id = "damage_increase", value_text = "+35%" },
         { id = "damage_reduction", value_text = "-20%" },
         { id = "melee_damage_increase", value_text = "x1.75" },
+        { id = "total_dodge_chance", value_text = "25%" },
     }
     local t_now = now()
     for i, demo in ipairs(demo_static_buffs) do
@@ -4462,6 +4785,7 @@ function KH:DebugSimulate(n)
             id = demo.id,
             icon = icon_for_buff(demo.id),
             color = color_for_buff(demo.id, demo.is_debuff),
+            frame_color = frame_color_for_buff(demo.id),
             value_text = demo.value_text,
             is_debuff = demo.is_debuff == true,
             order_t = t_now + i * 0.001,
@@ -4671,6 +4995,9 @@ Hooks:PostHook(HUDManager, "init_finalize", "KH_InitHUD", function()
 end)
 
 Hooks:PostHook(HUDManager, "update", "KH_UpdateHUD", function(self, t, dt)
+    if KH.hudlist and KH.hudlist.update then
+        KH.hudlist:update()
+    end
     if not KH._gameinfo_bridge_active then
         KH._bridge_retry_acc = (KH._bridge_retry_acc or 0) + dt
         if KH._bridge_retry_acc >= 1 then

@@ -1,0 +1,108 @@
+{
+    "menu_id": "kyohud_buffs_fugitive",
+    "parent_menu_id": "kyohud_buffs_menu",
+    "title": "ky_opt_buff_cat_fugitive",
+    "description": "ky_opt_buff_cat_fugitive_desc",
+    "items": [
+        {
+            "type": "toggle",
+            "id": "ky_buff_berserker",
+            "title": "ky_opt_buff_berserker",
+            "description": "ky_opt_buff_berserker_desc",
+            "value": "berserker",
+            "callback": "KY_ToggleBuff_berserker",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_bloodthirst_basic",
+            "title": "ky_opt_buff_bloodthirst_basic",
+            "description": "ky_opt_buff_bloodthirst_basic_desc",
+            "value": "bloodthirst_basic",
+            "callback": "KY_ToggleBuff_bloodthirst_basic",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_bloodthirst_aced",
+            "title": "ky_opt_buff_bloodthirst_aced",
+            "description": "ky_opt_buff_bloodthirst_aced_desc",
+            "value": "bloodthirst_aced",
+            "callback": "KY_ToggleBuff_bloodthirst_aced",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_desperado",
+            "title": "ky_opt_buff_desperado",
+            "description": "ky_opt_buff_desperado_desc",
+            "value": "desperado",
+            "callback": "KY_ToggleBuff_desperado",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_frenzy",
+            "title": "ky_opt_buff_frenzy",
+            "description": "ky_opt_buff_frenzy_desc",
+            "value": "frenzy",
+            "callback": "KY_ToggleBuff_frenzy",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_messiah",
+            "title": "ky_opt_buff_messiah",
+            "description": "ky_opt_buff_messiah_desc",
+            "value": "messiah",
+            "callback": "KY_ToggleBuff_messiah",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_running_from_death",
+            "title": "ky_opt_buff_running_from_death",
+            "description": "ky_opt_buff_running_from_death_desc",
+            "value": "running_from_death",
+            "callback": "KY_ToggleBuff_running_from_death",
+            "enabled_by": "enable_buffs",
+            "default_value": true
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_swan_song",
+            "title": "ky_opt_buff_swan_song",
+            "description": "ky_opt_buff_swan_song_desc",
+            "value": "swan_song",
+            "callback": "KY_ToggleBuff_swan_song",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_trigger_happy",
+            "title": "ky_opt_buff_trigger_happy",
+            "description": "ky_opt_buff_trigger_happy_desc",
+            "value": "trigger_happy",
+            "callback": "KY_ToggleBuff_trigger_happy",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        },
+        {
+            "type": "toggle",
+            "id": "ky_buff_up_you_go",
+            "title": "ky_opt_buff_up_you_go",
+            "description": "ky_opt_buff_up_you_go_desc",
+            "value": "up_you_go",
+            "callback": "KY_ToggleBuff_up_you_go",
+            "enabled_by": "enable_buffs",
+            "default_value": false
+        }
+    ]
+}
