@@ -81,6 +81,37 @@ KH.KYO_BUFF_PRESENTATION = KYO_BUFF_PRESENTATION
 local EMPTY_BUFF_CANDIDATES = {}
 
 local FRAME_ANIM_CACHE = {}
+local RENDER_CACHES = {
+    chevrons = {},
+    edge_points = {},
+    progress = {},
+    buff_cell_bg = {},
+    buff_cell_footer = {},
+    buff_cell_outline = {},
+    tactical_bg = {},
+    killfeed_bg = {},
+    killfeed_top_edge = {},
+    frame_colors = {},
+    -- Reusable buffers for per-frame allocations; mutated in-place each frame.
+    layout = { positions = {} },
+    buff_list = {},
+    extra_buffs = {},
+    extra_buffs_scan = {},
+    extra_buff_members = setmetatable({}, { __mode = "k" }),
+    extra_buff_generation = 0,
+    heist_score_bg_gradient = {},
+    heist_score_edge_gradient = {},
+    medal_frame_gradient = {},
+    -- Pre-allocated color constants to avoid Color() allocations
+    combo_colors = {
+        [2] = Color(1, 0.85, 0.2),
+        [3] = Color(1, 0.55, 0.1),
+        [4] = Color(1, 0.2, 0.1),
+        [5] = Color(0.208, 0.906, 1), -- 5+
+    },
+    killfeed_name_color = Color(0.86, 0.96, 1),
+    killfeed_negative_score_color = Color(1, 0.36, 0.3)
+}
 for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
     local _anim = _pres.frame_animation
     if _anim and _pres.frame_color
@@ -116,9 +147,21 @@ end
 local function draw_frame_color(buff, t)
     local anim = FRAME_ANIM_CACHE[buff.id]
     if not anim then return buff.frame_color end
-    local r, g, b = KH:_compute_frame_color(buff.id, t)
+    
+    local r, g, b, factor = KH:_compute_frame_color(buff.id, t)
     if not r then return buff.frame_color end
-    return Color(r, g, b)
+    
+    -- Cache par (buff_id, factor_arrondi_2_decimales)
+    local factor_key = math.floor(factor * 100)
+    local cache_key = buff.id .. ":" .. factor_key
+    local cached = RENDER_CACHES.frame_colors[cache_key]
+    
+    if not cached then
+        cached = Color(r, g, b)
+        RENDER_CACHES.frame_colors[cache_key] = cached
+    end
+    
+    return cached
 end
 
 local function killfeed_size(settings)
@@ -533,9 +576,14 @@ end
 -- Optional cell label, bypassing value_text. AI buffs retain their historical marker above the icon; others have one only if KyoHUD presentation declares `label`, whose `placement` field chooses between BUFF_LABEL_TOP and BUFF_LABEL_TIMER. Text and placement are returned separately: KH:draw allocates no table and translation is resolved once per identifier, not per frame.
 local BUFF_LABEL_TOP = "top"
 local BUFF_LABEL_TIMER = "timer"
+
 local function buff_label(buff)
-    return buff.label_text or buff.title_text,
-        buff.label_text and buff.label_placement or BUFF_LABEL_TOP
+    if buff.label_text then
+        return buff.label_text, buff.label_placement or BUFF_LABEL_TOP
+    elseif buff.title_text then
+        return buff.title_text, BUFF_LABEL_TOP
+    end
+    return nil, BUFF_LABEL_TOP
 end
 
 local heist_score_labels_cache = nil
@@ -943,11 +991,10 @@ local function combo_label(count, variant_index)
     return localized_text("ky_hud_combo_chain", "KILL CHAIN") .. " x" .. tostring(count)
 end
 
+-- Cache combo colors to avoid Color() allocation on every frame
+-- Bounded to 4 entries: keys 2,3,4,5 (where 5 represents 5+)
 local function combo_color(count)
-    if count == 2 then return Color(1, 0.85, 0.2) end
-    if count == 3 then return Color(1, 0.55, 0.1) end
-    if count == 4 then return Color(1, 0.2, 0.1) end
-    return Color(0.208, 0.906, 1) -- electric cyan #35E7FF starting at 5 kills
+    return RENDER_CACHES.combo_colors[math.min(math.max(count, 2), 5)]
 end
 
 -- A banner directly carries its label and color. `KH:draw` therefore
@@ -1100,47 +1147,33 @@ end
 
 -- Tactical frame inspired by Battlefield notifications: asymmetric strokes,
 -- four detached brackets, and chevrons converging toward the content.
+-- Each bracket is drawn as two filled rectangles (one horizontal arm, one
+-- vertical arm) instead of a polyline: `panel:rect` takes relative coords
+-- and allocates no Vector3, sparing the twelve Vector3 + four tables that
+-- the previous polyline path produced per call.
 local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer, style)
     local extension = style and style.extension or 4
     local arm_x = style and style.arm_x or math.min(18, w * 0.08)
     local arm_y = style and style.arm_y or math.min(11, h * 0.3)
-    local line_width = style and style.line_width or 1
+    local lw = style and style.line_width or 1
     local left = x - extension
     local right = x + w + extension
     local top = y - extension
     local bottom = y + h + extension
-    local corners = {
-        {
-            Vector3(left + arm_x, top, 0),
-            Vector3(left, top, 0),
-            Vector3(left, top + arm_y, 0),
-        },
-        {
-            Vector3(right - arm_x, top, 0),
-            Vector3(right, top, 0),
-            Vector3(right, top + arm_y, 0),
-        },
-        {
-            Vector3(left, bottom - arm_y, 0),
-            Vector3(left, bottom, 0),
-            Vector3(left + arm_x, bottom, 0),
-        },
-        {
-            Vector3(right, bottom - arm_y, 0),
-            Vector3(right, bottom, 0),
-            Vector3(right - arm_x, bottom, 0),
-        },
-    }
+    local v_bar_h = math.max(0, arm_y - lw)
 
-    for _, points in ipairs(corners) do
-        panel:polyline({
-            points = points,
-            line_width = line_width,
-            color = color,
-            alpha = alpha,
-            layer = layer,
-        })
-    end
+    -- Top-left
+    panel:rect({ x = left, y = top, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = left, y = top + lw, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Top-right
+    panel:rect({ x = right - arm_x, y = top, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = right - lw, y = top + lw, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Bottom-left
+    panel:rect({ x = left, y = bottom - lw, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = left, y = bottom - arm_y, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
+    -- Bottom-right
+    panel:rect({ x = right - arm_x, y = bottom - lw, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
+    panel:rect({ x = right - lw, y = bottom - arm_y, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
 end
 
 -- ── Banner Chevrons ──
@@ -1301,15 +1334,21 @@ local function draw_multikill_chevrons(panel, x, y, direction, color, alpha, lay
 end
 
 -- Solid decorative chevrons, reserved for special announcements (dozer, boss).
+-- Triangles are cached in RENDER_CACHES.chevrons to avoid Vector3 allocations.
 local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
     local count = SPECIAL_CHEVRON_SLOTS
     local arrow_w = style and style.arrow_w or SPECIAL_CHEVRON_W
     local arrow_h = style and style.arrow_h or SPECIAL_CHEVRON_H
     local gap = style and style.gap or SPECIAL_CHEVRON_GAP
-
-    for i = 0, count - 1 do
-        local arrow_x = x + i * (arrow_w + gap)
-        local triangles
+    local dir_key = direction > 0 and 1 or -1
+    local size_key = arrow_w .. ":" .. arrow_h
+    local bucket = RENDER_CACHES.chevrons[size_key]
+    if not bucket then
+        bucket = {}
+        RENDER_CACHES.chevrons[size_key] = bucket
+    end
+    local triangles = bucket[dir_key]
+    if not triangles then
         if direction > 0 then
             triangles = {
                 Vector3(0, 0, 0),
@@ -1323,6 +1362,11 @@ local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
                 Vector3(0, arrow_h * 0.5, 0),
             }
         end
+        bucket[dir_key] = triangles
+    end
+
+    for i = 0, count - 1 do
+        local arrow_x = x + i * (arrow_w + gap)
 
         local prominence
         if direction > 0 then
@@ -1357,19 +1401,27 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
     local glow_alpha = style and style.glow_alpha or 0.16
     local inset = style and style.inset or 2
 
+    -- P4+P6: clé numérique bornée (2 décimales = 100 valeurs max)
+    local bg_key = math.floor(alpha * 100 + 0.5)
+    local bg_gradient = RENDER_CACHES.tactical_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0,    Color.black:with_alpha(alpha * 0.16),
+            0.2,  Color.black:with_alpha(alpha * 0.62),
+            0.5,  Color.black:with_alpha(alpha * 0.78),
+            0.82, Color.black:with_alpha(alpha * 0.58),
+            1,    Color.black:with_alpha(alpha * 0.1),
+        }
+        RENDER_CACHES.tactical_bg[bg_key] = bg_gradient
+    end
+
     panel:gradient({
         x = x + inset,
         y = y + inset,
         w = w - inset * 2,
         h = h - inset * 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.16),
-            0.2, Color.black:with_alpha(alpha * 0.62),
-            0.5, Color.black:with_alpha(alpha * 0.78),
-            0.82, Color.black:with_alpha(alpha * 0.58),
-            1, Color.black:with_alpha(alpha * 0.1),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
 
@@ -1432,10 +1484,28 @@ local function align_buff_cell_rect(x, y, w, h)
         math.max(min_size, math.floor(y + h + 0.5) - top)
 end
 
+-- `edge_points` is built once per (color, alpha) pair: buff cells share the same
+-- riser gradient, and KH:draw may render several per frame. The cache key is a
+-- plain string — color reference plus alpha rounded to three digits — so a
+-- repeated alpha during the same frame reuses the existing table instead of
+-- allocating a new one. Inlined in draw_buff_cell_frame to avoid a top-level local.
+
 local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
     local left, top, width, height = align_buff_cell_rect(x, y, w, h)
     local has_custom_outline = color ~= nil
     color = color or HUD_ACCENT_COLOR
+
+    -- P4+P6: clé numérique bornée (2 décimales = 100 valeurs max)
+    local bg_key = math.floor(alpha * 100 + 0.5)
+    local bg_gradient = RENDER_CACHES.buff_cell_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0, Color.black:with_alpha(0),
+            0.45, Color.black:with_alpha(alpha * 0.3),
+            1, Color.black:with_alpha(alpha * 0.82),
+        }
+        RENDER_CACHES.buff_cell_bg[bg_key] = bg_gradient
+    end
 
     panel:gradient({
         x = left,
@@ -1443,21 +1513,24 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
         w = width,
         h = height,
         orientation = "vertical",
-        gradient_points = {
-            0, Color.black:with_alpha(0),
-            0.45, Color.black:with_alpha(alpha * 0.3),
-            1, Color.black:with_alpha(alpha * 0.82),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
 
-    -- A single point table shared by both risers: they carry exactly the same
-    -- gradient and `KH:draw` must not allocate twice.
-    local edge_points = {
-        0,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
-        0.55, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
-        1,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
-    }
+    -- Risers share the same gradient points table; `panel:gradient` accepts the
+    -- same reference for both without modification.
+    -- P4+P6: clé numérique pour color+alpha (pas de string concat)
+    local color_key = color.r and (color.r * 0x10000 + color.g * 0x100 + color.b) or 0
+    local edge_key = color_key * 100 + bg_key
+    local edge_points = RENDER_CACHES.edge_points[edge_key]
+    if not edge_points then
+        edge_points = {
+            0, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
+            0.55, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
+            1, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+        }
+        RENDER_CACHES.edge_points[edge_key] = edge_points
+    end
     panel:gradient({
         x = left,
         y = top,
@@ -1476,23 +1549,38 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
         gradient_points = edge_points,
         layer = layer + 1,
     })
+
+    -- Cache footer gradient par color+alpha
+    local footer_key = color_key * 100 + bg_key
+    local footer_gradient = RENDER_CACHES.buff_cell_footer[footer_key]
+    if not footer_gradient then
+        footer_gradient = {
+            0,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+            0.5, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+            1,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
+        }
+        RENDER_CACHES.buff_cell_footer[footer_key] = footer_gradient
+    end
+
     panel:gradient({
         x = left,
         y = top + height - BUFF_CELL_LINE_WIDTH,
         w = width,
         h = BUFF_CELL_LINE_WIDTH,
         orientation = "horizontal",
-        gradient_points = {
-            0,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
-            0.5, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
-            1,   color:with_alpha(alpha * BUFF_CELL_FOOTER_ALPHA_END),
-        },
+        gradient_points = footer_gradient,
         layer = layer + 1,
     })
 
     if has_custom_outline then
         local stroke = 2
-        local outline_color = color:with_alpha(math.min(1, alpha * 1.15))
+        -- Cache outline_color par color+alpha
+        local outline_key = footer_key
+        local outline_color = RENDER_CACHES.buff_cell_outline[outline_key]
+        if not outline_color then
+            outline_color = color:with_alpha(math.min(1, alpha * 1.15))
+            RENDER_CACHES.buff_cell_outline[outline_key] = outline_color
+        end
         local outline_layer = layer + 1
         panel:rect({
             x = left,
@@ -1550,6 +1638,11 @@ local function append_progress_segment(points, remaining_length, x1, y1, x2, y2,
     return remaining_length - visible_length
 end
 
+-- Shared progress-points buffer. `append_progress_segment` only reads/writes
+-- `points[n]` for n up to the current count, and `draw_timed_buff_progress`
+-- is the sole consumer. A per-draw clear is achieved by resetting the length
+-- to zero in-place without allocating a new table.
+
 local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alpha, layer)
     progress = clamp(tonumber(progress) or 0, 0, 1)
     if progress <= 0 then return end
@@ -1560,7 +1653,12 @@ local function draw_timed_buff_progress(panel, x, y, w, h, progress, color, alph
     local line_width = clamp(math.min(w, h) * 0.055, 2, 3)
     local remaining_length = (w * 2 + h * 2) * progress
     local half_w = w * 0.5
-    local points = {}
+
+    -- Reuse the buffer in place: clear it without allocating a new table.
+    local points = RENDER_CACHES.progress
+    for i = #points, 1, -1 do
+        points[i] = nil
+    end
     remaining_length = append_progress_segment(
         points, remaining_length, x + half_w, y, x + w, y, half_w
     )
@@ -1701,26 +1799,54 @@ local function resolve_buff_state(buff, t)
 end
 
 local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
+    -- P4+P6: clé numérique bornée (2 décimales)
+    local bg_key = math.floor(alpha * 100 + 0.5)
+    local bg_gradient = RENDER_CACHES.killfeed_bg[bg_key]
+    if not bg_gradient then
+        bg_gradient = {
+            0, Color.black:with_alpha(alpha * 0.68),
+            0.72, Color.black:with_alpha(alpha * 0.42),
+            1, Color.black:with_alpha(alpha * 0.05),
+        }
+        RENDER_CACHES.killfeed_bg[bg_key] = bg_gradient
+    end
+
     panel:gradient({
         x = x,
         y = y + 1,
         w = w,
         h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.68),
-            0.72, Color.black:with_alpha(alpha * 0.42),
-            1, Color.black:with_alpha(alpha * 0.05),
-        },
+        gradient_points = bg_gradient,
         layer = layer,
     })
+
+    -- P4+P6: clé numérique pour color+alpha
+    local color_key = color.r and (color.r * 0x10000 + color.g * 0x100 + color.b) or 0
+    local top_edge_key = color_key * 100 + bg_key
+    local top_edge_gradient = RENDER_CACHES.killfeed_top_edge[top_edge_key]
+    if not top_edge_gradient then
+        top_edge_gradient = {
+            0, color:with_alpha(alpha * 0.9),
+            0.5, color:with_alpha(alpha * 0.5),
+            1, color:with_alpha(alpha * 0.9),
+        }
+        RENDER_CACHES.killfeed_top_edge[top_edge_key] = top_edge_gradient
+    end
+
+    panel:gradient({
+        x = x + 2,
+        y = y + 1,
+        w = w - 4,
+        h = 1,
+        orientation = "horizontal",
+        gradient_points = top_edge_gradient,
+        layer = layer + 1,
+    })
+
     panel:rect({
         x = x, y = y + 2, w = 2, h = h - 4,
         color = color, alpha = alpha * 0.9, layer = layer + 1,
-    })
-    panel:rect({
-        x = x + 2, y = y + 1, w = w - 4, h = 1,
-        color = color, alpha = alpha * 0.5, layer = layer + 1,
     })
     panel:rect({
         x = x + 2, y = y + h - 2, w = w - 4, h = 1,
@@ -1794,19 +1920,30 @@ local function draw_medal_edge(panel, x, y, w, color, alpha, layer)
     })
 end
 
+-- Cache medal frame gradient colors by alpha to avoid per-frame allocations
+function RENDER_CACHES.medal_frame_gradient_for(alpha)
+    -- Round alpha to 2 decimal places for cache key
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local cached = RENDER_CACHES.medal_frame_gradient[alpha_key]
+    if cached then return cached end
+    cached = {
+        0,    Color.black:with_alpha(alpha * 0.14),
+        0.26, Color.black:with_alpha(alpha * 0.7),
+        0.5,  Color.black:with_alpha(alpha * 0.82),
+        0.74, Color.black:with_alpha(alpha * 0.7),
+        1,    Color.black:with_alpha(alpha * 0.14),
+    }
+    RENDER_CACHES.medal_frame_gradient[alpha_key] = cached
+    return cached
+end
+
 local function draw_medal_frame(panel, x, y, w, h, color, alpha, layer)
     -- Symmetric background: the medal reads as a block, while kill cards keep
     -- their right-oriented asymmetric gradient.
     panel:gradient({
         x = x, y = y + 1, w = w, h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0,    Color.black:with_alpha(alpha * 0.14),
-            0.26, Color.black:with_alpha(alpha * 0.7),
-            0.5,  Color.black:with_alpha(alpha * 0.82),
-            0.74, Color.black:with_alpha(alpha * 0.7),
-            1,    Color.black:with_alpha(alpha * 0.14),
-        },
+        gradient_points = RENDER_CACHES.medal_frame_gradient_for(alpha),
         layer = layer,
     })
 
@@ -3320,7 +3457,9 @@ local BUFF_ROW_MIN_ICON_SIZE = 20
 
 function KH.compute_buff_row_layout(
         count, x_percent, y_percent, panel_w, panel_h, icon_size, frame_pad_x, frame_pad_y,
-        top_label_height)
+        top_label_height, layout)
+    layout = layout or { positions = {} }
+    local positions = layout.positions
     count = math.max(0, math.floor(tonumber(count) or 0))
     panel_w = math.max(0, tonumber(panel_w) or 0)
     panel_h = math.max(0, tonumber(panel_h) or 0)
@@ -3328,7 +3467,6 @@ function KH.compute_buff_row_layout(
     frame_pad_x = math.max(0, tonumber(frame_pad_x) or 0)
     frame_pad_y = math.max(0, tonumber(frame_pad_y) or 0)
 
-    local positions = {}
     local preferred_cell_w = icon_size + frame_pad_x * 2
     local preferred_gap = clamp(icon_size * 0.25, 4, 12)
     local available_w = math.max(0, panel_w - BUFF_ROW_EDGE_MARGIN * 2)
@@ -3341,19 +3479,22 @@ function KH.compute_buff_row_layout(
     local slot_count = count
 
     if count == 0 then
-        return {
-            positions = positions,
-            effective_size = effective_size,
-            frame_pad_x = frame_pad_x,
-            frame_pad_y = frame_pad_y,
-            cell_w = cell_w,
-            gap = gap,
-            pitch = cell_w + gap,
-            scale = scale,
-            visible_count = 0,
-            hidden_count = 0,
-            slot_count = 0,
-        }
+        -- Trim any leftover slots from a previous larger frame
+        for i = 1, #positions do
+            positions[i] = nil
+        end
+        layout.effective_size = effective_size
+        layout.frame_pad_x = frame_pad_x
+        layout.frame_pad_y = frame_pad_y
+        layout.cell_w = cell_w
+        layout.gap = gap
+        layout.pitch = cell_w + gap
+        layout.scale = scale
+        layout.visible_count = 0
+        layout.hidden_count = 0
+        layout.slot_count = 0
+        layout.overflow_text = nil
+        return layout
     end
 
     local preferred_row_w = preferred_cell_w * count
@@ -3416,24 +3557,35 @@ function KH.compute_buff_row_layout(
     local y = clamp(panel_h * clamp(y_percent, 0, 100) / 100, min_y, max_y)
     local first_x = row_left + cell_w * 0.5
 
-    for i = 0, slot_count - 1 do
-        positions[#positions + 1] = { x = first_x + pitch * i, y = y }
+    -- Reuse the module-level positions buffer to avoid allocating
+    -- per-frame {x,y} tables. The consumer only reads positions
+    -- during the current frame.
+    for i = 1, slot_count do
+        local slot = positions[i]
+        if not slot then
+            slot = { x = 0, y = 0 }
+            positions[i] = slot
+        end
+        slot.x = first_x + pitch * (i - 1)
+        slot.y = y
+    end
+    -- Trim trailing slots left over from a larger previous frame
+    for i = slot_count + 1, #positions do
+        positions[i] = nil
     end
 
-    return {
-        positions = positions,
-        effective_size = effective_size,
-        frame_pad_x = frame_pad_x,
-        frame_pad_y = frame_pad_y,
-        cell_w = cell_w,
-        gap = gap,
-        pitch = pitch,
-        scale = scale,
-        visible_count = visible_count,
-        hidden_count = hidden_count,
-        slot_count = slot_count,
-        overflow_text = hidden_count > 0 and ("+" .. tostring(hidden_count)) or nil,
-    }
+    layout.effective_size = effective_size
+    layout.frame_pad_x = frame_pad_x
+    layout.frame_pad_y = frame_pad_y
+    layout.cell_w = cell_w
+    layout.gap = gap
+    layout.pitch = pitch
+    layout.scale = scale
+    layout.visible_count = visible_count
+    layout.hidden_count = hidden_count
+    layout.slot_count = slot_count
+    layout.overflow_text = hidden_count > 0 and ("+" .. tostring(hidden_count)) or nil
+    return layout
 end
 
 local function compare_buff_arrival(a, b)
@@ -3450,6 +3602,38 @@ local HEIST_SCORE_LABEL_COLOR = Color(0.86, 0.96, 1)
 local HEIST_SCORE_BEST_VALUE_COLOR = Color(1, 1, 1)
 local HEIST_SCORE_EDGE_MARGIN = 6
 
+-- Cache heist score frame gradient points to avoid per-frame allocations
+function RENDER_CACHES.heist_score_bg_gradient_for(alpha)
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local cached = RENDER_CACHES.heist_score_bg_gradient[alpha_key]
+    if cached then return cached end
+    cached = {
+        0, Color.black:with_alpha(alpha * 0.7),
+        0.58, Color.black:with_alpha(alpha * 0.46),
+        1, Color.black:with_alpha(0),
+    }
+    RENDER_CACHES.heist_score_bg_gradient[alpha_key] = cached
+    return cached
+end
+
+function RENDER_CACHES.heist_score_edge_gradient_for(color, alpha)
+    local alpha_key = math.floor(alpha * 100 + 0.5)
+    local color_cache = RENDER_CACHES.heist_score_edge_gradient[color]
+    if not color_cache then
+        color_cache = {}
+        RENDER_CACHES.heist_score_edge_gradient[color] = color_cache
+    end
+    local cached = color_cache[alpha_key]
+    if cached then return cached end
+    cached = {
+        0, color:with_alpha(alpha * 0.5),
+        0.72, color:with_alpha(alpha * 0.2),
+        1, color:with_alpha(0),
+    }
+    color_cache[alpha_key] = cached
+    return cached
+end
+
 local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
     panel:gradient({
         x = x,
@@ -3457,28 +3641,21 @@ local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
         w = w,
         h = h - 2,
         orientation = "horizontal",
-        gradient_points = {
-            0, Color.black:with_alpha(alpha * 0.7),
-            0.58, Color.black:with_alpha(alpha * 0.46),
-            1, Color.black:with_alpha(0),
-        },
+        gradient_points = RENDER_CACHES.heist_score_bg_gradient_for(alpha),
         layer = layer,
     })
     panel:rect({
         x = x, y = y + 2, w = 2, h = h - 4,
         color = color, alpha = alpha * 0.9, layer = layer + 1,
     })
+    local edge_gradient = RENDER_CACHES.heist_score_edge_gradient_for(color, alpha)
     panel:gradient({
         x = x + 2,
         y = y + 1,
         w = w - 2,
         h = 1,
         orientation = "horizontal",
-        gradient_points = {
-            0, color:with_alpha(alpha * 0.5),
-            0.72, color:with_alpha(alpha * 0.2),
-            1, color:with_alpha(0),
-        },
+        gradient_points = edge_gradient,
         layer = layer + 1,
     })
     panel:gradient({
@@ -3487,11 +3664,7 @@ local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
         w = w - 2,
         h = 1,
         orientation = "horizontal",
-        gradient_points = {
-            0, color:with_alpha(alpha * 0.5),
-            0.72, color:with_alpha(alpha * 0.2),
-            1, color:with_alpha(0),
-        },
+        gradient_points = edge_gradient,
         layer = layer + 1,
     })
 end
@@ -3661,14 +3834,17 @@ function KH:draw()
         end
     end
 
-    -- Purge expired kills
-    local i = 1
-    while i <= #self._kills do
-        if self._kills[i].t_end and self._kills[i].t_end <= t then
-            table.remove(self._kills, i)
-        else
-            i = i + 1
+    -- Purge expired kills in a single pass (O(n) instead of O(n²) with table.remove)
+    local write = 1
+    for read = 1, #self._kills do
+        local kill = self._kills[read]
+        if not (kill.t_end and kill.t_end <= t) then
+            self._kills[write] = kill
+            write = write + 1
         end
+    end
+    for i = write, #self._kills do
+        self._kills[i] = nil
     end
     -- End of continuous burst: the row score restarts from zero. The total
     -- and best burst total of the heist, however, survive — they are
@@ -3733,7 +3909,9 @@ function KH:draw()
 
     -- ── Draw buffs ──
     if s.enable_buffs and self._gameinfo_bridge_active then
-        local buff_list = {}
+        -- Reuse module-level buffers to avoid per-frame allocations.
+        local buff_list = RENDER_CACHES.buff_list
+        for index = #buff_list, 1, -1 do buff_list[index] = nil end
         local promoted_perk_buff_id
 
         -- Priority indicators open the row in chosen order,
@@ -3749,23 +3927,41 @@ function KH:draw()
                     buff = self._buffs[buff_id]
                 end
                 if buff and buff.icon then
-                    table.insert(buff_list, buff)
+                    buff_list[#buff_list + 1] = buff
                 end
             end
         end
 
-        local extra_buffs = {}
+        local extra_buffs = RENDER_CACHES.extra_buffs
+        local extra_buffs_scan = RENDER_CACHES.extra_buffs_scan
+        for index = #extra_buffs_scan, 1, -1 do extra_buffs_scan[index] = nil end
+        RENDER_CACHES.extra_buff_generation = RENDER_CACHES.extra_buff_generation + 1
+        local extra_buff_generation = RENDER_CACHES.extra_buff_generation
         for _, b in pairs(self._buffs) do
             if b.icon and b.id ~= promoted_perk_buff_id
                     and not STATIC_BUFF_SLOT_SET[b.id] and self:is_buff_visible(b.id) then
-                table.insert(extra_buffs, b)
+                extra_buffs_scan[#extra_buffs_scan + 1] = b
+                RENDER_CACHES.extra_buff_members[b] = extra_buff_generation
             end
         end
-        -- Sort by arrival order: new buffs are added after
-        -- fixed slots, without reordering existing icons.
-        table.sort(extra_buffs, compare_buff_arrival)
+        local extra_buffs_changed = #extra_buffs_scan ~= #extra_buffs
+        if not extra_buffs_changed then
+            for index = 1, #extra_buffs do
+                if RENDER_CACHES.extra_buff_members[extra_buffs[index]] ~= extra_buff_generation then
+                    extra_buffs_changed = true
+                    break
+                end
+            end
+        end
+        if extra_buffs_changed then
+            for index = #extra_buffs, 1, -1 do extra_buffs[index] = nil end
+            for index = 1, #extra_buffs_scan do extra_buffs[index] = extra_buffs_scan[index] end
+            -- Sort only when the visible membership changes. Arrival metadata is
+            -- stable for the lifetime of an entry.
+            table.sort(extra_buffs, compare_buff_arrival)
+        end
         for _, buff in ipairs(extra_buffs) do
-            table.insert(buff_list, buff)
+            buff_list[#buff_list + 1] = buff
         end
 
         local preferred_frame_pad_x = clamp(size * 0.16, 4, 9)
@@ -3792,7 +3988,8 @@ function KH:draw()
             size,
             preferred_frame_pad_x,
             preferred_frame_pad_y,
-            top_label_height
+            top_label_height,
+            RENDER_CACHES.layout
         )
         local buff_size = layout.effective_size
         local frame_pad_x = layout.frame_pad_x
@@ -3855,17 +4052,18 @@ function KH:draw()
 
                 local params = {
                     layer = 101,
-                    w     = buff_size,
-                    h     = buff_size,
-                    x     = pos.x - buff_size / 2,
-                    y     = pos.y - buff_size / 2,
+                    w = buff_size,
+                    h = buff_size,
+                    x = pos.x - buff_size / 2,
+                    y = pos.y - buff_size / 2,
                 }
 
                 if buff.icon.rect then
-                    params.texture      = buff.icon.texture
+                    params.texture = buff.icon.texture
                     params.texture_rect = buff.icon.rect
                 else
                     params.texture = buff.icon.texture
+                    params.texture_rect = nil
                 end
 
                 local bmp = self._panel:bitmap(params)
@@ -4458,7 +4656,7 @@ function KH:draw()
                 text = kill.display_text or kill.name,
                 font = kill_font,
                 font_size = kill_font_size,
-                color = kill.special_kind and item_color or Color(0.86, 0.96, 1),
+                color = kill.special_kind and item_color or RENDER_CACHES.killfeed_name_color,
                 align = score_text and "right" or "center",
                 vertical = "center",
                 x = text_x,
@@ -4471,7 +4669,7 @@ function KH:draw()
 
             if score_text then
                 local score_color = kill.score and kill.score < 0
-                    and Color(1, 0.36, 0.3)
+                    and RENDER_CACHES.killfeed_negative_score_color
                     or item_color
                 self._panel:text({
                     text = score_text,
