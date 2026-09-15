@@ -558,9 +558,14 @@ end
 -- Optional cell label, bypassing value_text. AI buffs retain their historical marker above the icon; others have one only if KyoHUD presentation declares `label`, whose `placement` field chooses between BUFF_LABEL_TOP and BUFF_LABEL_TIMER. Text and placement are returned separately: KH:draw allocates no table and translation is resolved once per identifier, not per frame.
 local BUFF_LABEL_TOP = "top"
 local BUFF_LABEL_TIMER = "timer"
+
 local function buff_label(buff)
-    return buff.label_text or buff.title_text,
-        buff.label_text and buff.label_placement or BUFF_LABEL_TOP
+    if buff.label_text then
+        return buff.label_text, buff.label_placement or BUFF_LABEL_TOP
+    elseif buff.title_text then
+        return buff.title_text, BUFF_LABEL_TOP
+    end
+    return nil, BUFF_LABEL_TOP
 end
 
 local heist_score_labels_cache = nil
@@ -1386,7 +1391,8 @@ local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style
     local glow_alpha = style and style.glow_alpha or 0.16
     local inset = style and style.inset or 2
 
-    local bg_key = string.format("%.3f", alpha)
+    -- P4+P6: clé numérique bornée (2 décimales = 100 valeurs max)
+    local bg_key = math.floor(alpha * 100 + 0.5)
     local bg_gradient = RENDER_CACHES.tactical_bg[bg_key]
     if not bg_gradient then
         bg_gradient = {
@@ -1479,8 +1485,8 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
     local has_custom_outline = color ~= nil
     color = color or HUD_ACCENT_COLOR
 
-    -- Cache background gradient par alpha
-    local bg_key = string.format("%.3f", alpha)
+    -- P4+P6: clé numérique bornée (2 décimales = 100 valeurs max)
+    local bg_key = math.floor(alpha * 100 + 0.5)
     local bg_gradient = RENDER_CACHES.buff_cell_bg[bg_key]
     if not bg_gradient then
         bg_gradient = {
@@ -1503,13 +1509,15 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
 
     -- Risers share the same gradient points table; `panel:gradient` accepts the
     -- same reference for both without modification.
-    local edge_key = tostring(color) .. ":" .. bg_key
+    -- P4+P6: clé numérique pour color+alpha (pas de string concat)
+    local color_key = color.r and (color.r * 0x10000 + color.g * 0x100 + color.b) or 0
+    local edge_key = color_key * 100 + bg_key
     local edge_points = RENDER_CACHES.edge_points[edge_key]
     if not edge_points then
         edge_points = {
-            0,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
+            0, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_TOP),
             0.55, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_MID),
-            1,    color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
+            1, color:with_alpha(alpha * BUFF_CELL_EDGE_ALPHA_BOTTOM),
         }
         RENDER_CACHES.edge_points[edge_key] = edge_points
     end
@@ -1533,7 +1541,7 @@ local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
     })
 
     -- Cache footer gradient par color+alpha
-    local footer_key = tostring(color) .. ":" .. bg_key
+    local footer_key = color_key * 100 + bg_key
     local footer_gradient = RENDER_CACHES.buff_cell_footer[footer_key]
     if not footer_gradient then
         footer_gradient = {
@@ -1781,8 +1789,8 @@ local function resolve_buff_state(buff, t)
 end
 
 local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
-    -- Background gradient avec cache
-    local bg_key = string.format("%.3f", alpha)
+    -- P4+P6: clé numérique bornée (2 décimales)
+    local bg_key = math.floor(alpha * 100 + 0.5)
     local bg_gradient = RENDER_CACHES.killfeed_bg[bg_key]
     if not bg_gradient then
         bg_gradient = {
@@ -1803,8 +1811,9 @@ local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
         layer = layer,
     })
 
-    -- Top edge avec cache
-    local top_edge_key = tostring(color) .. ":" .. bg_key
+    -- P4+P6: clé numérique pour color+alpha
+    local color_key = color.r and (color.r * 0x10000 + color.g * 0x100 + color.b) or 0
+    local top_edge_key = color_key * 100 + bg_key
     local top_edge_gradient = RENDER_CACHES.killfeed_top_edge[top_edge_key]
     if not top_edge_gradient then
         top_edge_gradient = {
