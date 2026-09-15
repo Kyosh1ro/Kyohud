@@ -1,3 +1,9 @@
+r24 (15.09.2026):
+-KyoHUD now ships its own autonomous HUDList provider, driving buffs natively through PAYDAY 2's buff APIs with modern dynamic producers, timed stacks, team-aware entries, and ordered passive/composite stat values.
+-Buffs are fully configurable from the options menu.
+-HP+ gained a green health layer and the Grinder's regeneration is now tracked in HP+.
+-Rendering has been optimized to reduce GC pressure, and killfeed purge complexity has been brought down from O(n^2) to O(n).
+
 r23 (11.09.2026):
 -Fixed buff menu availability so Enable Buffs remains selectable and the X/Y position controls follow its state in the main menu and in game.
 

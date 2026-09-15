@@ -1,8 +1,8 @@
 {
   "name": "KyoHUD - Killfeed & Combat Score",
   "description": "Killfeed, kill streaks and combat score.",
-  "author": "Kyosh1ro",
-  "version": "23",
+  "author": "Qwen3.7 Plus, GPT Sol 5.6, Kimi 2.7 K2, Kyosh1ro",
+  "version": "24",
   "blt_version": 2,
   "superblt_version": 1,
   "image": "mod.png",
