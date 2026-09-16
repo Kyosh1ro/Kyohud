@@ -17,6 +17,7 @@ kyohud.KYO_BUFF_CONFIG = {
         damage_reduction = "6C8CFF",
         melee_damage_increase = "D66BFF",
         passive_health_regen = "4ADE9B",
+        passive_health_regen_mid = "2E8B57",
         passive_health_regen_pulse = "70F5C0",
         total_dodge_chance = "2E8B57",
     },
@@ -97,8 +98,9 @@ kyohud.KYO_BUFF_CONFIG = {
             color = "passive_health_regen",
             frame_color = "passive_health_regen",
             frame_animation = {
-                color_b = "passive_health_regen_pulse",
-                period = 2.5,
+                color_b = "passive_health_regen_mid",
+                color_c = "passive_health_regen_pulse",
+                period = 5,
             },
             value_format = "passive_health_regen",
             label = {

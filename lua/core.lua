@@ -112,23 +112,40 @@ local RENDER_CACHES = {
     killfeed_name_color = Color(0.86, 0.96, 1),
     killfeed_negative_score_color = Color(1, 0.36, 0.3)
 }
+local function _parse_hex6(hex)
+    if type(hex) ~= "string" or #hex ~= 6 then return nil end
+    return tonumber(hex:sub(1, 2), 16) / 255,
+           tonumber(hex:sub(3, 4), 16) / 255,
+           tonumber(hex:sub(5, 6), 16) / 255
+end
+
 for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
     local _anim = _pres.frame_animation
     if _anim and _pres.frame_color
         and type(_anim.period) == "number" and _anim.period > 0 then
         local _hex_a = KYO_BUFF_COLORS[_pres.frame_color] or _pres.frame_color
         local _hex_b = KYO_BUFF_COLORS[_anim.color_b] or _anim.color_b
-        if type(_hex_a) == "string" and #_hex_a == 6
-            and type(_hex_b) == "string" and #_hex_b == 6 then
-            FRAME_ANIM_CACHE[_buff_id] = {
-                r1 = tonumber(_hex_a:sub(1, 2), 16) / 255,
-                g1 = tonumber(_hex_a:sub(3, 4), 16) / 255,
-                b1 = tonumber(_hex_a:sub(5, 6), 16) / 255,
-                r2 = tonumber(_hex_b:sub(1, 2), 16) / 255,
-                g2 = tonumber(_hex_b:sub(3, 4), 16) / 255,
-                b2 = tonumber(_hex_b:sub(5, 6), 16) / 255,
+        local r1, g1, b1 = _parse_hex6(_hex_a)
+        local r2, g2, b2 = _parse_hex6(_hex_b)
+        if r1 and r2 then
+            local entry = {
+                r1 = r1, g1 = g1, b1 = b1,
+                r2 = r2, g2 = g2, b2 = b2,
                 period = _anim.period,
+                tri = false,
             }
+            -- Optional third color for A→B→C→A cycling
+            if _anim.color_c then
+                local _hex_c = KYO_BUFF_COLORS[_anim.color_c] or _anim.color_c
+                local r3, g3, b3 = _parse_hex6(_hex_c)
+                if r3 then
+                    entry.r3 = r3
+                    entry.g3 = g3
+                    entry.b3 = b3
+                    entry.tri = true
+                end
+            end
+            FRAME_ANIM_CACHE[_buff_id] = entry
         end
     end
 end
@@ -137,6 +154,32 @@ KH._frame_anim_cache = FRAME_ANIM_CACHE
 function KH:_compute_frame_color(buff_id, t)
     local anim = FRAME_ANIM_CACHE[buff_id]
     if not anim then return nil end
+
+    if anim.tri then
+        -- Three-color cycle: A → B → C → A, linear segments over `period`.
+        -- phase ∈ [0, 3): segment 0 = A→B, segment 1 = B→C, segment 2 = C→A.
+        local phase = (t % anim.period) / anim.period * 3
+        local segment = math.floor(phase)
+        local frac = phase - segment
+        local r, g, b
+        if segment <= 0 then
+            r = anim.r1 + (anim.r2 - anim.r1) * frac
+            g = anim.g1 + (anim.g2 - anim.g1) * frac
+            b = anim.b1 + (anim.b2 - anim.b1) * frac
+        elseif segment == 1 then
+            r = anim.r2 + (anim.r3 - anim.r2) * frac
+            g = anim.g2 + (anim.g3 - anim.g2) * frac
+            b = anim.b2 + (anim.b3 - anim.b2) * frac
+        else
+            r = anim.r3 + (anim.r1 - anim.r3) * frac
+            g = anim.g3 + (anim.g1 - anim.g3) * frac
+            b = anim.b3 + (anim.b1 - anim.b3) * frac
+        end
+        -- factor encodes segment + fraction for cache keying
+        return r, g, b, phase / 3
+    end
+
+    -- Two-color sine oscillation (original behavior)
     local factor = (math.sin(2 * math.pi * t / anim.period) + 1) * 0.5
     local r = anim.r1 + (anim.r2 - anim.r1) * factor
     local g = anim.g1 + (anim.g2 - anim.g1) * factor
