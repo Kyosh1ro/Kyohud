@@ -112,6 +112,7 @@ local RENDER_CACHES = {
     killfeed_name_color = Color(0.86, 0.96, 1),
     killfeed_negative_score_color = Color(1, 0.36, 0.3)
 }
+do
 local function _parse_hex6(hex)
     if type(hex) ~= "string" or #hex ~= 6 then return nil end
     return tonumber(hex:sub(1, 2), 16) / 255,
@@ -148,6 +149,7 @@ for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
             FRAME_ANIM_CACHE[_buff_id] = entry
         end
     end
+end
 end
 KH._frame_anim_cache = FRAME_ANIM_CACHE
 
