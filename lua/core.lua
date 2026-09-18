@@ -2487,7 +2487,7 @@ local BUFF_VALUE_FORMATTERS = {
     -- damage multiplier (e.g. 1.15 -> "+15%"), the aced upgrade
     -- (dmg_dampener_outnumbered) is a damage-taken multiplier (e.g. 0.9 ->
     -- "-10%"). Both sources feed this one buff via the catalog route; each is
-    -- identified by its source_id. Returns "+15% | -10%" when both are owned.
+    -- identified by its source_id. Returns "+15%|-10%" when both are owned.
     underdog_combined = function(sources)
         local bonus_text, reduction_text
         for _, source in pairs(sources) do
@@ -2507,7 +2507,7 @@ local BUFF_VALUE_FORMATTERS = {
             end
         end
         if bonus_text and reduction_text then
-            return bonus_text .. " | " .. reduction_text
+            return bonus_text .. "|" .. reduction_text
         end
         return bonus_text or reduction_text
     end,
@@ -4172,15 +4172,15 @@ function KH:draw()
                 local top_label = label_text and label_placement == BUFF_LABEL_TOP and label_text or nil
                 local timer_label = label_text and label_placement == BUFF_LABEL_TIMER and label_text or nil
                 if buff.value_text and buff.value_text_split then
-                    -- Underdog: draw the "+X% | -Y%" line as colored segments —
+                    -- Underdog: draw the "+X%|-Y%" line as colored segments —
                     -- bonus in the damage-increase tint, reduction in the
                     -- damage-reduction tint — laid out centered on the frame.
                     local vt_font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
                     local vt_font_size = math.max(8, clamp(size * 0.38, 11, 15) * buff_text_scale)
                     local vt_y = frame_y - (top_label and 34 or 17) * buff_text_scale
-                    local sep = " | "
+                    local sep = "|"
                     local bonus_part, reduction_part =
-                        string.match(buff.value_text, "^(.-)" .. sep .. "(.+)$")
+                        string.match(buff.value_text, "^(.-)%" .. sep .. "(.+)$")
                     if bonus_part and reduction_part then
                         local bonus_w = approximate_text_width(bonus_part, vt_font_size)
                         local sep_w = approximate_text_width(sep, vt_font_size)

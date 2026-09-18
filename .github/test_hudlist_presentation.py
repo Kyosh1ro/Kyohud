@@ -328,8 +328,8 @@ class HUDListPresentationTests(unittest.TestCase):
                 "underdog_aced must not produce a second card")
 
             local card = kyohud._buffs.underdog
-            assert(card.value_text == "+15% | -10%",
-                "expected combined '+15% | -10%', got: " .. tostring(card.value_text))
+            assert(card.value_text == "+15%|-10%",
+                "expected combined '+15%|-10%', got: " .. tostring(card.value_text))
             assert(card.value_text_split == true,
                 "underdog card must request the split colored value line")
             assert(card.icon ~= nil and card.icon.texture ~= nil,
