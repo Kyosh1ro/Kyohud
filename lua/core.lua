@@ -120,6 +120,16 @@ local function _parse_hex6(hex)
            tonumber(hex:sub(5, 6), 16) / 255
 end
 
+-- Pre-allocated colors for the Underdog card's split value line: the damage
+-- bonus in the damage_increase tint, the damage reduction in the
+-- damage_reduction tint. Derived from KYO_BUFF_COLORS so they follow the config.
+do
+    local br, bg, bb = _parse_hex6(KYO_BUFF_COLORS.damage_increase)
+    local rr, rg, rb = _parse_hex6(KYO_BUFF_COLORS.damage_reduction)
+    RENDER_CACHES.underdog_bonus_color = br and Color(br, bg, bb) or Color(1, 0.541, 0.239)
+    RENDER_CACHES.underdog_reduction_color = rr and Color(rr, rg, rb) or Color(0.424, 0.549, 1)
+end
+
 for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
     local _anim = _pres.frame_animation
     if _anim and _pres.frame_color
@@ -2078,6 +2088,7 @@ function KH:add_buff(buff_id, icon_data, duration, _raw_upgrade_id, persistent, 
     -- only its timer and fade (start_t) restart from zero
     local existing = self._buffs[resolved_id]
     local label_text, label_placement = presentation_label_for_buff(resolved_id)
+    local presentation = KYO_BUFF_PRESENTATION[resolved_id]
 
     self._buffs[resolved_id] = {
         id       = resolved_id,
@@ -2090,6 +2101,7 @@ function KH:add_buff(buff_id, icon_data, duration, _raw_upgrade_id, persistent, 
         label_text = label_text,
         label_placement = label_placement,
         value_text = value_text,
+        value_text_split = presentation and presentation.value_text_split == true or nil,
         stack_text = stack_text,
         is_debuff = is_debuff == true,
         order_t  = existing and existing.order_t or t,
@@ -2471,6 +2483,34 @@ local BUFF_VALUE_FORMATTERS = {
     melee_damage_increase = melee_damage_increase_text,
     passive_health_regen = passive_health_regen_text,
     total_dodge_chance = total_dodge_chance_text,
+    -- Underdog merged card: the basic upgrade (dmg_multiplier_outnumbered) is a
+    -- damage multiplier (e.g. 1.15 -> "+15%"), the aced upgrade
+    -- (dmg_dampener_outnumbered) is a damage-taken multiplier (e.g. 0.9 ->
+    -- "-10%"). Both sources feed this one buff via the catalog route; each is
+    -- identified by its source_id. Returns "+15% | -10%" when both are owned.
+    underdog_combined = function(sources)
+        local bonus_text, reduction_text
+        for _, source in pairs(sources) do
+            local value = tonumber(source.value)
+            if value then
+                if source.source_id == "underdog" then
+                    local bonus = (value - 1) * 100
+                    if math.abs(bonus) >= 0.5 then
+                        bonus_text = string.format("+%.0f%%", bonus)
+                    end
+                elseif source.source_id == "underdog_aced" then
+                    local reduction = clamp(1 - value, 0, 1) * 100
+                    if reduction >= 0.5 then
+                        reduction_text = string.format("-%.0f%%", reduction)
+                    end
+                end
+            end
+        end
+        if bonus_text and reduction_text then
+            return bonus_text .. " | " .. reduction_text
+        end
+        return bonus_text or reduction_text
+    end,
 }
 
 local function format_vanillahud_value(definition, sources)
@@ -4131,7 +4171,54 @@ function KH:draw()
                 local label_text, label_placement = buff_label(buff)
                 local top_label = label_text and label_placement == BUFF_LABEL_TOP and label_text or nil
                 local timer_label = label_text and label_placement == BUFF_LABEL_TIMER and label_text or nil
-                if buff.value_text then
+                if buff.value_text and buff.value_text_split then
+                    -- Underdog: draw the "+X% | -Y%" line as colored segments —
+                    -- bonus in the damage-increase tint, reduction in the
+                    -- damage-reduction tint — laid out centered on the frame.
+                    local vt_font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
+                    local vt_font_size = math.max(8, clamp(size * 0.38, 11, 15) * buff_text_scale)
+                    local vt_y = frame_y - (top_label and 34 or 17) * buff_text_scale
+                    local sep = " | "
+                    local bonus_part, reduction_part =
+                        string.match(buff.value_text, "^(.-)" .. sep .. "(.+)$")
+                    if bonus_part and reduction_part then
+                        local bonus_w = approximate_text_width(bonus_part, vt_font_size)
+                        local sep_w = approximate_text_width(sep, vt_font_size)
+                        local reduction_w = approximate_text_width(reduction_part, vt_font_size)
+                        local total_w = bonus_w + sep_w + reduction_w
+                        local seg_x = frame_x + (frame_w - total_w) * 0.5
+                        self._panel:text({
+                            text = bonus_part, font = vt_font, font_size = vt_font_size,
+                            color = RENDER_CACHES.underdog_bonus_color, align = "left",
+                            vertical = "center", x = seg_x, y = vt_y,
+                            w = bonus_w, h = buff_text_h, layer = 102, alpha = buff_alpha,
+                        })
+                        self._panel:text({
+                            text = sep, font = vt_font, font_size = vt_font_size,
+                            color = Color.white, align = "center",
+                            vertical = "center", x = seg_x + bonus_w, y = vt_y,
+                            w = sep_w, h = buff_text_h, layer = 102, alpha = buff_alpha,
+                        })
+                        self._panel:text({
+                            text = reduction_part, font = vt_font, font_size = vt_font_size,
+                            color = RENDER_CACHES.underdog_reduction_color, align = "left",
+                            vertical = "center", x = seg_x + bonus_w + sep_w, y = vt_y,
+                            w = reduction_w, h = buff_text_h, layer = 102, alpha = buff_alpha,
+                        })
+                    else
+                        -- Only one half owned: a lone "+X%" is damage bonus,
+                        -- a lone "-Y%" is damage reduction.
+                        local lone_color = string.sub(buff.value_text, 1, 1) == "-"
+                            and RENDER_CACHES.underdog_reduction_color
+                            or RENDER_CACHES.underdog_bonus_color
+                        self._panel:text({
+                            text = buff.value_text, font = vt_font, font_size = vt_font_size,
+                            color = lone_color, align = "center", vertical = "center",
+                            x = frame_x, y = vt_y, w = frame_w, h = buff_text_h,
+                            layer = 102, alpha = buff_alpha,
+                        })
+                    end
+                elseif buff.value_text then
                     self._panel:text({
                         text      = buff.value_text,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",

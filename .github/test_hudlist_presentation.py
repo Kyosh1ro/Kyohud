@@ -305,6 +305,58 @@ class HUDListPresentationTests(unittest.TestCase):
                 "melee provenance must reference the native equipment atlas")
         ''')
 
+    def test_underdog_basic_and_aced_merge_into_single_card(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            assert(kyohud:TryRegisterGameInfoBridge() == true)
+            -- The aced dampener routes onto the single Underdog card.
+            local targets = kyohud:GetVanillaHUDBuffTargets("underdog_aced")
+            assert(#targets == 1 and targets[1] == "underdog",
+                "underdog_aced must route to the underdog card")
+            local self_targets = kyohud:GetVanillaHUDBuffTargets("underdog")
+            assert(#self_targets == 1 and self_targets[1] == "underdog")
+
+            -- Both temporary upgrades activate together with the same timer.
+            kyohud.hudlist:event("buff", "activate", "underdog",
+                {t = 100, expire_t = 107, value = 1.15})
+            kyohud.hudlist:event("buff", "activate", "underdog_aced",
+                {t = 100, expire_t = 107, value = 0.9})
+
+            -- One card only; the aced source never gets its own entry.
+            assert(kyohud._buffs.underdog ~= nil, "underdog card must exist")
+            assert(kyohud._buffs.underdog_aced == nil,
+                "underdog_aced must not produce a second card")
+
+            local card = kyohud._buffs.underdog
+            assert(card.value_text == "+15% | -10%",
+                "expected combined '+15% | -10%', got: " .. tostring(card.value_text))
+            assert(card.value_text_split == true,
+                "underdog card must request the split colored value line")
+            assert(card.icon ~= nil and card.icon.texture ~= nil,
+                "underdog card must resolve a real icon")
+        ''')
+
+    def test_underdog_shows_lone_half_when_only_one_upgrade_owned(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            assert(kyohud:TryRegisterGameInfoBridge() == true)
+
+            -- Basic only: damage bonus, no reduction.
+            kyohud.hudlist:event("buff", "activate", "underdog",
+                {t = 100, expire_t = 107, value = 1.15})
+            assert(kyohud._buffs.underdog.value_text == "+15%",
+                "basic-only underdog must show +15%, got: "
+                .. tostring(kyohud._buffs.underdog.value_text))
+
+            -- Aced only: reduction, no bonus.
+            kyohud.hudlist:event("buff", "deactivate", "underdog")
+            kyohud.hudlist:event("buff", "activate", "underdog_aced",
+                {t = 100, expire_t = 107, value = 0.9})
+            assert(kyohud._buffs.underdog.value_text == "-10%",
+                "aced-only underdog must show -10%, got: "
+                .. tostring(kyohud._buffs.underdog.value_text))
+        ''')
+
 
 if __name__ == "__main__":
     unittest.main()
