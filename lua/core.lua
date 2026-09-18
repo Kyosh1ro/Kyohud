@@ -4182,13 +4182,16 @@ function KH:draw()
                     local bonus_part, reduction_part =
                         string.match(buff.value_text, "^(.-)%" .. sep .. "(.+)$")
                     if bonus_part and reduction_part then
-                        local bonus_w = approximate_text_width(bonus_part, vt_font_size)
-                        -- "|" has a much narrower advance than the average glyph
-                        -- that approximate_text_width assumes, so tighten its box
-                        -- to pull the two halves together on the small card.
-                        local sep_w = approximate_text_width(sep, vt_font_size) * 0.4
-                        local reduction_w = approximate_text_width(reduction_part, vt_font_size)
-                        local total_w = bonus_w + sep_w + reduction_w
+                        -- approximate_text_width assumes a generic 0.58*em glyph
+                        -- advance; the digits, sign and "%" here are narrower and
+                        -- "|" is narrower still. Use calibrated per-glyph advances
+                        -- so the two halves sit tight around the separator instead
+                        -- of drifting to the card edges.
+                        local seg_adv = vt_font_size * 0.46
+                        local sep_adv = vt_font_size * 0.22
+                        local bonus_w = #bonus_part * seg_adv
+                        local reduction_w = #reduction_part * seg_adv
+                        local total_w = bonus_w + sep_adv + reduction_w
                         local seg_x = frame_x + (frame_w - total_w) * 0.5
                         self._panel:text({
                             text = bonus_part, font = vt_font, font_size = vt_font_size,
@@ -4200,12 +4203,12 @@ function KH:draw()
                             text = sep, font = vt_font, font_size = vt_font_size,
                             color = Color.white, align = "center",
                             vertical = "center", x = seg_x + bonus_w, y = vt_y,
-                            w = sep_w, h = buff_text_h, layer = 102, alpha = buff_alpha,
+                            w = sep_adv, h = buff_text_h, layer = 102, alpha = buff_alpha,
                         })
                         self._panel:text({
                             text = reduction_part, font = vt_font, font_size = vt_font_size,
                             color = RENDER_CACHES.underdog_reduction_color, align = "left",
-                            vertical = "center", x = seg_x + bonus_w + sep_w, y = vt_y,
+                            vertical = "center", x = seg_x + bonus_w + sep_adv, y = vt_y,
                             w = reduction_w, h = buff_text_h, layer = 102, alpha = buff_alpha,
                         })
                     else
