@@ -14,14 +14,21 @@ kyohud.KYO_BUFF_CONFIG = {
         debuff = "FF5F78",
         team = "52D6FF",
         damage_increase = "FF8A3D",
-        damage_reduction = "6C8CFF",
+        damage_reduction = "8AA2FF",
         melee_damage_increase = "D66BFF",
         passive_health_regen = "4ADE9B",
         passive_health_regen_mid = "707A75",
         passive_health_regen_pulse = "D6FFEE",
-        total_dodge_chance = "2E8B57",
+        total_dodge_chance = "2FD3B0",
     },
     buffs = {
+        -- Underdog: one card, one timer. The combined value line shows the
+        -- basic damage bonus (dmg+) and the aced damage reduction (dmg-),
+        -- each in its own color via `value_text_split`.
+        underdog = {
+            value_format = "underdog_combined",
+            value_text_split = true,
+        },
         inspire_debuff = {
             label = {
                 id = "ky_hud_buff_label_inspire_cooldown",
