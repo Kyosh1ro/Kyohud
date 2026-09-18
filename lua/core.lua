@@ -4183,7 +4183,10 @@ function KH:draw()
                         string.match(buff.value_text, "^(.-)%" .. sep .. "(.+)$")
                     if bonus_part and reduction_part then
                         local bonus_w = approximate_text_width(bonus_part, vt_font_size)
-                        local sep_w = approximate_text_width(sep, vt_font_size)
+                        -- "|" has a much narrower advance than the average glyph
+                        -- that approximate_text_width assumes, so tighten its box
+                        -- to pull the two halves together on the small card.
+                        local sep_w = approximate_text_width(sep, vt_font_size) * 0.4
                         local reduction_w = approximate_text_width(reduction_part, vt_font_size)
                         local total_w = bonus_w + sep_w + reduction_w
                         local seg_x = frame_x + (frame_w - total_w) * 0.5
