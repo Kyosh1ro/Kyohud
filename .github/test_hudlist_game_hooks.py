@@ -221,6 +221,58 @@ class HUDListGameHookTests(unittest.TestCase):
             assert(kyohud.hudlist:get_buffs().messiah == nil)
         ''')
 
+    def test_received_inspire_basic_uses_player_morale_boost_lifetime(self):
+        lua = self.runtime_for(
+            "lib/units/beings/player/playermovement",
+            "PlayerMovement = {}; tweak_data = {upgrades = {morale_boost_time = 10}}",
+        )
+        lua.execute('''
+            assert(#Hooks.installed == 2)
+            assert(Hooks.installed[1][2] == "on_morale_boost")
+            assert(Hooks.installed[2][2] == "clbk_morale_boost_expire")
+
+            Hooks.callbacks.on_morale_boost({})
+            local buff = kyohud.hudlist:get_buffs().inspire
+            assert(buff ~= nil)
+            assert(buff.t == 100 and buff.expire_t == 110 and buff.duration == 10)
+
+            Hooks.callbacks.clbk_morale_boost_expire({})
+            assert(kyohud.hudlist:get_buffs().inspire == nil)
+        ''')
+
+    def test_sent_inspire_basic_starts_boost_cooldown_only_for_inspire_shouts(self):
+        lua = self.runtime_for(
+            "lib/units/beings/player/states/playerstandard",
+            """
+            PlayerStandard = {}
+            tweak_data = {upgrades = {morale_boost_base_cooldown = 3.5}}
+            managers = {player = {
+                upgrade_value = function(self, category, upgrade, default)
+                    assert(category == "player")
+                    assert(upgrade == "morale_boost_cooldown_multiplier")
+                    return 0.5
+                end,
+            }}
+            """,
+        )
+        lua.execute('''
+            assert(#Hooks.installed == 1)
+            assert(Hooks.installed[1][2] == "_do_action_intimidate")
+
+            Hooks.callbacks._do_action_intimidate({}, 100, "cmd_come")
+            assert(kyohud.hudlist:get_buffs().inspire_debuff == nil)
+
+            Hooks.callbacks._do_action_intimidate({}, 100, "cmd_gogo")
+            local buff = kyohud.hudlist:get_buffs().inspire_debuff
+            assert(buff ~= nil)
+            assert(buff.t == 100 and buff.expire_t == 101.75 and buff.duration == 1.75)
+
+            Hooks.callbacks._do_action_intimidate({}, 101, "cmd_get_up")
+            buff = kyohud.hudlist:get_buffs().inspire_debuff
+            assert(buff.t == 100 and buff.expire_t == 101.75,
+                "native player timer, not callback t, owns the cooldown deadline")
+        ''')
+
     def test_contexts_are_explicit_idempotent_and_keep_shared_state(self):
         lua = self.runtime_for("lib/unknown/context", "PlayerManager = {}; TemporaryPropertyManager = {}")
         lua.execute('assert(#Hooks.installed == 0)')
@@ -252,6 +304,8 @@ class HUDListGameHookTests(unittest.TestCase):
             "lib/units/beings/player/playerdamage",
             "lib/units/beings/player/playerinventory",
             "lib/utils/temporarypropertymanager",
+            "lib/units/beings/player/playermovement",
+            "lib/units/beings/player/states/playerstandard",
         ])
 
     def test_non_finite_native_deadlines_are_ignored(self):

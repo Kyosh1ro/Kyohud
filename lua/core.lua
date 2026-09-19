@@ -2282,6 +2282,15 @@ local function native_damage_reduction_multiplier()
     local ok, multiplier = pcall(function()
         local pm = managers.player
         if not pm or not pm.damage_reduction_skill_multiplier then return 1 end
+        -- The native passive_damage_reduction branch dereferences
+        -- player_unit():character_damage() without checking the player unit.
+        -- Avoid entering that branch before spawn, in custody, or as spectator;
+        -- every other native path remains authoritative.
+        if pm.has_category_upgrade
+            and pm:has_category_upgrade("player", "passive_damage_reduction")
+            and not alive(pm:player_unit()) then
+            return 1
+        end
         return pm:damage_reduction_skill_multiplier("bullet")
     end)
     return ok and tonumber(multiplier) or 1
@@ -2681,7 +2690,16 @@ local function equipped_pocket_ecm_amount()
         local session = managers.network and managers.network:session()
         local peer = session and session:local_peer()
         local peer_id = peer and peer:id()
-        return peer_id and managers.player and managers.player:get_grenade_amount(peer_id)
+        local player_manager = peer_id and managers.player
+        if not player_manager then return nil end
+        -- Les grenades synchronisées peuvent ne pas encore exister pour ce
+        -- peer en tout début de partie : get_grenade_amount indexe alors
+        -- synced_grenades[peer_id].amount sur nil et provoque une FATAL ERROR.
+        -- On garde d'abord l'existence de l'entrée synchronisée.
+        local synced = player_manager.get_synced_grenades
+            and player_manager:get_synced_grenades(peer_id)
+        if not (synced and synced.amount ~= nil) then return nil end
+        return player_manager:get_grenade_amount(peer_id)
     end)
     amount = ok and tonumber(amount) or nil
     return amount and math.max(0, math.floor(amount)) or nil

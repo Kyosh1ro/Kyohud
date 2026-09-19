@@ -131,6 +131,25 @@ class BuffStaticOrderTests(unittest.TestCase):
 
 
 class StatCardNativeComputationTests(unittest.TestCase):
+    def test_damage_reduction_skips_unsafe_passive_branch_without_player_unit(self):
+        lua = make_runtime()
+        lua.execute('''
+            local native_calls = 0
+            managers.player = {
+                has_category_upgrade = function(self, category, upgrade)
+                    return category == "player" and upgrade == "passive_damage_reduction"
+                end,
+                player_unit = function() return nil end,
+                damage_reduction_skill_multiplier = function()
+                    native_calls = native_calls + 1
+                    error("native passive branch must not run without a live player")
+                end,
+            }
+            kyohud:RefreshCalculatedBuffValues()
+            assert(native_calls == 0)
+            assert(kyohud._buffs.damage_reduction == nil)
+        ''')
+
     def test_damage_reduction_uses_native_multiplier(self):
         lua = make_runtime()
         lua.execute('''

@@ -161,6 +161,7 @@ local function add_fallbacks(loc)
         -- Labels drawn above a buff icon
         ky_hud_buff_label_inspire_cooldown = "Boost+",
         ky_hud_buff_label_inspire_revive   = "Revive",
+        ky_hud_buff_label_inspire_received = "[Ally]",
         ky_hud_buff_label_damage_increase  = "Dmg+",
         ky_hud_buff_label_damage_reduction = "Dmg-",
         ky_hud_buff_label_melee_damage     = "M.Dmg+",

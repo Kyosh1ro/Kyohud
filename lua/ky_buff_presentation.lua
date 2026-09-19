@@ -13,6 +13,7 @@ kyohud.KYO_BUFF_CONFIG = {
     colors = {
         debuff = "FF5F78",
         team = "52D6FF",
+        ally_inspire = "52D6FF",
         damage_increase = "FF8A3D",
         damage_reduction = "8AA2FF",
         melee_damage_increase = "D66BFF",
@@ -33,6 +34,14 @@ kyohud.KYO_BUFF_CONFIG = {
             label = {
                 id = "ky_hud_buff_label_inspire_cooldown",
                 fallback = "Boost+",
+                placement = "top",
+            },
+        },
+        inspire = {
+            color = "ally_inspire",
+            label = {
+                id = "ky_hud_buff_label_inspire_received",
+                fallback = "[Ally]",
                 placement = "top",
             },
         },
