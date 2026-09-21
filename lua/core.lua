@@ -64,7 +64,6 @@ local KILL_COMBO_WINDOW = 3
 local KILL_SCROLL_TIME  = 0.2
 local KILLFEED_FRAME_CLEARANCE = 1.5
 local PASSIVE_REGEN_INTERVAL = 5
-local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
 KH.HUD_ACCENT_COLOR = HUD_ACCENT_COLOR
@@ -302,11 +301,6 @@ local function measure_killfeed_entries(panel, kills, first_kill, count, font, f
         panel:remove(measurer)
     end
 end
-local BANNER_FRAME_STYLE = {
-    inset = 2,
-    glow_alpha = 0.16,
-    brackets = { extension = BANNER_FRAME_EXTENSION },
-}
 -- ═══════════════════════════════════════════════════
 -- Icon Resolution — Locally adapted HUDList conventions
 -- ═══════════════════════════════════════════════════
@@ -703,6 +697,7 @@ local COMBO_LABELS = {
 }
 local COMBO_LABEL_VARIANT_COUNT = #COMBO_LABELS[2]
 
+-- DOZER_BANNER_LABELS and BOSS_BANNER_LABELS remain in core.lua (used by SPECIAL_KILL_BANNER_DEFINITIONS at top level)
 local DOZER_BANNER_LABELS = {
     { id = "ky_hud_killdozer",  fallback = "KILLDOZER" },
     { id = "ky_hud_dozer_down", fallback = "DOZER DOWN" },
@@ -712,6 +707,8 @@ local DOZER_BANNER_LABELS = {
 local BOSS_BANNER_LABELS = {
     { id = "ky_hud_boss_eliminated", fallback = "BOSS ELIMINATED" },
 }
+
+-- PRIORITY_TARGET_COLOR remains in core.lua (used by SPECIAL_KILL_BANNER_DEFINITIONS and SPECIAL_ENEMY_DEFINITIONS at top level)
 
 local SPECIAL_KILL_BANNER_DEFINITIONS = {
     dozer = {
@@ -819,13 +816,10 @@ end
 -- `KH.MEDAL_KIND_WEAPON_STREAK` lives in ky_combat_medals.lua and is referenced via KH.
 
 -- The top banner is exclusively reserved for multikill, boss, and Dozer. Display priority: boss > dozer. Multikill does not enter the queue: it remains the fallback displayed when no priority announcement occupies the banner. Medals have their own row in the killfeed and never appear here.
-local BANNER_PRIORITIES = {
-    boss  = 2,
-    dozer = 1,
-}
+-- BANNER_PRIORITIES now provided by ky_hud_banners.lua via KH.BANNER_PRIORITIES
 
 -- Bounded: a few announcements suffice to cover a salvo, and the queue must never grow without limit during an assault.
-local MAX_BANNER_QUEUE = 4
+-- MAX_BANNER_QUEUE now provided by ky_hud_banners.lua via KH.MAX_BANNER_QUEUE
 
 local SPECIAL_ENEMY_DEFINITIONS = {
     dozer = {
@@ -965,37 +959,6 @@ end
 local function special_enemy_color(kind)
     local definition = special_enemy_definition(kind)
     return definition and definition.color or HUD_ACCENT_COLOR
-end
-
--- Tactical frame inspired by Battlefield notifications: asymmetric strokes,
--- four detached brackets, and chevrons converging toward the content.
--- Each bracket is drawn as two filled rectangles (one horizontal arm, one
--- vertical arm) instead of a polyline: `panel:rect` takes relative coords
--- and allocates no Vector3, sparing the twelve Vector3 + four tables that
--- the previous polyline path produced per call.
-local function draw_corner_brackets(panel, x, y, w, h, color, alpha, layer, style)
-    local extension = style and style.extension or 4
-    local arm_x = style and style.arm_x or math.min(18, w * 0.08)
-    local arm_y = style and style.arm_y or math.min(11, h * 0.3)
-    local lw = style and style.line_width or 1
-    local left = x - extension
-    local right = x + w + extension
-    local top = y - extension
-    local bottom = y + h + extension
-    local v_bar_h = math.max(0, arm_y - lw)
-
-    -- Top-left
-    panel:rect({ x = left, y = top, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
-    panel:rect({ x = left, y = top + lw, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
-    -- Top-right
-    panel:rect({ x = right - arm_x, y = top, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
-    panel:rect({ x = right - lw, y = top + lw, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
-    -- Bottom-left
-    panel:rect({ x = left, y = bottom - lw, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
-    panel:rect({ x = left, y = bottom - arm_y, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
-    -- Bottom-right
-    panel:rect({ x = right - arm_x, y = bottom - lw, w = arm_x, h = lw, color = color, alpha = alpha, layer = layer })
-    panel:rect({ x = right - lw, y = bottom - arm_y, w = lw, h = v_bar_h, color = color, alpha = alpha, layer = layer })
 end
 
 -- ── Banner Chevrons ──
@@ -1208,64 +1171,6 @@ local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
             layer = layer,
         })
     end
-end
-
-local TACTICAL_FRAME_SEGMENTS = {
-    { 0.09, 0, 0.2  },
-    { 0.37, 0, 0.11 },
-    { 0.6,  0, 0.27 },
-    { 0.06, 1, 0.13 },
-    { 0.27, 1, 0.3  },
-    { 0.7,  1, 0.18 },
-}
-
-local function draw_tactical_frame(panel, x, y, w, h, color, alpha, layer, style)
-    local glow_alpha = style and style.glow_alpha or 0.16
-    local inset = style and style.inset or 2
-
-    -- P4+P6: clé numérique bornée (2 décimales = 100 valeurs max)
-    local bg_key = math.floor(alpha * 100 + 0.5)
-    local bg_gradient = RENDER_CACHES.tactical_bg[bg_key]
-    if not bg_gradient then
-        bg_gradient = {
-            0,    Color.black:with_alpha(alpha * 0.16),
-            0.2,  Color.black:with_alpha(alpha * 0.62),
-            0.5,  Color.black:with_alpha(alpha * 0.78),
-            0.82, Color.black:with_alpha(alpha * 0.58),
-            1,    Color.black:with_alpha(alpha * 0.1),
-        }
-        RENDER_CACHES.tactical_bg[bg_key] = bg_gradient
-    end
-
-    panel:gradient({
-        x = x + inset,
-        y = y + inset,
-        w = w - inset * 2,
-        h = h - inset * 2,
-        orientation = "horizontal",
-        gradient_points = bg_gradient,
-        layer = layer,
-    })
-
-    -- Three segments per edge, deliberately offset and unequal.
-    for _, segment in ipairs(TACTICAL_FRAME_SEGMENTS) do
-        local segment_x = x + w * segment[1]
-        local segment_y = y + (segment[2] == 1 and h - 1 or 0)
-        local segment_w = w * segment[3]
-        panel:rect({
-            x = segment_x, y = segment_y - 1, w = segment_w, h = 3,
-            color = color, alpha = alpha * glow_alpha, layer = layer + 1,
-        })
-        panel:rect({
-            x = segment_x, y = segment_y, w = segment_w, h = 1,
-            color = color, alpha = alpha, layer = layer + 2,
-        })
-    end
-
-    draw_corner_brackets(
-        panel, x, y, w, h, color, alpha, layer + 2,
-        style and style.brackets
-    )
 end
 
 -- Deliberately sober cell to let the icon and its timer dominate.
@@ -2634,27 +2539,11 @@ end
 -- ═══════════════════════════════════════════════════
 -- Priority banner: current display and queue
 -- ═══════════════════════════════════════════════════
-local function banner_priority(banner)
-    return banner and BANNER_PRIORITIES[banner.kind] or 0
-end
-
 function KH:_start_special_banner(t, banner, preview)
     banner.preview = preview == true
     banner.started_t = t
     banner.t_end = t + SPECIAL_KILL_BANNER_DURATION
     self._special_kill_banner = banner
-end
-
---- Insertion rank respecting descending priority order: the new
---- announcement is placed behind all those of equal or higher priority.
---- At equal priority, arrival order is therefore preserved (stable FIFO).
-local function banner_queue_insert_index(queue, priority)
-    for index = 1, #queue do
-        if banner_priority(queue[index]) < priority then
-            return index
-        end
-    end
-    return #queue + 1
 end
 
 --- Insertion into the bounded queue, kept sorted boss > dozer. When it is
@@ -2664,6 +2553,9 @@ end
 function KH:_enqueue_special_banner(banner)
     if not banner then return end
 
+    local banner_priority = self.BannerPriority
+    local banner_queue_insert_index = self.BannerQueueInsertIndex
+
     local queue = self._banner_queue
     if not queue then
         queue = {}
@@ -2672,7 +2564,7 @@ function KH:_enqueue_special_banner(banner)
 
     local priority = banner_priority(banner)
 
-    while #queue >= MAX_BANNER_QUEUE do
+    while #queue >= KH.MAX_BANNER_QUEUE do
         -- The queue remains sorted: its last entry is always the least
         -- prioritized and, at equal priority, the most recently added.
         if banner_priority(queue[#queue]) >= priority then return end
@@ -2695,6 +2587,7 @@ function KH:_show_special_banner(t, banner, preview)
     local current = self._special_kill_banner
     -- A debug preview never blocks a real announcement.
     if current and not current.preview then
+        local banner_priority = self.BannerPriority
         if banner_priority(banner) > banner_priority(current) then
             self:_enqueue_special_banner(current)
         else
@@ -3918,7 +3811,7 @@ function KH:draw()
             next_offset = next_offset + item_widths[slot] + item_gap
         end
         local banner_h = math.max(38, size + 8)
-        local banner_feed_gap = BANNER_FRAME_EXTENSION
+        local banner_feed_gap = KH.BANNER_FRAME_EXTENSION
             + KILLFEED_FRAME_CLEARANCE
         -- The block retains the historical location of the top banner, then
         -- dynamically adds the medal and the name row. Only the
@@ -4002,7 +3895,7 @@ function KH:draw()
                     and (special_banner.color or HUD_ACCENT_COLOR)
                     or combo_color(combo.count)
 
-                draw_tactical_frame(
+                KH.DrawTacticalFrame(
                     self._panel,
                     bx,
                     by,
@@ -4011,7 +3904,7 @@ function KH:draw()
                     color,
                     banner_alpha,
                     103,
-                    BANNER_FRAME_STYLE
+                    KH.BANNER_FRAME_STYLE
                 )
 
                 -- Both banks reserve the same width, regardless of the
@@ -4333,37 +4226,6 @@ end
 -- `combo` remains at 0 for announcement cases so only the special banner is
 -- visible; the preview counts no kills, neither in weapon streaks nor in the
 -- heist total: each card is built from these literal values.
-local DEBUG_BANNER_PREVIEWS = {
-    { combo = 4 },
-    { combo = 11 },
-    { combo = 0, banner = "boss" },
-    { combo = 0, medal = "weapon_streak", family = "shotgun", tier_index = 2 },
-    { combo = 0, medal = "kill_total", kills = 100 },
-    { combo = 0, medal = "sentry_kill", kills = 100 },
-    { combo = 0, medal = "event", event = "first_strike" },
-    { combo = 0, medal = "event", event = "grave" },
-    { combo = 0, medal = "event", event = "low_hp" },
-    { combo = 0, medal = "event", event = "reload" },
-    { combo = 0, medal = "event", event = "through_shield" },
-    { combo = 0, medal = "event", event = "one_shot_two_kills" },
-    { combo = 0, medal = "event", event = "revenge" },
-    { combo = 0, medal = "event", event = "bulltrue" },
-    { combo = 0, medal = "event", event = "showstopper" },
-    { combo = 0, medal = "event", event = "rope", tier_index = 1 },
-    { combo = 0, medal = "event", event = "rope", tier_index = 2 },
-    { combo = 0, medal = "event", event = "rope", tier_index = 3 },
-    { combo = 0, medal = "event", event = "blindfire" },
-    { combo = 0, medal = "event", event = "first_blood" },
-    { combo = 0, medal = "event", event = "hotswap" },
-    { combo = 0, medal = "event", event = "overwatch" },
-    { combo = 0, medal = "event", event = "long_shot" },
-    { combo = 0, medal = "event", event = "spray_down" },
-    { combo = 0, medal = "event", event = "no_flashbang" },
-    { combo = 0, medal = "event", event = "air_kill" },
-    { combo = 0, medal = "event", event = "wall_bang", event_count = 3 },
-    { combo = 0, medal = "event", event = "loot_carrier" },
-}
-
 function KH:DebugSimulate(n)
     -- The preview uses HUD tables: it is safe only in the main menu,
     -- never during an assault (including briefing, arrest, and pause).
@@ -4483,6 +4345,7 @@ function KH:DebugSimulate(n)
         }
     end
 
+    local DEBUG_BANNER_PREVIEWS = KH.DEBUG_BANNER_PREVIEWS
     local next_preview_index = (self._debug_banner_preview_index
         % #DEBUG_BANNER_PREVIEWS) + 1
     local next_preview = DEBUG_BANNER_PREVIEWS[next_preview_index]
@@ -4536,8 +4399,8 @@ function KH:DebugSimulate(n)
     -- mask the multikill: each Debug: Simulate advances by one banner case,
     -- and each remains displayed until the next or until Debug: Clear.
     self._debug_banner_preview_index = (self._debug_banner_preview_index
-        % #DEBUG_BANNER_PREVIEWS) + 1
-    local preview = DEBUG_BANNER_PREVIEWS[self._debug_banner_preview_index]
+        % #KH.DEBUG_BANNER_PREVIEWS) + 1
+    local preview = KH.DEBUG_BANNER_PREVIEWS[self._debug_banner_preview_index]
 
     self._kill_combo = {
         count = preview.combo,

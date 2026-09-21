@@ -63,6 +63,9 @@ class BuffRowLayoutTests(unittest.TestCase):
         self.lua.execute(
             (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
         )
+        self.lua.execute(
+            (ROOT / "lua" / "ky_hud_banners.lua").read_text(encoding="utf-8-sig")
+        )
 
     def test_zero_buffs_returns_empty_layout(self):
         self.lua.execute('''
