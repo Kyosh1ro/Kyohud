@@ -137,6 +137,7 @@
 
   "ky_hud_buff_label_inspire_cooldown": "Boost+",
   "ky_hud_buff_label_inspire_revive": "Revive",
+  "ky_hud_buff_label_inspire_received": "[Allié]",
   "ky_hud_buff_label_damage_increase": "Dgts+",
   "ky_hud_buff_label_damage_reduction": "Dgts-",
   "ky_hud_buff_label_melee_damage": "M.Dgts+",

@@ -1,3 +1,12 @@
+r25 (21.09.2026):
+- Added the Inspire buff and fixed its application on allies.
+- Dmg+ buff now starts at +5% instead of zero.
+- Underdog buffs merged into a single card with a combined +Dmg | -Reduction row.
+- HP+ buff now animates across three green shades on a five-second cycle.
+- Buffs at 0% are now hidden.
+- Damage Reduction and Dodge buff colors updated.
+- Fixed the damage reduction calculation to remain native outside of gameplay.
+
 r24 (15.09.2026):
 -Buffs are fully configurable from the options menu.
 -HP+ gained a green health layer and the Grinder's regeneration is now tracked in HP+.

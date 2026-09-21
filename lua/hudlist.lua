@@ -1232,6 +1232,60 @@ elseif RequiredScript == "lib/units/beings/player/playerdamage"
         end)
     Hooks:PostHook(PlayerDamage, "_check_bleed_out",
         "KyoHUD_HUDList_UppersCooldown", update_uppers_cooldown)
+elseif RequiredScript == "lib/units/beings/player/playermovement"
+        and not KH._hudlist_loaded_scripts[RequiredScript] then
+    KH._hudlist_loaded_scripts[RequiredScript] = true
+
+    -- Inspire morale boost received from an ally: PlayerMovement:on_morale_boost
+    -- fires when a teammate with the Inspire basic skill shouts at the local
+    -- player. The buff grants move speed, reload speed and suppression resistance
+    -- for tweak_data.upgrades.morale_boost_time seconds (10 s default).
+    -- This is NOT a temporary upgrade, so activate_temporary_upgrade hooks miss it.
+    Hooks:PostHook(PlayerMovement, "on_morale_boost",
+        "KyoHUD_HUDList_InspireMoraleBoost", function()
+            local ok_td, duration = pcall(function()
+                return tweak_data.upgrades.morale_boost_time
+            end)
+            duration = ok_td and finite_number(duration) or nil
+            if not duration or duration <= 0 then duration = 10 end
+            local t = current_time()
+            Provider:event("buff", "activate", "inspire", {
+                t = t,
+                expire_t = t + duration,
+            })
+        end)
+
+    Hooks:PostHook(PlayerMovement, "clbk_morale_boost_expire",
+        "KyoHUD_HUDList_InspireMoraleExpire", function()
+            Provider:event("buff", "deactivate", "inspire")
+        end)
+
+elseif RequiredScript == "lib/units/beings/player/states/playerstandard"
+        and not KH._hudlist_loaded_scripts[RequiredScript] then
+    KH._hudlist_loaded_scripts[RequiredScript] = true
+
+    -- The local Inspire basic cooldown is stored only in rally_skill_data.
+    -- The resolved interaction type is the reliable distinction between a
+    -- successful boost/revive shout and an ordinary teammate command.
+    Hooks:PostHook(PlayerStandard, "_do_action_intimidate",
+        "KyoHUD_HUDList_InspireMoraleCooldown",
+        function(_, _, interact_type)
+            if interact_type ~= "cmd_gogo" and interact_type ~= "cmd_get_up" then
+                return
+            end
+            local ok_duration, duration = pcall(function()
+                return tweak_data.upgrades.morale_boost_base_cooldown
+                    * managers.player:upgrade_value(
+                        "player", "morale_boost_cooldown_multiplier", 1)
+            end)
+            duration = ok_duration and finite_number(duration) or nil
+            if not duration or duration <= 0 then duration = 3.5 end
+            Provider:event("buff", "activate", "inspire_debuff", {
+                t = current_time(),
+                duration = duration,
+            })
+        end)
+
 elseif RequiredScript == "lib/units/beings/player/playerinventory"
         and not KH._hudlist_loaded_scripts[RequiredScript] then
     KH._hudlist_loaded_scripts[RequiredScript] = true

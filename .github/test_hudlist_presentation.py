@@ -105,6 +105,22 @@ class HUDListPresentationTests(unittest.TestCase):
             assert(config.buffs.passive_health_regen.frame_color == "passive_health_regen")
         ''')
 
+    def test_inspire_basic_sent_and_received_states_are_visually_distinct(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local config = kyohud.KYO_BUFF_CONFIG
+            local received = config.buffs.inspire
+            local sent = config.buffs.inspire_debuff
+            assert(received ~= nil and sent ~= nil)
+            assert(received.color == "ally_inspire")
+            assert(config.colors.ally_inspire == "52D6FF")
+            assert(received.label.id == "ky_hud_buff_label_inspire_received")
+            assert(received.label.fallback == "[Ally]")
+            assert(received.label.placement == "top")
+            assert(sent.label.id == "ky_hud_buff_label_inspire_cooldown")
+            assert(sent.label.fallback == "Boost+")
+        ''')
+
     def test_produced_modern_buffs_have_local_visual_metadata(self):
         lua = self.make_runtime()
         lua.execute('''
@@ -303,6 +319,58 @@ class HUDListPresentationTests(unittest.TestCase):
                 "melee provenance must reference throwing_axe")
             assert(melee.icon_provenance:find("equipment_02"),
                 "melee provenance must reference the native equipment atlas")
+        ''')
+
+    def test_underdog_basic_and_aced_merge_into_single_card(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            assert(kyohud:TryRegisterGameInfoBridge() == true)
+            -- The aced dampener routes onto the single Underdog card.
+            local targets = kyohud:GetVanillaHUDBuffTargets("underdog_aced")
+            assert(#targets == 1 and targets[1] == "underdog",
+                "underdog_aced must route to the underdog card")
+            local self_targets = kyohud:GetVanillaHUDBuffTargets("underdog")
+            assert(#self_targets == 1 and self_targets[1] == "underdog")
+
+            -- Both temporary upgrades activate together with the same timer.
+            kyohud.hudlist:event("buff", "activate", "underdog",
+                {t = 100, expire_t = 107, value = 1.15})
+            kyohud.hudlist:event("buff", "activate", "underdog_aced",
+                {t = 100, expire_t = 107, value = 0.9})
+
+            -- One card only; the aced source never gets its own entry.
+            assert(kyohud._buffs.underdog ~= nil, "underdog card must exist")
+            assert(kyohud._buffs.underdog_aced == nil,
+                "underdog_aced must not produce a second card")
+
+            local card = kyohud._buffs.underdog
+            assert(card.value_text == "+15%|-10%",
+                "expected combined '+15%|-10%', got: " .. tostring(card.value_text))
+            assert(card.value_text_split == true,
+                "underdog card must request the split colored value line")
+            assert(card.icon ~= nil and card.icon.texture ~= nil,
+                "underdog card must resolve a real icon")
+        ''')
+
+    def test_underdog_shows_lone_half_when_only_one_upgrade_owned(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            assert(kyohud:TryRegisterGameInfoBridge() == true)
+
+            -- Basic only: damage bonus, no reduction.
+            kyohud.hudlist:event("buff", "activate", "underdog",
+                {t = 100, expire_t = 107, value = 1.15})
+            assert(kyohud._buffs.underdog.value_text == "+15%",
+                "basic-only underdog must show +15%, got: "
+                .. tostring(kyohud._buffs.underdog.value_text))
+
+            -- Aced only: reduction, no bonus.
+            kyohud.hudlist:event("buff", "deactivate", "underdog")
+            kyohud.hudlist:event("buff", "activate", "underdog_aced",
+                {t = 100, expire_t = 107, value = 0.9})
+            assert(kyohud._buffs.underdog.value_text == "-10%",
+                "aced-only underdog must show -10%, got: "
+                .. tostring(kyohud._buffs.underdog.value_text))
         ''')
 
 

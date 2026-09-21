@@ -112,31 +112,96 @@ local RENDER_CACHES = {
     killfeed_name_color = Color(0.86, 0.96, 1),
     killfeed_negative_score_color = Color(1, 0.36, 0.3)
 }
+do
+local function _parse_hex6(hex)
+    if type(hex) ~= "string" or #hex ~= 6 then return nil end
+    local h = tonumber(hex:sub(1, 2), 16)
+    local s = tonumber(hex:sub(3, 4), 16)
+    local v = tonumber(hex:sub(5, 6), 16)
+    if not (h and s and v) then return nil end
+    return h / 255, s / 255, v / 255
+end
+
+-- Pre-allocated colors for the Underdog card's split value line: the damage
+-- bonus in the damage_increase tint, the damage reduction in the
+-- damage_reduction tint. Derived from KYO_BUFF_COLORS so they follow the config.
+do
+    local br, bg, bb = _parse_hex6(KYO_BUFF_COLORS.damage_increase)
+    local rr, rg, rb = _parse_hex6(KYO_BUFF_COLORS.damage_reduction)
+    RENDER_CACHES.underdog_bonus_color = br and Color(br, bg, bb) or Color(1, 0.541, 0.239)
+    RENDER_CACHES.underdog_reduction_color = rr and Color(rr, rg, rb) or Color(0.424, 0.549, 1)
+end
+
 for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
     local _anim = _pres.frame_animation
     if _anim and _pres.frame_color
         and type(_anim.period) == "number" and _anim.period > 0 then
         local _hex_a = KYO_BUFF_COLORS[_pres.frame_color] or _pres.frame_color
         local _hex_b = KYO_BUFF_COLORS[_anim.color_b] or _anim.color_b
-        if type(_hex_a) == "string" and #_hex_a == 6
-            and type(_hex_b) == "string" and #_hex_b == 6 then
-            FRAME_ANIM_CACHE[_buff_id] = {
-                r1 = tonumber(_hex_a:sub(1, 2), 16) / 255,
-                g1 = tonumber(_hex_a:sub(3, 4), 16) / 255,
-                b1 = tonumber(_hex_a:sub(5, 6), 16) / 255,
-                r2 = tonumber(_hex_b:sub(1, 2), 16) / 255,
-                g2 = tonumber(_hex_b:sub(3, 4), 16) / 255,
-                b2 = tonumber(_hex_b:sub(5, 6), 16) / 255,
+        local r1, g1, b1 = _parse_hex6(_hex_a)
+        local r2, g2, b2 = _parse_hex6(_hex_b)
+        if r1 and r2 then
+            local entry = {
+                r1 = r1, g1 = g1, b1 = b1,
+                r2 = r2, g2 = g2, b2 = b2,
                 period = _anim.period,
+                tri = false,
             }
+            -- Optional third color for A→B→C→A cycling. If color_c is
+            -- declared but unparseable, the whole entry is rejected so the
+            -- animation falls back to buff.frame_color instead of silently
+            -- degrading to a two-color cycle.
+            local entry_ok = true
+            if _anim.color_c then
+                local _hex_c = KYO_BUFF_COLORS[_anim.color_c] or _anim.color_c
+                local r3, g3, b3 = _parse_hex6(_hex_c)
+                if r3 then
+                    entry.r3 = r3
+                    entry.g3 = g3
+                    entry.b3 = b3
+                    entry.tri = true
+                else
+                    entry_ok = false
+                end
+            end
+            if entry_ok then
+                FRAME_ANIM_CACHE[_buff_id] = entry
+            end
         end
     end
+end
 end
 KH._frame_anim_cache = FRAME_ANIM_CACHE
 
 function KH:_compute_frame_color(buff_id, t)
     local anim = FRAME_ANIM_CACHE[buff_id]
     if not anim then return nil end
+
+    if anim.tri then
+        -- Three-color cycle: A → B → C → A, linear segments over `period`.
+        -- phase ∈ [0, 3): segment 0 = A→B, segment 1 = B→C, segment 2 = C→A.
+        local phase = (t % anim.period) / anim.period * 3
+        local segment = math.floor(phase)
+        local frac = phase - segment
+        local r, g, b
+        if segment <= 0 then
+            r = anim.r1 + (anim.r2 - anim.r1) * frac
+            g = anim.g1 + (anim.g2 - anim.g1) * frac
+            b = anim.b1 + (anim.b2 - anim.b1) * frac
+        elseif segment == 1 then
+            r = anim.r2 + (anim.r3 - anim.r2) * frac
+            g = anim.g2 + (anim.g3 - anim.g2) * frac
+            b = anim.b2 + (anim.b3 - anim.b2) * frac
+        else
+            r = anim.r3 + (anim.r1 - anim.r3) * frac
+            g = anim.g3 + (anim.g1 - anim.g3) * frac
+            b = anim.b3 + (anim.b1 - anim.b3) * frac
+        end
+        -- factor encodes segment + fraction for cache keying
+        return r, g, b, phase / 3
+    end
+
+    -- Two-color sine oscillation (original behavior)
     local factor = (math.sin(2 * math.pi * t / anim.period) + 1) * 0.5
     local r = anim.r1 + (anim.r2 - anim.r1) * factor
     local g = anim.g1 + (anim.g2 - anim.g1) * factor
@@ -2033,6 +2098,7 @@ function KH:add_buff(buff_id, icon_data, duration, _raw_upgrade_id, persistent, 
     -- only its timer and fade (start_t) restart from zero
     local existing = self._buffs[resolved_id]
     local label_text, label_placement = presentation_label_for_buff(resolved_id)
+    local presentation = KYO_BUFF_PRESENTATION[resolved_id]
 
     self._buffs[resolved_id] = {
         id       = resolved_id,
@@ -2045,6 +2111,7 @@ function KH:add_buff(buff_id, icon_data, duration, _raw_upgrade_id, persistent, 
         label_text = label_text,
         label_placement = label_placement,
         value_text = value_text,
+        value_text_split = presentation and presentation.value_text_split == true or nil,
         stack_text = stack_text,
         is_debuff = is_debuff == true,
         order_t  = existing and existing.order_t or t,
@@ -2225,6 +2292,16 @@ local function native_damage_reduction_multiplier()
     local ok, multiplier = pcall(function()
         local pm = managers.player
         if not pm or not pm.damage_reduction_skill_multiplier then return 1 end
+        -- Only the native passive_damage_reduction branch indexes
+        -- player_unit():character_damage() without guarding. When that
+        -- upgrade is owned but no live player unit exists (custody,
+        -- pre-spawn, spectating), skip the native call to avoid a
+        -- per-frame engine nil-index error; every other case is safe.
+        if pm.has_category_upgrade
+            and pm:has_category_upgrade("player", "passive_damage_reduction")
+            and not alive(pm:player_unit()) then
+            return 1
+        end
         return pm:damage_reduction_skill_multiplier("bullet")
     end)
     return ok and tonumber(multiplier) or 1
@@ -2317,7 +2394,7 @@ end
 local function damage_increase_text()
     local multiplier = native_damage_increase_multiplier()
     local bonus = (multiplier - 1) * 100
-    if math.abs(bonus) < 0.5 then return "+0%" end
+    if bonus <= 5 then return "+5%" end
     return string.format("%+.0f%%", bonus)
 end
 
@@ -2426,6 +2503,34 @@ local BUFF_VALUE_FORMATTERS = {
     melee_damage_increase = melee_damage_increase_text,
     passive_health_regen = passive_health_regen_text,
     total_dodge_chance = total_dodge_chance_text,
+    -- Underdog merged card: the basic upgrade (dmg_multiplier_outnumbered) is a
+    -- damage multiplier (e.g. 1.15 -> "+15%"), the aced upgrade
+    -- (dmg_dampener_outnumbered) is a damage-taken multiplier (e.g. 0.9 ->
+    -- "-10%"). Both sources feed this one buff via the catalog route; each is
+    -- identified by its source_id. Returns "+15%|-10%" when both are owned.
+    underdog_combined = function(sources)
+        local bonus_text, reduction_text
+        for _, source in pairs(sources) do
+            local value = tonumber(source.value)
+            if value then
+                if source.source_id == "underdog" then
+                    local bonus = (value - 1) * 100
+                    if math.abs(bonus) >= 0.5 then
+                        bonus_text = string.format("+%.0f%%", bonus)
+                    end
+                elseif source.source_id == "underdog_aced" then
+                    local reduction = clamp(1 - value, 0, 1) * 100
+                    if reduction >= 0.5 then
+                        reduction_text = string.format("-%.0f%%", reduction)
+                    end
+                end
+            end
+        end
+        if bonus_text and reduction_text then
+            return bonus_text .. "|" .. reduction_text
+        end
+        return bonus_text or reduction_text
+    end,
 }
 
 local function format_vanillahud_value(definition, sources)
@@ -2596,7 +2701,16 @@ local function equipped_pocket_ecm_amount()
         local session = managers.network and managers.network:session()
         local peer = session and session:local_peer()
         local peer_id = peer and peer:id()
-        return peer_id and managers.player and managers.player:get_grenade_amount(peer_id)
+        local player_manager = peer_id and managers.player
+        if not player_manager then return nil end
+        -- Les grenades synchronisées peuvent ne pas encore exister pour ce
+        -- peer en tout début de partie : get_grenade_amount indexe alors
+        -- synced_grenades[peer_id].amount sur nil et provoque une FATAL ERROR.
+        -- On garde d'abord l'existence de l'entrée synchronisée.
+        local synced = player_manager.get_synced_grenades
+            and player_manager:get_synced_grenades(peer_id)
+        if not (synced and synced.amount ~= nil) then return nil end
+        return player_manager:get_grenade_amount(peer_id)
     end)
     amount = ok and tonumber(amount) or nil
     return amount and math.max(0, math.floor(amount)) or nil
@@ -2667,11 +2781,11 @@ local STAT_CARD_BUFF_IDS = {
 }
 
 local STAT_CARD_VALUE_TEXT = {
-    passive_health_regen = passive_health_regen_text,
-    damage_increase = damage_increase_text,
-    damage_reduction = damage_reduction_text,
-    melee_damage_increase = melee_damage_increase_text,
-    total_dodge_chance = total_dodge_chance_text,
+    passive_health_regen = { formatter = passive_health_regen_text, neutral = "0.0%" },
+    damage_increase = { formatter = damage_increase_text, neutral = "+5%" },
+    damage_reduction = { formatter = damage_reduction_text, neutral = "-0%" },
+    melee_damage_increase = { formatter = melee_damage_increase_text, neutral = "x1" },
+    total_dodge_chance = { formatter = total_dodge_chance_text, neutral = "0%" },
 }
 
 function KH:RefreshCalculatedBuffValues()
@@ -2679,13 +2793,18 @@ function KH:RefreshCalculatedBuffValues()
 
     for _, buff_id in ipairs(STAT_CARD_BUFF_IDS) do
         if self:is_buff_visible(buff_id) then
-            local value_text = STAT_CARD_VALUE_TEXT[buff_id]()
-            local existing = self._buffs[buff_id]
-            if not existing then
-                self:add_buff(buff_id, nil, nil, nil, true, false, value_text)
+            local presentation = STAT_CARD_VALUE_TEXT[buff_id]
+            local value_text = presentation.formatter()
+            if value_text == presentation.neutral then
+                self:remove_buff(buff_id)
             else
-                existing.value_text = value_text
-                existing.persistent = true
+                local existing = self._buffs[buff_id]
+                if not existing then
+                    self:add_buff(buff_id, nil, nil, nil, true, false, value_text)
+                else
+                    existing.value_text = value_text
+                    existing.persistent = true
+                end
             end
         else
             self:remove_buff(buff_id)
@@ -4081,7 +4200,60 @@ function KH:draw()
                 local label_text, label_placement = buff_label(buff)
                 local top_label = label_text and label_placement == BUFF_LABEL_TOP and label_text or nil
                 local timer_label = label_text and label_placement == BUFF_LABEL_TIMER and label_text or nil
-                if buff.value_text then
+                if buff.value_text and buff.value_text_split then
+                    -- Underdog: draw the "+X%|-Y%" line as colored segments —
+                    -- bonus in the damage-increase tint, reduction in the
+                    -- damage-reduction tint — laid out centered on the frame.
+                    local vt_font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
+                    local vt_font_size = math.max(8, clamp(size * 0.38, 11, 15) * buff_text_scale)
+                    local vt_y = frame_y - (top_label and 34 or 17) * buff_text_scale
+                    local sep = "|"
+                    local bonus_part, reduction_part =
+                        string.match(buff.value_text, "^(.-)%" .. sep .. "(.+)$")
+                    if bonus_part and reduction_part then
+                        -- approximate_text_width assumes a generic 0.58*em glyph
+                        -- advance; the digits, sign and "%" here are narrower and
+                        -- "|" is narrower still. Use calibrated per-glyph advances
+                        -- so the two halves sit tight around the separator instead
+                        -- of drifting to the card edges.
+                        local seg_adv = vt_font_size * 0.46
+                        local sep_adv = vt_font_size * 0.22
+                        local bonus_w = #bonus_part * seg_adv
+                        local reduction_w = #reduction_part * seg_adv
+                        local total_w = bonus_w + sep_adv + reduction_w
+                        local seg_x = frame_x + (frame_w - total_w) * 0.5
+                        self._panel:text({
+                            text = bonus_part, font = vt_font, font_size = vt_font_size,
+                            color = RENDER_CACHES.underdog_bonus_color, align = "left",
+                            vertical = "center", x = seg_x, y = vt_y,
+                            w = bonus_w, h = buff_text_h, layer = 102, alpha = buff_alpha,
+                        })
+                        self._panel:text({
+                            text = sep, font = vt_font, font_size = vt_font_size,
+                            color = Color.white, align = "center",
+                            vertical = "center", x = seg_x + bonus_w, y = vt_y,
+                            w = sep_adv, h = buff_text_h, layer = 102, alpha = buff_alpha,
+                        })
+                        self._panel:text({
+                            text = reduction_part, font = vt_font, font_size = vt_font_size,
+                            color = RENDER_CACHES.underdog_reduction_color, align = "left",
+                            vertical = "center", x = seg_x + bonus_w + sep_adv, y = vt_y,
+                            w = reduction_w, h = buff_text_h, layer = 102, alpha = buff_alpha,
+                        })
+                    else
+                        -- Only one half owned: a lone "+X%" is damage bonus,
+                        -- a lone "-Y%" is damage reduction.
+                        local lone_color = string.sub(buff.value_text, 1, 1) == "-"
+                            and RENDER_CACHES.underdog_reduction_color
+                            or RENDER_CACHES.underdog_bonus_color
+                        self._panel:text({
+                            text = buff.value_text, font = vt_font, font_size = vt_font_size,
+                            color = lone_color, align = "center", vertical = "center",
+                            x = frame_x, y = vt_y, w = frame_w, h = buff_text_h,
+                            layer = 102, alpha = buff_alpha,
+                        })
+                    end
+                elseif buff.value_text then
                     self._panel:text({
                         text      = buff.value_text,
                         font      = tweak_data.menu.pd2_small_font or "fonts/font_small_mf",

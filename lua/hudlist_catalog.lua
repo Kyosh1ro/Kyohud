@@ -259,6 +259,13 @@ local Catalog = {
             perks = { 0, 0 }, texture_bundle_folder = "max", class = "TimedBuffItem",
             priority = 4, state = "sources", show_stack_count = false,
         },
+        -- Underdog basic (dmg_multiplier_outnumbered) and aced
+        -- (dmg_dampener_outnumbered) share one skill, one timer and one icon.
+        -- They are merged into this single timed card; the aced dampener is
+        -- routed here below so both temporary upgrades feed the same cell.
+        underdog = { skills_new = { 2, 1 }, skill_id = "underdog",
+            class = "TimedBuffItem", priority = 4, state = "timed" },
+        inspire = { skills_new = { 0, 0 }, skill_id = "inspire", class = "TimedBuffItem", priority = 4, state = "timed" },
         crew_inspire_debuff = { skills_new = { 0, 0 }, skill_id = "inspire", class = "TimedBuffItem", priority = 8, state = "timed" },
         partner_in_crime = { skills_new = { 1, 10 }, skill_id = "control_freak", class = "BuffItemBase", priority = 3, show_stack_count = false },
         partner_in_crime_aced = { skills_new = { 1, 10 }, skill_id = "control_freak", class = "BuffItemBase", priority = 3, show_stack_count = false },
@@ -336,6 +343,9 @@ local Catalog = {
         uppers = { "uppers" },
         uppers_debuff = { "uppers_debuff" },
         crew_inspire_debuff = { "crew_inspire_debuff" },
+        -- Fold the Underdog aced dampener into the single Underdog card so the
+        -- basic damage bonus and the aced damage reduction share one icon.
+        underdog_aced = { "underdog" },
     },
 }
 
