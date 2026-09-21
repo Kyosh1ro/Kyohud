@@ -2282,10 +2282,11 @@ local function native_damage_reduction_multiplier()
     local ok, multiplier = pcall(function()
         local pm = managers.player
         if not pm or not pm.damage_reduction_skill_multiplier then return 1 end
-        -- The native passive_damage_reduction branch dereferences
-        -- player_unit():character_damage() without checking the player unit.
-        -- Avoid entering that branch before spawn, in custody, or as spectator;
-        -- every other native path remains authoritative.
+        -- Only the native passive_damage_reduction branch indexes
+        -- player_unit():character_damage() without guarding. When that
+        -- upgrade is owned but no live player unit exists (custody,
+        -- pre-spawn, spectating), skip the native call to avoid a
+        -- per-frame engine nil-index error; every other case is safe.
         if pm.has_category_upgrade
             and pm:has_category_upgrade("player", "passive_damage_reduction")
             and not alive(pm:player_unit()) then
