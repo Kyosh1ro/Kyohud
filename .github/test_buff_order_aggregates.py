@@ -622,6 +622,110 @@ class StatCardNativeComputationTests(unittest.TestCase):
             end
         ''')
 
+    def test_damage_increase_hidden_at_5_percent_baseline(self):
+        """Damage+ buff must be hidden at 5% (perk deck tier 8 baseline)"""
+        lua = make_runtime()
+        lua.execute('''
+            local player_state = {
+                _overkill_all_weapons = false,
+                _damage_health_ratio_mul = 0,
+                _damage_health_ratio_mul_melee = 0,
+            }
+            local player_unit = {
+                inventory = function() return {
+                    equipped_unit = function() return nil end
+                } end,
+                character_damage = function() return {
+                    _max_health = function() return 100 end,
+                    health_ratio = function() return 1 end,
+                } end,
+                movement = function() return {
+                    running = function() return false end,
+                    crouching = function() return false end,
+                    zipline_unit = function() return nil end,
+                    _current_state = player_state,
+                } end,
+            }
+            managers.player = {
+                player_unit = function() return player_unit end,
+                get_current_state = function() return player_state end,
+                damage_reduction_skill_multiplier = function() return 1 end,
+                temporary_upgrade_value = function(s,c,u,d)
+                    if u == "dmg_multiplier_outnumbered" then return 1.05 end
+                    if u == "berserker_damage_multiplier" then return 1.0 end
+                    return d
+                end,
+                get_damage_health_ratio = function() return 0 end,
+                get_property = function(s,p,d) return d end,
+                upgrade_value = function(s,c,u,d) return d end,
+                body_armor_value = function() return 0 end,
+                skill_dodge_chance = function() return 0 end,
+                has_category_upgrade = function() return false end,
+                get_melee_dmg_multiplier = function() return 1 end,
+                _smoke_screen_effects = {},
+            }
+            managers.blackmarket = {equipped_melee_weapon = function() return nil end}
+            tweak_data.player = {damage = {DODGE_INIT = 0}}
+            tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0}}
+            tweak_data.blackmarket = {melee_weapons = {}}
+            kyohud:RefreshCalculatedBuffValues()
+            assert(kyohud._buffs.damage_increase == nil,
+                "damage_increase must be hidden at 5% baseline (perk deck tier 8)")
+        ''')
+
+    def test_damage_increase_visible_above_5_percent(self):
+        """Damage+ buff must be visible above the 5% baseline."""
+        lua = make_runtime()
+        lua.execute('''
+            local player_state = {
+                _overkill_all_weapons = false,
+                _damage_health_ratio_mul = 0,
+                _damage_health_ratio_mul_melee = 0,
+            }
+            local player_unit = {
+                inventory = function() return {
+                    equipped_unit = function() return nil end
+                } end,
+                character_damage = function() return {
+                    _max_health = function() return 100 end,
+                    health_ratio = function() return 1 end,
+                } end,
+                movement = function() return {
+                    running = function() return false end,
+                    crouching = function() return false end,
+                    zipline_unit = function() return nil end,
+                    _current_state = player_state,
+                } end,
+            }
+            managers.player = {
+                player_unit = function() return player_unit end,
+                get_current_state = function() return player_state end,
+                damage_reduction_skill_multiplier = function() return 1 end,
+                temporary_upgrade_value = function(s,c,u,d)
+                    if u == "dmg_multiplier_outnumbered" then return 1.06 end
+                    if u == "berserker_damage_multiplier" then return 1.0 end
+                    return d
+                end,
+                get_damage_health_ratio = function() return 0 end,
+                get_property = function(s,p,d) return d end,
+                upgrade_value = function(s,c,u,d) return d end,
+                body_armor_value = function() return 0 end,
+                skill_dodge_chance = function() return 0 end,
+                has_category_upgrade = function() return false end,
+                get_melee_dmg_multiplier = function() return 1 end,
+                _smoke_screen_effects = {},
+            }
+            managers.blackmarket = {equipped_melee_weapon = function() return nil end}
+            tweak_data.player = {damage = {DODGE_INIT = 0}}
+            tweak_data.projectiles = {smoke_screen_grenade = {dodge_chance = 0}}
+            tweak_data.blackmarket = {melee_weapons = {}}
+            kyohud:RefreshCalculatedBuffValues()
+            assert(kyohud._buffs.damage_increase ~= nil,
+                "damage_increase must be visible above 5% baseline")
+            assert(kyohud._buffs.damage_increase.value_text == "+6%",
+                "expected +6%, got: " .. tostring(kyohud._buffs.damage_increase.value_text))
+        ''')
+
     def test_no_composite_routes_for_stat_cards(self):
         lua = make_runtime()
         lua.execute('''
