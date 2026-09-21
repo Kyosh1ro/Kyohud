@@ -236,6 +236,13 @@ class HUDListGameHookTests(unittest.TestCase):
             assert(buff ~= nil)
             assert(buff.t == 100 and buff.expire_t == 110 and buff.duration == 10)
 
+            Application.time = function() return 104 end
+            Hooks.callbacks.on_morale_boost({})
+            local refreshed = kyohud.hudlist:get_buffs().inspire
+            assert(refreshed == buff, "refresh must reuse the existing buff entry")
+            assert(refreshed.t == 104 and refreshed.expire_t == 114
+                and refreshed.duration == 10)
+
             Hooks.callbacks.clbk_morale_boost_expire({})
             assert(kyohud.hudlist:get_buffs().inspire == nil)
         ''')
@@ -267,10 +274,13 @@ class HUDListGameHookTests(unittest.TestCase):
             assert(buff ~= nil)
             assert(buff.t == 100 and buff.expire_t == 101.75 and buff.duration == 1.75)
 
+            Application.time = function() return 101 end
             Hooks.callbacks._do_action_intimidate({}, 101, "cmd_get_up")
-            buff = kyohud.hudlist:get_buffs().inspire_debuff
-            assert(buff.t == 100 and buff.expire_t == 101.75,
-                "native player timer, not callback t, owns the cooldown deadline")
+            local refreshed = kyohud.hudlist:get_buffs().inspire_debuff
+            assert(refreshed == buff, "refresh must reuse the existing cooldown entry")
+            assert(refreshed.t == 101 and refreshed.expire_t == 102.75
+                and refreshed.duration == 1.75,
+                "the current game clock must renew the cooldown deadline")
         ''')
 
     def test_contexts_are_explicit_idempotent_and_keep_shared_state(self):
