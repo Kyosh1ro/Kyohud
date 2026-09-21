@@ -206,10 +206,13 @@ class HudBannersExtractionTests(unittest.TestCase):
             paths.index("lua/ky_hud_banners.lua"),
         )
 
-    def test_killfeed_chevron_gap_remains_in_core(self):
-        core_source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
-        self.assertIn("local BANNER_CHEVRON_TEXT_GAP = 5", core_source)
+    def test_killfeed_chevron_gap_moved_to_render_module(self):
+        core_source = (ROOT / "lua/core.lua").read_text(encoding="utf-8-sig")
+        render_source = (ROOT / "lua/ky_killfeed_render.lua").read_text(encoding="utf-8-sig")
+        # BANNER_CHEVRON_TEXT_GAP was render-only geometry, moved to ky_killfeed_render.lua
+        self.assertNotIn("BANNER_CHEVRON_TEXT_GAP", core_source)
         self.assertNotIn("BANNER_CHEVRON_TEXT_GAP", BANNERS_SOURCE)
+        self.assertIn("BANNER_CHEVRON_TEXT_GAP", render_source)
 
 
 if __name__ == "__main__":

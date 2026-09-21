@@ -68,6 +68,9 @@ class BuffRowLayoutTests(unittest.TestCase):
             (ROOT / "lua" / "ky_hud_banners.lua").read_text(encoding="utf-8-sig")
         )
         self.lua.execute(
+            (ROOT / "lua" / "ky_killfeed_render.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
             (ROOT / "lua" / "ky_buff_presentation.lua").read_text(encoding="utf-8-sig")
         )
         self.lua.execute(
@@ -440,21 +443,20 @@ class BuffRowLayoutTests(unittest.TestCase):
         ''')
 
     def test_buff_scale_is_local_to_buff_rendering(self):
-        source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
-        buff_block = source.split("-- ── Draw buffs ──", 1)[1].split(
-            "-- ── Draw streak banner and horizontal killfeed ──", 1
+        core_source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
+        module_source = (ROOT / "lua" / "ky_killfeed_render.lua").read_text(encoding="utf-8-sig")
+        buff_block = core_source.split("-- ── Draw buffs ──", 1)[1].split(
+            "Killfeed rendering delegated to ky_killfeed_render.lua", 1
         )[0]
-        later_block = source.split(
-            "-- ── Draw streak banner and horizontal killfeed ──", 1
+        later_block = core_source.split(
+            "-- ── Draw buffs ──", 1
         )[1]
         self.assertNotRegex(buff_block, r"(?m)^\s*size\s*=")
         self.assertIn("local buff_size = layout.effective_size", buff_block)
-        self.assertIn("local item_h = clamp(size * 0.72 + 6, 28, 42)", later_block)
-        self.assertIn("local font_size = clamp(size * 0.48, 15, 21)", later_block)
-        self.assertIn(
-            "KH.DrawHeistScoreWidget(self, self._panel, w, h, size, alpha, s)",
-            later_block,
-        )
+        self.assertIn("KH:render_killfeed(self._panel, w, h, size, alpha, radius)", later_block)
+        self.assertIn("KH.DrawHeistScoreWidget(self, self._panel, w, h, size, alpha, s)", later_block)
+        self.assertIn("local item_h = clamp(size * 0.72 + 6, 28, 42)", module_source)
+        self.assertIn("local font_size = clamp(size * 0.48, 15, 21)", module_source)
 
 
 if __name__ == "__main__":
