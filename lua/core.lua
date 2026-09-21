@@ -2384,7 +2384,7 @@ end
 local function damage_increase_text()
     local multiplier = native_damage_increase_multiplier()
     local bonus = (multiplier - 1) * 100
-    if math.abs(bonus) < 0.5 then return "+0%" end
+    if bonus <= 5 then return "+5%" end
     return string.format("%+.0f%%", bonus)
 end
 
@@ -2772,7 +2772,7 @@ local STAT_CARD_BUFF_IDS = {
 
 local STAT_CARD_VALUE_TEXT = {
     passive_health_regen = { formatter = passive_health_regen_text, neutral = "0.0%" },
-    damage_increase = { formatter = damage_increase_text, neutral = "+0%" },
+    damage_increase = { formatter = damage_increase_text, neutral = "+5%" },
     damage_reduction = { formatter = damage_reduction_text, neutral = "-0%" },
     melee_damage_increase = { formatter = melee_damage_increase_text, neutral = "x1" },
     total_dodge_chance = { formatter = total_dodge_chance_text, neutral = "0%" },
