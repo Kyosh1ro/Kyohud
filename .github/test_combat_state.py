@@ -33,6 +33,8 @@ class CombatStateTests(unittest.TestCase):
         ''')
         self.lua.execute((ROOT / "lua" / "hudlist.lua").read_text(encoding="utf-8-sig"))
         self.lua.execute((ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig"))
+        self.lua.globals().RequiredScript = 'lib/managers/hudmanagerpd2'
+        self.lua.execute((ROOT / "lua" / "ky_combat_medals.lua").read_text(encoding="utf-8-sig"))
         self.lua.execute('''
             kyohud.settings = {enable_killfeed = true, killfeed_size = 3}
             kyohud:ResetHeistCombatState()

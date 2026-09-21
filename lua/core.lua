@@ -19,6 +19,7 @@ end
 local function now()
     return TimerManager:game():time()
 end
+KH.now = now
 
 local FALLBACK_TEXTURE = "guis/textures/pd2/hud_timer"
 
@@ -64,9 +65,8 @@ local KILLFEED_FRAME_CLEARANCE = 1.5
 local PASSIVE_REGEN_INTERVAL = 5
 local BANNER_FRAME_EXTENSION = 4
 local SPECIAL_KILL_BANNER_DURATION = 1.25
--- The medal lives in the killfeed and stays visible a bit longer than priority announcements so its tier remains readable during action.
-local MEDAL_CARD_DURATION = 1.75
 local HUD_ACCENT_COLOR  = Color(0.52, 0.88, 0.92)
+KH.HUD_ACCENT_COLOR = HUD_ACCENT_COLOR
 local PRIORITY_TARGET_COLOR = Color(1, 0.38, 0.08)
 local KILLFEED_SCORE_COLOR = Color(1, 0.63, 0.12)
 local KILLFEED_SCORE_PENALTY_COLOR = Color(1, 0.22, 0.12)
@@ -112,6 +112,7 @@ local RENDER_CACHES = {
     killfeed_name_color = Color(0.86, 0.96, 1),
     killfeed_negative_score_color = Color(1, 0.36, 0.3)
 }
+KH.RENDER_CACHES = RENDER_CACHES
 do
 local function _parse_hex6(hex)
     if type(hex) ~= "string" or #hex ~= 6 then return nil end
@@ -381,6 +382,7 @@ local function get_icon_data(icon)
 
     return texture, texture_rect
 end
+KH.get_icon_data = get_icon_data
 
 -- Shared descriptor for all Headshot cards. HUD name resolution and atlas cutout occur on the first relevant kill, never in draw.
 local HEADSHOT_ICON_DESCRIPTOR
@@ -392,14 +394,9 @@ local function headshot_icon_descriptor()
     return HEADSHOT_ICON_DESCRIPTOR
 end
 
-local SENTRY_ICON_DESCRIPTOR
-local function sentry_icon_descriptor()
-    if not SENTRY_ICON_DESCRIPTOR then
-        local texture, rect = get_icon_data({ hud_tweak = "equipment_sentry" })
-        SENTRY_ICON_DESCRIPTOR = { texture = texture, rect = rect }
-    end
-    return SENTRY_ICON_DESCRIPTOR
-end
+-- `sentry_icon_descriptor` is defined in `lua/ky_combat_medals.lua` and
+-- exposed via `KH.SentryIconDescriptor`. It is the single source of truth
+-- shared by medal cards and killfeed sentry icons.
 
 -- ═══════════════════════════════════════════════════
 -- Icon Resolution for a buff_id
@@ -621,6 +618,7 @@ local function localized_text(id, fallback)
     end)
     return value
 end
+KH.localized_text = localized_text
 
 local function title_for_buff(buff_id)
     local definition = KH:GetVanillaHUDBuffDefinition(buff_id)
@@ -798,159 +796,8 @@ local WEAPON_STREAK_DEFINITIONS = {
     },
 }
 
--- ── Event Medals ──
--- Conditions are read on kill. Only First Strike (assault lock) and rappel tiers (3 s window) retain temporary state.
--- None of these states is saved. Multiple medals can be awarded for the same kill.
---
--- The icon descriptor carries only a `hud_tweak` name: `get_icon_data` requests the corresponding texture and atlas cutout from the game, exactly like a catalog buff. No coordinates are written by hand.
-local EVENT_MEDAL_DEFINITIONS = {
-    first_strike = {
-        id       = "ky_hud_event_medal_first_strike",
-        fallback = "First Strike",
-        color    = Color(1, 0.32, 0.26),             -- orange-red
-        icon     = { hud_tweak = "pd2_kill" },
-    },
-    grave = {
-        id       = "ky_hud_event_medal_grave",
-        fallback = "Grave",
-        color    = Color(0.68, 0.44, 0.92),          -- purple
-        icon     = { hud_tweak = "mugshot_downed" },
-    },
-    low_hp = {
-        id       = "ky_hud_event_medal_low_hp",
-        fallback = "Last Breath",
-        color    = Color(1, 0.18, 0.34),             -- blood red
-        icon     = { hud_tweak = "csb_health" },
-    },
-    reload = {
-        id       = "ky_hud_event_medal_reload",
-        fallback = "Reload This",
-        color    = Color(0.98, 0.78, 0.22),          -- amber
-        icon     = { hud_tweak = "csb_reload" },
-    },
-    through_shield = {
-        id       = "ky_hud_event_medal_through_shield",
-        fallback = "Through the Shield",
-        color    = Color(1, 0.72, 0.16),             -- shield orange
-        icon     = { hud_tweak = "csb_armor" },
-    },
-    one_shot_two_kills = {
-        id       = "ky_hud_event_medal_one_shot_two_kills",
-        fallback = "Collateral",
-        color    = Color(1, 0.48, 0.12),             -- red-gold
-        icon     = { hud_tweak = "pd2_kill" },
-    },
-    revenge = {
-        id       = "ky_hud_event_medal_revenge",
-        fallback = "Revenge",
-        color    = Color(0.82, 0.28, 1),             -- electric violet
-        icon     = { hud_tweak = "csb_absorb" },
-    },
-    bulltrue = {
-        id       = "ky_hud_event_medal_bulltrue",
-        fallback = "Bulltrue",
-        color    = Color(0.35, 1, 0.18),             -- Cloaker green
-        icon     = { hud_tweak = "crime_spree_cloaker_smoke" },
-    },
-    showstopper = {
-        id       = "ky_hud_event_medal_showstopper",
-        fallback = "Showstopper",
-        color    = Color(0.35, 1, 0.18),             -- Cloaker green
-        icon     = { hud_tweak = "crime_spree_cloaker_smoke" },
-    },
-    rope = {
-        id       = "ky_hud_event_medal_rope",
-        fallback = "Pull!",
-        color    = Color(0.36, 0.72, 1),             -- blue
-        icon     = { hud_tweak = "csb_lives" },
-        tiers = {
-            { count = 1, id = "ky_hud_event_medal_rope", fallback = "Pull!" },
-            { count = 3, id = "ky_hud_event_medal_rope_3", fallback = "Free Fall" },
-            { count = 5, id = "ky_hud_event_medal_rope_5", fallback = "Air Sweep" },
-        },
-    },
-    blindfire = {
-        id       = "ky_hud_event_medal_blindfire",
-        fallback = "BlindFire",
-        color    = Color(1, 0.95, 0.6),              -- yellow-white flash
-        icon     = { hud_tweak = "csb_panic" },
-    },
-    first_blood = {
-        id       = "ky_hud_event_medal_first_blood",
-        fallback = "First Blood",
-        color    = Color(0.85, 0.1, 0.12),           -- blood red
-        icon     = { hud_tweak = "pd2_kill" },
-    },
-    hotswap = {
-        id       = "ky_hud_event_medal_hotswap",
-        fallback = "Hot Swap",
-        color    = Color(0.3, 0.85, 0.8),            -- blue-green
-        icon     = { hud_tweak = "csb_switch" },
-    },
-    overwatch = {
-        id       = "ky_hud_event_medal_overwatch",
-        fallback = "Overwatch",
-        color    = Color(0.4, 0.72, 1),
-        icon     = { hud_tweak = "crime_spree_heavy_sniper" },
-    },
-    long_shot = {
-        id       = "ky_hud_event_medal_long_shot",
-        fallback = "Long Shot",
-        color    = Color(0.45, 0.84, 1),
-        icon     = { hud_tweak = "csb_ammo" },
-    },
-    spray_down = {
-        id       = "ky_hud_event_medal_spray_down",
-        fallback = "Spray Down",
-        color    = Color(1, 0.48, 0.16),
-        icon     = { hud_tweak = "csb_switch" },
-    },
-    no_flashbang = {
-        id       = "ky_hud_event_medal_no_flashbang",
-        fallback = "No Flashbang",
-        color    = Color(1, 0.9, 0.4),                -- flash yellow
-        icon     = { hud_tweak = "csb_throwables" },
-    },
-    air_kill = {
-        id       = "ky_hud_event_medal_air_kill",
-        fallback = "Air Kill",
-        color    = Color(0.5, 0.8, 1),                -- sky blue
-        icon     = { hud_tweak = "csb_stamina" },
-    },
-    wall_bang = {
-        id       = "ky_hud_event_medal_wall_bang",
-        fallback = "Wallbang",
-        color    = Color(0.7, 0.72, 0.75),            -- concrete gray
-        icon     = { hud_tweak = "pd2_kill" },
-    },
-    loot_carrier = {
-        id       = "ky_hud_event_medal_loot_carrier",
-        fallback = "Hands Off",
-        color    = Color(0.95, 0.8, 0.3),             -- gold/loot green
-        icon     = { hud_tweak = "pd2_lootdrop" },
-    },
-}
-
--- A Lua table indexed by key has no stable iteration order. This list freezes the emission order: two kills with the same events always produce exactly the same medal sequence.
---
--- Only medals carried by `event_info` appear here. `no_flashbang` and `wall_bang` are emitted directly via their engine hook through `KH:ShowEventMedal`, bypassing the kill path; listing them here would only search for a boolean that never exists.
-local EVENT_MEDAL_ORDER = {
-    "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
-    "showstopper", "rope", "blindfire", "first_blood", "hotswap",
-    "overwatch", "long_shot", "air_kill", "loot_carrier", "spray_down",
-}
-
--- Last Breath remains a critical signal but must not fill the queue during a low-health kill burst. The first card is immediate and the bound is inclusive: a new card is allowed exactly at 30 s.
-local LAST_BREATH_MEDAL_COOLDOWN = 30
-local SPRAY_DOWN_WINDOW = 4
-
--- ── Cumulative Heist Kill Tiers ──
--- Single counter, independent of weapon, score, and time windows: any non-civilian enemy kill advances it, it survives a fall, and resets to zero only with `KH:ResetHeistCombatState`. Tiers are strictly increasing and each is announced once per heist.
-local KILL_MEDAL_THRESHOLDS = { 50, 75, 100, 150, 200, 300, 400, 500 }
-local SENTRY_KILL_MEDAL_THRESHOLDS = { 50, 100, 150 }
 
 -- Gold: the cumulative medal distinguishes itself from weapon family colors.
-local KILL_MEDAL_COLOR = Color(1, 0.84, 0.35)
 
 -- Vanilla preplanning icon 61 (`reduce_mobsters`) is a PAYDAY 2-owned kill
 -- pictogram, so cumulative medals do not depend on VanillaHUD+ buff metadata.
@@ -972,11 +819,14 @@ function KH:GetKillMedalIconDescriptor()
     return self._kill_medal_icon_descriptor
 end
 
+-- Medal constants, medal card constructors, medal rendering helpers,
+-- and `KH.SentryIconDescriptor` are defined in `lua/ky_combat_medals.lua`,
+-- loaded after core.lua in the hudmanagerpd2 context. They are exposed via
+-- KH (KH.EVENT_MEDAL_DEFINITIONS, KH.MakeKillMedalCard, KH.SentryIconDescriptor,
+-- KH.DrawMedalFrame, etc.) and referenced through KH in core.lua.
+
 -- Medal families sharing the killfeed row. A card's `kind` decides only what a reset clears: rendering, duration, and queue are identical for all.
-local MEDAL_KIND_WEAPON_STREAK = "weapon_streak"
-local MEDAL_KIND_KILL_TOTAL = "kill_total"
-local MEDAL_KIND_EVENT = "event"
-local MEDAL_KIND_SENTRY_KILL = "sentry_kill"
+-- `KH.MEDAL_KIND_WEAPON_STREAK` lives in ky_combat_medals.lua and is referenced via KH.
 
 -- The top banner is exclusively reserved for multikill, boss, and Dozer. Display priority: boss > dozer. Multikill does not enter the queue: it remains the fallback displayed when no priority announcement occupies the banner. Medals have their own row in the killfeed and never appear here.
 local BANNER_PRIORITIES = {
@@ -986,9 +836,6 @@ local BANNER_PRIORITIES = {
 
 -- Bounded: a few announcements suffice to cover a salvo, and the queue must never grow without limit during an assault.
 local MAX_BANNER_QUEUE = 4
-
--- All medals share equal merit regardless of family: their queue is strictly FIFO and never interacts with the banner's. A short bound suffices, as tiers are rare even during a salvo.
-local MAX_MEDAL_QUEUE = 3
 
 local SPECIAL_ENEMY_DEFINITIONS = {
     dozer = {
@@ -1093,91 +940,11 @@ local function make_weapon_streak_card(family, tier_index)
     if not tier then return nil end
 
     return {
-        kind   = MEDAL_KIND_WEAPON_STREAK,
+        kind   = KH.MEDAL_KIND_WEAPON_STREAK,
         family = family,
         label  = localized_text(tier.id, tier.fallback),
         color  = definition.color or HUD_ACCENT_COLOR,
     }
-end
-
---- Cumulative kills medal. The medal's name is carried by a vanilla
---- preplanning icon; only the tier reached and a single key remain, common to all eight
---- tiers. Texture, atlas cutout, and tint are resolved here once per medal:
---- `KH:draw` then just places the bitmap.
-local function make_kill_medal_card(kill_count)
-    if type(kill_count) ~= "number" then return nil end
-
-    return {
-        kind  = MEDAL_KIND_KILL_TOTAL,
-        icon  = KH:GetKillMedalIconDescriptor(),
-        icon_color = KILL_MEDAL_COLOR,
-        label = tostring(kill_count) .. " "
-            .. localized_text("ky_hud_kill_medal_kills", "KILLS"),
-        color = KILL_MEDAL_COLOR,
-    }
-end
-
-local function make_sentry_kill_medal_card(kill_count)
-    if type(kill_count) ~= "number" then return nil end
-
-    return {
-        kind = MEDAL_KIND_SENTRY_KILL,
-        icon = sentry_icon_descriptor(),
-        icon_color = Color.white,
-        label = tostring(kill_count) .. " "
-            .. localized_text("ky_hud_kill_medal_kills", "KILLS"),
-        color = Color.white,
-    }
-end
-
---- Event medal. `id` is the key of `EVENT_MEDAL_DEFINITIONS`, never a
---- label. Like the cumulative medal, the card carries a pictogram: texture,
---- atlas cutout, translated label, and tint are resolved here once per
---- medal so that `KH:draw` only needs to place the bitmap.
-local function make_event_medal_card(id, tier_index)
-    local definition = id and EVENT_MEDAL_DEFINITIONS[id]
-    if not definition then return nil end
-    local label = definition.tiers and definition.tiers[tier_index or 1] or definition
-    if not label then return nil end
-
-    local color = definition.color or HUD_ACCENT_COLOR
-    local texture, rect = get_icon_data(definition.icon)
-    return {
-        kind       = MEDAL_KIND_EVENT,
-        event      = id,
-        tier_index = definition.tiers and (tier_index or 1) or nil,
-        icon       = { texture = texture, rect = rect },
-        icon_color = color,
-        label      = localized_text(label.id, label.fallback),
-        color      = color,
-    }
-end
-
-local function set_event_medal_count(card, count)
-    count = tonumber(count)
-    if not card or not count then return card end
-
-    count = math.max(1, math.floor(count))
-    card._count_label_base = card._count_label_base or card.label
-    card.label = count > 1
-        and card._count_label_base .. " x" .. tostring(count)
-        or card._count_label_base
-    return card
-end
-
---- Directly emits an event card without recording a kill or score.
---- Reserved for engine hooks that already aggregate victims from the same shot.
-function KH:ShowEventMedal(id, count)
-    local card = set_event_medal_count(make_event_medal_card(id), count)
-    self:_show_medal_card(now(), card, false)
-    return card
-end
-
---- Updates the counter of a card already emitted during the same shot. The
---- active or FIFO-placed card is the same table: the visible label evolves
---- up to the final total without adding a second medal.
-function KH:UpdateEventMedalCount(card, count)
-    return set_event_medal_count(card, count)
 end
 
 --- A reload opens a new magazine for Spray Down. The caller guarantees it
@@ -1921,108 +1688,6 @@ local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
         x = x + w - 2, y = y + 2, w = 2, h = h - 4,
         color = color, alpha = alpha * 0.9, layer = layer + 1,
     })
-end
-
--- ── Killfeed Medal ──
--- Deliberately distinct silhouette from kill cards and the top banner:
--- full-height side risers and centered ribbon on both edges, instead of the
--- three offset segments of the tactical frame. It spans the banner's width
--- but stays at one killfeed row's height.
--- This frame is shared by all medal families: only the inner zone's content
--- changes, a card possibly preceding its text with an icon.
-local MEDAL_POST_W = 3
-local MEDAL_RIBBON_RATIO = 0.52
--- Gap between the medal and the name row following it.
-local MEDAL_ROW_GAP = 6
--- Separate the medal from the banner's bottom extension by half a pixel:
--- the two accents no longer merge when both levels are active.
-local MEDAL_TOP_GAP = 0.5
--- Weapon streak medals keep their three arrows per side. Other medal families use
--- only an inner margin so their content does not overflow the frame during
--- animation.
-local MEDAL_CHEVRON_STYLE = { arrow_w = 6, arrow_h = 9, gap = 3 }
-local MEDAL_CHEVRON_GROUP_W = SPECIAL_CHEVRON_SLOTS
-    * MEDAL_CHEVRON_STYLE.arrow_w
-    + (SPECIAL_CHEVRON_SLOTS - 1) * MEDAL_CHEVRON_STYLE.gap
-local MEDAL_CHEVRON_MARGIN = 13
-local MEDAL_CHEVRON_TEXT_GAP = 6
-local MEDAL_CONTENT_PADDING = 13
--- Optional icon preceding text, sized to the card's actual height to stay
--- inside the ribbon regardless of HUD size.
-local MEDAL_ICON_TEXT_GAP = 6
-local MEDAL_ICON_H_RATIO = 0.6
-local MEDAL_ICON_MIN = 12
-local MEDAL_ICON_MAX = 24
-
---- One medal edge: luminous ribbon at center, extended by a subtle line to
---- the risers. Center/edge contrast yields the «ribbon» readout without
---- closing the card like a solid frame.
-local function draw_medal_edge(panel, x, y, w, color, alpha, layer)
-    local ribbon_w = w * MEDAL_RIBBON_RATIO
-    local ribbon_x = x + (w - ribbon_w) * 0.5
-
-    panel:rect({
-        x = ribbon_x, y = y - 1, w = ribbon_w, h = 3,
-        color = color, alpha = alpha * 0.2, layer = layer,
-    })
-    panel:rect({
-        x = ribbon_x, y = y, w = ribbon_w, h = 1,
-        color = color, alpha = alpha, layer = layer + 1,
-    })
-    panel:rect({
-        x = x + MEDAL_POST_W,
-        y = y,
-        w = math.max(0, ribbon_x - x - MEDAL_POST_W),
-        h = 1,
-        color = color, alpha = alpha * 0.32, layer = layer + 1,
-    })
-    panel:rect({
-        x = ribbon_x + ribbon_w,
-        y = y,
-        w = math.max(0, x + w - MEDAL_POST_W - ribbon_x - ribbon_w),
-        h = 1,
-        color = color, alpha = alpha * 0.32, layer = layer + 1,
-    })
-end
-
--- Cache medal frame gradient colors by alpha to avoid per-frame allocations
-function RENDER_CACHES.medal_frame_gradient_for(alpha)
-    -- Round alpha to 2 decimal places for cache key
-    local alpha_key = math.floor(alpha * 100 + 0.5)
-    local cached = RENDER_CACHES.medal_frame_gradient[alpha_key]
-    if cached then return cached end
-    cached = {
-        0,    Color.black:with_alpha(alpha * 0.14),
-        0.26, Color.black:with_alpha(alpha * 0.7),
-        0.5,  Color.black:with_alpha(alpha * 0.82),
-        0.74, Color.black:with_alpha(alpha * 0.7),
-        1,    Color.black:with_alpha(alpha * 0.14),
-    }
-    RENDER_CACHES.medal_frame_gradient[alpha_key] = cached
-    return cached
-end
-
-local function draw_medal_frame(panel, x, y, w, h, color, alpha, layer)
-    -- Symmetric background: the medal reads as a block, while kill cards keep
-    -- their right-oriented asymmetric gradient.
-    panel:gradient({
-        x = x, y = y + 1, w = w, h = h - 2,
-        orientation = "horizontal",
-        gradient_points = RENDER_CACHES.medal_frame_gradient_for(alpha),
-        layer = layer,
-    })
-
-    panel:rect({
-        x = x, y = y, w = MEDAL_POST_W, h = h,
-        color = color, alpha = alpha, layer = layer + 1,
-    })
-    panel:rect({
-        x = x + w - MEDAL_POST_W, y = y, w = MEDAL_POST_W, h = h,
-        color = color, alpha = alpha, layer = layer + 1,
-    })
-
-    draw_medal_edge(panel, x, y, w, color, alpha, layer + 1)
-    draw_medal_edge(panel, x, y + h - 1, w, color, alpha, layer + 1)
 end
 
 local TEXT_GLOW_OFFSETS = {
@@ -3077,7 +2742,7 @@ end
 function KH:_start_medal_card(t, card, preview)
     card.preview = preview == true
     card.started_t = t
-    card.t_end = t + MEDAL_CARD_DURATION
+    card.t_end = t + KH.MEDAL_CARD_DURATION
     self._medal_card = card
 end
 
@@ -3089,7 +2754,7 @@ end
 
 --- A single kill can produce several — up to one weapon streak medal, a few
 --- events, and a cumulative tier. The limit remains intentionally low: active
---- card plus `MAX_MEDAL_QUEUE` places, so at most four chained announcements
+--- card plus `KH.MAX_MEDAL_QUEUE` places, so at most four chained announcements
 --- of about 1.75 s. Lengthening the queue would scroll the row well after the
 --- kill that triggered it.
 function KH:_show_medal_card(t, card, preview)
@@ -3111,7 +2776,7 @@ function KH:_show_medal_card(t, card, preview)
 
     -- A preview does not block a real medal.
     if current and not current.preview then
-        if #queue < MAX_MEDAL_QUEUE then
+        if #queue < KH.MAX_MEDAL_QUEUE then
             table.insert(queue, card)
         end
         return
@@ -3199,7 +2864,7 @@ function KH:_register_heist_kill()
     self._heist_kill_count = count
 
     local next_index = (self._heist_kill_medal_index or 0) + 1
-    local threshold = KILL_MEDAL_THRESHOLDS[next_index]
+    local threshold = KH.KILL_MEDAL_THRESHOLDS[next_index]
     if not threshold or count < threshold then return nil end
 
     self._heist_kill_medal_index = next_index
@@ -3211,7 +2876,7 @@ function KH:_register_sentry_kill()
     self._sentry_kill_count = count
 
     local next_index = (self._sentry_kill_medal_index or 0) + 1
-    local threshold = SENTRY_KILL_MEDAL_THRESHOLDS[next_index]
+    local threshold = KH.SENTRY_KILL_MEDAL_THRESHOLDS[next_index]
     if not threshold or count < threshold then return nil end
 
     self._sentry_kill_medal_index = next_index
@@ -3226,7 +2891,7 @@ end
 function KH:ResetWeaponStreaks()
     self._rope_streak = nil
     self._weapon_streaks = {}
-    self:_clear_medal_cards(MEDAL_KIND_WEAPON_STREAK)
+    self:_clear_medal_cards(KH.MEDAL_KIND_WEAPON_STREAK)
 end
 
 -- ═══════════════════════════════════════════════════
@@ -3329,7 +2994,7 @@ function KH:_register_rope_kill(t)
     streak.count = streak.count + 1
     streak.last_t = t
     local next_index = streak.tier_index + 1
-    local tier = EVENT_MEDAL_DEFINITIONS.rope.tiers[next_index]
+    local tier = KH.EVENT_MEDAL_DEFINITIONS.rope.tiers[next_index]
     if tier and streak.count >= tier.count then
         streak.tier_index = next_index
         return next_index
@@ -3397,14 +3062,14 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
 
     -- `event_info` carries engine states already read by `ky_killfeed.lua`.
     -- First Strike and rappel tiers are resolved above, even while the HUD is hidden.
-    -- Cards follow the fixed order of `EVENT_MEDAL_ORDER`. Beyond the
-    -- active card and `MAX_MEDAL_QUEUE` queue places, subsequent medals
+    -- Cards follow the fixed order of `KH.EVENT_MEDAL_ORDER`. Beyond the
+    -- active card and `KH.MAX_MEDAL_QUEUE` queue places, subsequent medals
     -- are discarded: they open no tier to catch up.
     if contributes_to_combo ~= false and not is_sentry then
         if event_info then event_info.spray_down = false end
         if event_info and event_info.magazine_kill and not self._spray_down_awarded then
             local started_t = tonumber(self._spray_down_started_t)
-            if started_t == nil or t < started_t or t - started_t > SPRAY_DOWN_WINDOW then
+            if started_t == nil or t < started_t or t - started_t > KH.SPRAY_DOWN_WINDOW then
                 self._spray_down_started_t = t
                 self._spray_down_kills = 1
             else
@@ -3415,7 +3080,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
                 event_info.spray_down = true
             end
         end
-        for _, event_id in ipairs(EVENT_MEDAL_ORDER) do
+        for _, event_id in ipairs(KH.EVENT_MEDAL_ORDER) do
             local triggered
             if event_id == "first_strike" then
                 triggered = first_strike
@@ -3430,11 +3095,11 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
                 local previous_t = tonumber(self._last_breath_medal_t)
                 triggered = previous_t == nil
                     or t < previous_t
-                    or t - previous_t >= LAST_BREATH_MEDAL_COOLDOWN
+                    or t - previous_t >= KH.LAST_BREATH_MEDAL_COOLDOWN
                 if triggered then self._last_breath_medal_t = t end
             end
             if triggered then
-                self:_show_medal_card(t, make_event_medal_card(event_id, rope_tier), false)
+                self:_show_medal_card(t, KH.MakeEventMedalCard(event_id, rope_tier), false)
             end
         end
     end
@@ -3448,13 +3113,13 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     if contributes_to_combo ~= false then
         local kill_medal_count = self:_register_heist_kill()
         if kill_medal_count then
-            self:_show_medal_card(t, make_kill_medal_card(kill_medal_count), false)
+            self:_show_medal_card(t, KH.MakeKillMedalCard(kill_medal_count), false)
         end
         if is_sentry then
             local sentry_medal_count = self:_register_sentry_kill()
             if sentry_medal_count then
                 self:_show_medal_card(
-                    t, make_sentry_kill_medal_card(sentry_medal_count), false
+                    t, KH.MakeSentryKillMedalCard(sentry_medal_count), false
                 )
             end
         end
@@ -3501,7 +3166,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         score_text = format_kill_score(score),
         headshot   = not is_sentry and event_info ~= nil and event_info.headshot == true,
         sentry     = is_sentry,
-        sentry_icon = is_sentry and sentry_icon_descriptor() or nil,
+        sentry_icon = is_sentry and KH.SentryIconDescriptor() or nil,
         special_kind = special_definition and special_enemy_kind or nil,
         display_text = special_enemy_label(
             special_enemy_kind,
@@ -4487,9 +4152,9 @@ function KH:draw()
         -- medal adds a level: names rise as soon as it expires,
         -- without leaving empty space between the banner and the killfeed.
         local medal_h = medal_card_active and clamp(item_h + 6, 34, 46) or 0
-        local medal_top_gap = medal_card_active and MEDAL_TOP_GAP or 0
+        local medal_top_gap = medal_card_active and KH.MEDAL_TOP_GAP or 0
         local medal_feed_gap = (medal_card_active and visible_count > 0)
-            and MEDAL_ROW_GAP
+            and KH.MEDAL_ROW_GAP
             or 0
         local block_h = banner_h + banner_feed_gap + medal_top_gap
             + medal_h + medal_feed_gap
@@ -4632,7 +4297,7 @@ function KH:draw()
         -- the medal family occupying the row.
         if medal_card_active then
             local remaining = medal_card.preview
-                and MEDAL_CARD_DURATION
+                and KH.MEDAL_CARD_DURATION
                 or medal_card.t_end - t
             if remaining > 0 then
                 local intro = clamp((t - (medal_card.started_t or t)) / 0.15, 0, 1)
@@ -4645,35 +4310,35 @@ function KH:draw()
                 local my = medal_y - (mh - medal_h) * 0.5
                 local medal_color = medal_card.color or HUD_ACCENT_COLOR
 
-                draw_medal_frame(
+                KH.DrawMedalFrame(
                     self._panel, mx, my, mw, mh, medal_color, medal_alpha, 101
                 )
 
-                local content_padding = MEDAL_CONTENT_PADDING
-                if medal_card.kind == MEDAL_KIND_WEAPON_STREAK then
-                    content_padding = MEDAL_CHEVRON_MARGIN
-                        + MEDAL_CHEVRON_GROUP_W
-                        + MEDAL_CHEVRON_TEXT_GAP
+                local content_padding = KH.MEDAL_CONTENT_PADDING
+                if medal_card.kind == KH.MEDAL_KIND_WEAPON_STREAK then
+                    content_padding = KH.MEDAL_CHEVRON_MARGIN
+                        + KH.MEDAL_CHEVRON_GROUP_W
+                        + KH.MEDAL_CHEVRON_TEXT_GAP
                     local arrow_y = my + mh * 0.5
                     draw_chevrons(
                         self._panel,
-                        mx + MEDAL_CHEVRON_MARGIN,
+                        mx + KH.MEDAL_CHEVRON_MARGIN,
                         arrow_y,
                         1,
                         medal_color,
                         medal_alpha,
                         104,
-                        MEDAL_CHEVRON_STYLE
+                        KH.MEDAL_CHEVRON_STYLE
                     )
                     draw_chevrons(
                         self._panel,
-                        mx + mw - MEDAL_CHEVRON_MARGIN - MEDAL_CHEVRON_GROUP_W,
+                        mx + mw - KH.MEDAL_CHEVRON_MARGIN - KH.MEDAL_CHEVRON_GROUP_W,
                         arrow_y,
                         -1,
                         medal_color,
                         medal_alpha,
                         104,
-                        MEDAL_CHEVRON_STYLE
+                        KH.MEDAL_CHEVRON_STYLE
                     )
                 end
 
@@ -4691,9 +4356,9 @@ function KH:draw()
                 local icon = medal_card.icon
                 if icon and icon.texture then
                     local icon_size = clamp(
-                        mh * MEDAL_ICON_H_RATIO, MEDAL_ICON_MIN, MEDAL_ICON_MAX
+                        mh * KH.MEDAL_ICON_H_RATIO, KH.MEDAL_ICON_MIN, KH.MEDAL_ICON_MAX
                     )
-                    local reserved = icon_size + MEDAL_ICON_TEXT_GAP
+                    local reserved = icon_size + KH.MEDAL_ICON_TEXT_GAP
                     text_x = text_x + reserved
                     text_w = math.max(1, text_w - reserved)
 
@@ -5076,7 +4741,7 @@ function KH:DebugSimulate(n)
             headshot   = demo.headshot == true,
             headshot_icon = demo.headshot and headshot_icon_descriptor() or nil,
             sentry     = demo.sentry == true,
-            sentry_icon = demo.sentry and sentry_icon_descriptor() or nil,
+            sentry_icon = demo.sentry and KH.SentryIconDescriptor() or nil,
             special_kind = demo.special_kind,
             display_text = special_enemy_label(
                 demo.special_kind,
@@ -5118,12 +4783,12 @@ function KH:DebugSimulate(n)
             t_now, make_weapon_streak_card(preview.family, preview.tier_index), true
         )
     elseif preview.medal == "kill_total" then
-        self:_show_medal_card(t_now, make_kill_medal_card(preview.kills), true)
+        self:_show_medal_card(t_now, KH.MakeKillMedalCard(preview.kills), true)
     elseif preview.medal == "sentry_kill" then
-        self:_show_medal_card(t_now, make_sentry_kill_medal_card(preview.kills), true)
+        self:_show_medal_card(t_now, KH.MakeSentryKillMedalCard(preview.kills), true)
     elseif preview.medal == "event" then
-        local card = make_event_medal_card(preview.event, preview.tier_index)
-        self:_show_medal_card(t_now, set_event_medal_count(card, preview.event_count), true)
+        local card = KH.MakeEventMedalCard(preview.event, preview.tier_index)
+        self:_show_medal_card(t_now, KH.SetEventMedalCount(card, preview.event_count), true)
     end
 end
 

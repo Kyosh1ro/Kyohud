@@ -76,6 +76,7 @@ class CombatMedalTests(unittest.TestCase):
             end
         ''')
         self.load('core.lua', 'lib/managers/hudmanagerpd2')
+        self.load('ky_combat_medals.lua', 'lib/managers/hudmanagerpd2')
         self.load('ky_killfeed.lua', 'lib/managers/playermanager')
         self.load('ky_killfeed.lua', 'lib/units/enemies/cop/copdamage')
         self.load('ky_playerinventory.lua', 'lib/units/beings/player/playerinventory')
