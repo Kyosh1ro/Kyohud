@@ -615,9 +615,6 @@ local WEAPON_STREAK_DEFINITIONS = {
 
 
 -- Gold: the cumulative medal distinguishes itself from weapon family colors.
-
--- Vanilla preplanning icon 61 (`reduce_mobsters`) is a PAYDAY 2-owned kill
--- pictogram, so cumulative medals do not depend on VanillaHUD+ buff metadata.
 function KH:GetKillMedalIconDescriptor()
     if self._kill_medal_icon_descriptor then return self._kill_medal_icon_descriptor end
 
