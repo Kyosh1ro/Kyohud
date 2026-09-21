@@ -115,9 +115,11 @@ local RENDER_CACHES = {
 do
 local function _parse_hex6(hex)
     if type(hex) ~= "string" or #hex ~= 6 then return nil end
-    return tonumber(hex:sub(1, 2), 16) / 255,
-           tonumber(hex:sub(3, 4), 16) / 255,
-           tonumber(hex:sub(5, 6), 16) / 255
+    local h = tonumber(hex:sub(1, 2), 16)
+    local s = tonumber(hex:sub(3, 4), 16)
+    local v = tonumber(hex:sub(5, 6), 16)
+    if not (h and s and v) then return nil end
+    return h / 255, s / 255, v / 255
 end
 
 -- Pre-allocated colors for the Underdog card's split value line: the damage
@@ -145,7 +147,11 @@ for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
                 period = _anim.period,
                 tri = false,
             }
-            -- Optional third color for A→B→C→A cycling
+            -- Optional third color for A→B→C→A cycling. If color_c is
+            -- declared but unparseable, the whole entry is rejected so the
+            -- animation falls back to buff.frame_color instead of silently
+            -- degrading to a two-color cycle.
+            local entry_ok = true
             if _anim.color_c then
                 local _hex_c = KYO_BUFF_COLORS[_anim.color_c] or _anim.color_c
                 local r3, g3, b3 = _parse_hex6(_hex_c)
@@ -154,9 +160,13 @@ for _buff_id, _pres in pairs(KYO_BUFF_PRESENTATION) do
                     entry.g3 = g3
                     entry.b3 = b3
                     entry.tri = true
+                else
+                    entry_ok = false
                 end
             end
-            FRAME_ANIM_CACHE[_buff_id] = entry
+            if entry_ok then
+                FRAME_ANIM_CACHE[_buff_id] = entry
+            end
         end
     end
 end
