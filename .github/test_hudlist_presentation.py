@@ -105,6 +105,22 @@ class HUDListPresentationTests(unittest.TestCase):
             assert(config.buffs.passive_health_regen.frame_color == "passive_health_regen")
         ''')
 
+    def test_inspire_basic_sent_and_received_states_are_visually_distinct(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local config = kyohud.KYO_BUFF_CONFIG
+            local received = config.buffs.inspire
+            local sent = config.buffs.inspire_debuff
+            assert(received ~= nil and sent ~= nil)
+            assert(received.color == "ally_inspire")
+            assert(config.colors.ally_inspire == "52D6FF")
+            assert(received.label.id == "ky_hud_buff_label_inspire_received")
+            assert(received.label.fallback == "[Ally]")
+            assert(received.label.placement == "top")
+            assert(sent.label.id == "ky_hud_buff_label_inspire_cooldown")
+            assert(sent.label.fallback == "Boost+")
+        ''')
+
     def test_produced_modern_buffs_have_local_visual_metadata(self):
         lua = self.make_runtime()
         lua.execute('''

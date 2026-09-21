@@ -408,6 +408,8 @@ class HUDListModernBuffTests(unittest.TestCase):
             "lib/units/beings/player/playerdamage",
             "lib/units/beings/player/playerinventory",
             "lib/utils/temporarypropertymanager",
+            "lib/units/beings/player/playermovement",
+            "lib/units/beings/player/states/playerstandard",
         ], contexts)
         for hook in metadata["hooks"]:
             self.assertTrue((ROOT / hook["script_path"]).is_file())

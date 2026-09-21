@@ -189,6 +189,8 @@ class HUDListProviderCoreTests(unittest.TestCase):
             "lib/units/beings/player/playerdamage",
             "lib/units/beings/player/playerinventory",
             "lib/utils/temporarypropertymanager",
+            "lib/units/beings/player/playermovement",
+            "lib/units/beings/player/states/playerstandard",
         ])
         self.assertLess(
             next(i for i, hook in enumerate(hooks) if hook["script_path"] == "lua/hudlist.lua"),
