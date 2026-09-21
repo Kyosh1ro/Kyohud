@@ -44,6 +44,7 @@ class IconResolutionTests(unittest.TestCase):
             1,
         )
         lua.execute(source)
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
         return lua
 
     def assert_native_failure_uses_fallback(self, native_setup):

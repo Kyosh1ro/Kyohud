@@ -14,6 +14,7 @@ class BuffRowLayoutTests(unittest.TestCase):
     def setUp(self):
         self.lua = LuaRuntime(unpack_returned_tuples=True)
         self.lua.globals().ModPath = ROOT.as_posix() + "/"
+        self.lua.globals().RequiredScript = "lib/managers/hudmanagerpd2"
         self.lua.execute('''
             Hooks = {callbacks = {}}
             function Hooks:PostHook(class, method, id, fn) self.callbacks[id] = fn end
@@ -65,6 +66,12 @@ class BuffRowLayoutTests(unittest.TestCase):
         )
         self.lua.execute(
             (ROOT / "lua" / "ky_hud_banners.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
+            (ROOT / "lua" / "ky_buff_presentation.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
+            (ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig")
         )
 
     def test_zero_buffs_returns_empty_layout(self):

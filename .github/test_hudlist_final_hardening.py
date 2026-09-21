@@ -65,6 +65,7 @@ class TraceabilityAuditTests(unittest.TestCase):
         lua = _catalog_runtime()
         lua.execute(HUDLIST)
         lua.execute(CORE)
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
         lua.execute((ROOT / "lua" / "ky_combat_medals.lua").read_text(encoding="utf-8-sig"))
         lua.execute('''
             local catalog = kyohud.hudlist_catalog
@@ -321,6 +322,7 @@ class ResetCorrectnessTests(unittest.TestCase):
         lua = _catalog_runtime()
         lua.execute(HUDLIST)
         lua.execute(CORE)
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
         lua.execute((ROOT / "lua" / "ky_combat_medals.lua").read_text(encoding="utf-8-sig"))
         return lua
 
@@ -632,6 +634,7 @@ class NoExternalGlobalsTests(unittest.TestCase):
         ''')
         lua.execute(HUDLIST)
         lua.execute(CORE)
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
         lua.execute('''
             assert(HUDList.BuffItemBase.MAP.external.keep == true,
                 "external HUDList should not be mutated")
@@ -938,6 +941,7 @@ class LogBoundednessTests(unittest.TestCase):
         lua = _catalog_runtime()
         lua.execute(HUDLIST)
         lua.execute(CORE)
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
         lua.execute('''
             local log_count = 0
             local original_log = log
@@ -976,6 +980,7 @@ class DocumentedLimitsTests(unittest.TestCase):
     def test_killfeed_preserves_one_to_five_cards(self):
         lua = _catalog_runtime()
         lua.execute(CORE)
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
         lua.execute((ROOT / "lua" / "ky_combat_medals.lua").read_text(encoding="utf-8-sig"))
         lua.execute('''
             kyohud.settings = {

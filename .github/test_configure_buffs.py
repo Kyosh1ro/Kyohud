@@ -389,6 +389,7 @@ class ConfigureBuffsTests(unittest.TestCase):
             }
         ''')
         lua.execute((ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig"))
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
         lua.execute('''
             kyohud._BUFF_TOGGLE_SET = {forced_friendship = true, inspire = true}
             kyohud.settings = {enable_buffs = true}

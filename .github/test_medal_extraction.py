@@ -149,6 +149,9 @@ class MedalExtractionContextTests(unittest.TestCase):
         core_src = (ROOT / 'lua' / 'core.lua').read_text(encoding='utf-8-sig')
         self.lua.execute(core_src)
 
+        buff_render_src = (ROOT / 'lua' / 'ky_buff_render.lua').read_text(encoding='utf-8-sig')
+        self.lua.execute(buff_render_src)
+
         medals_src = (ROOT / 'lua' / 'ky_combat_medals.lua').read_text(encoding='utf-8-sig')
         self.lua.execute(medals_src)
 
@@ -180,6 +183,9 @@ class MedalExtractionContextTests(unittest.TestCase):
         self.lua.globals().RequiredScript = 'lib/managers/hudmanagerpd2'
         core_src = (ROOT / 'lua' / 'core.lua').read_text(encoding='utf-8-sig')
         self.lua.execute(core_src)
+
+        buff_render_src = (ROOT / 'lua' / 'ky_buff_render.lua').read_text(encoding='utf-8-sig')
+        self.lua.execute(buff_render_src)
 
         medals_src = (ROOT / 'lua' / 'ky_combat_medals.lua').read_text(encoding='utf-8-sig')
         self.lua.execute(medals_src)
