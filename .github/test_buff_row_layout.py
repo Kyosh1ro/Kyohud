@@ -442,7 +442,7 @@ class BuffRowLayoutTests(unittest.TestCase):
         self.assertIn("local item_h = clamp(size * 0.72 + 6, 28, 42)", later_block)
         self.assertIn("local font_size = clamp(size * 0.48, 15, 21)", later_block)
         self.assertIn(
-            "draw_heist_score_widget(self, self._panel, w, h, size, alpha, s)",
+            "KH.DrawHeistScoreWidget(self, self._panel, w, h, size, alpha, s)",
             later_block,
         )
 

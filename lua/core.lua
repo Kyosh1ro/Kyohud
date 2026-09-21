@@ -15,6 +15,7 @@ local function clamp(x, lo, hi)
     if x > hi then return hi end
     return x
 end
+KH.clamp = clamp
 
 local function now()
     return TimerManager:game():time()
@@ -70,6 +71,8 @@ KH.HUD_ACCENT_COLOR = HUD_ACCENT_COLOR
 local PRIORITY_TARGET_COLOR = Color(1, 0.38, 0.08)
 local KILLFEED_SCORE_COLOR = Color(1, 0.63, 0.12)
 local KILLFEED_SCORE_PENALTY_COLOR = Color(1, 0.22, 0.12)
+KH.KILLFEED_SCORE_COLOR = KILLFEED_SCORE_COLOR
+KH.KILLFEED_SCORE_PENALTY_COLOR = KILLFEED_SCORE_PENALTY_COLOR
 local HACKER_SPECIALIZATION_ID = 21
 local POCKET_ECM_GRENADE_ID = "pocket_ecm_jammer"
 local POCKET_ECM_COOLDOWN_ID = "pocket_ecm_jammer_debuff"
@@ -244,6 +247,7 @@ local function format_kill_score(score)
         or string.format("%.1f", score)
     return (score > 0 and "+" or "") .. value
 end
+KH.format_kill_score = format_kill_score
 
 local function has_active_killfeed_entry(kills, t)
     for _, kill in ipairs(kills or {}) do
@@ -257,6 +261,7 @@ end
 local function approximate_text_width(text, font_size)
     return string.len(tostring(text or "")) * font_size * 0.58
 end
+KH.approximate_text_width = approximate_text_width
 
 local function measure_killfeed_entries(panel, kills, first_kill, count, font, font_size)
     local measurer = nil
@@ -647,21 +652,6 @@ local function buff_label(buff)
         return buff.title_text, BUFF_LABEL_TOP
     end
     return nil, BUFF_LABEL_TOP
-end
-
-local heist_score_labels_cache = nil
-local function heist_score_labels()
-    if heist_score_labels_cache then return heist_score_labels_cache end
-
-    local labels = {
-        total = localized_text("ky_hud_score_total", "TOTAL SCORE"),
-        best_streak = localized_text("ky_hud_score_best_streak", "BEST STREAK"),
-        best_short = localized_text("ky_hud_score_best_short", "BEST"),
-    }
-    if managers and managers.localization then
-        heist_score_labels_cache = labels
-    end
-    return labels
 end
 
 local COMBO_LABELS = {
@@ -3382,223 +3372,6 @@ local function compare_buff_arrival(a, b)
     return a.id < b.id
 end
 
-local HEIST_SCORE_LABEL_COLOR = Color(0.86, 0.96, 1)
-local HEIST_SCORE_BEST_VALUE_COLOR = Color(1, 1, 1)
-local HEIST_SCORE_EDGE_MARGIN = 6
-
--- Cache heist score frame gradient points to avoid per-frame allocations
-function RENDER_CACHES.heist_score_bg_gradient_for(alpha)
-    local alpha_key = math.floor(alpha * 100 + 0.5)
-    local cached = RENDER_CACHES.heist_score_bg_gradient[alpha_key]
-    if cached then return cached end
-    cached = {
-        0, Color.black:with_alpha(alpha * 0.7),
-        0.58, Color.black:with_alpha(alpha * 0.46),
-        1, Color.black:with_alpha(0),
-    }
-    RENDER_CACHES.heist_score_bg_gradient[alpha_key] = cached
-    return cached
-end
-
-function RENDER_CACHES.heist_score_edge_gradient_for(color, alpha)
-    local alpha_key = math.floor(alpha * 100 + 0.5)
-    local color_cache = RENDER_CACHES.heist_score_edge_gradient[color]
-    if not color_cache then
-        color_cache = {}
-        RENDER_CACHES.heist_score_edge_gradient[color] = color_cache
-    end
-    local cached = color_cache[alpha_key]
-    if cached then return cached end
-    cached = {
-        0, color:with_alpha(alpha * 0.5),
-        0.72, color:with_alpha(alpha * 0.2),
-        1, color:with_alpha(0),
-    }
-    color_cache[alpha_key] = cached
-    return cached
-end
-
-local function draw_heist_score_frame(panel, x, y, w, h, color, alpha, layer)
-    panel:gradient({
-        x = x,
-        y = y + 1,
-        w = w,
-        h = h - 2,
-        orientation = "horizontal",
-        gradient_points = RENDER_CACHES.heist_score_bg_gradient_for(alpha),
-        layer = layer,
-    })
-    panel:rect({
-        x = x, y = y + 2, w = 2, h = h - 4,
-        color = color, alpha = alpha * 0.9, layer = layer + 1,
-    })
-    local edge_gradient = RENDER_CACHES.heist_score_edge_gradient_for(color, alpha)
-    panel:gradient({
-        x = x + 2,
-        y = y + 1,
-        w = w - 2,
-        h = 1,
-        orientation = "horizontal",
-        gradient_points = edge_gradient,
-        layer = layer + 1,
-    })
-    panel:gradient({
-        x = x + 2,
-        y = y + h - 2,
-        w = w - 2,
-        h = 1,
-        orientation = "horizontal",
-        gradient_points = edge_gradient,
-        layer = layer + 1,
-    })
-end
-
-local function draw_heist_score_widget(hud, panel, panel_w, panel_h, size, alpha, settings)
-    local labels = heist_score_labels()
-    local total = hud._heist_score_total or 0
-    local best_streak = hud._heist_score_best_streak or 0
-    local show_best_streak = settings.show_best_streak ~= false
-    local total_text = format_kill_score(total)
-    local best_streak_text = format_kill_score(best_streak)
-    local font = tweak_data.menu.pd2_small_font or "fonts/font_small_mf"
-    local label_font_size = clamp(size * 0.34, 11, 14)
-    local value_font_size = 20
-    local best_label_font_size = math.max(9, label_font_size - 1)
-    local best_value_font_size = label_font_size
-    local row_h = math.ceil(value_font_size + 6)
-    local pad_x = clamp(size * 0.3, 9, 14)
-    local pad_y = 2
-    local label_gap = clamp(size * 0.3, 8, 12)
-    local best_group_gap = 3
-    local value_gap = clamp(size * 0.16, 5, 7)
-    local label_w = approximate_text_width(labels.total, label_font_size)
-    local value_w = approximate_text_width(total_text, value_font_size)
-    local best_label_w = show_best_streak
-        and approximate_text_width(labels.best_short, best_label_font_size)
-        or 0
-    local best_value_w = show_best_streak
-        and approximate_text_width(best_streak_text, best_value_font_size)
-        or 0
-    local best_group_w = best_label_w
-        + (show_best_streak and best_group_gap or 0)
-        + best_value_w
-
-    local block_w = math.min(
-        math.ceil(
-            label_w + label_gap + best_group_w
-                + (show_best_streak and value_gap or 0)
-                + value_w + pad_x * 2
-        ),
-        math.max(1, panel_w - HEIST_SCORE_EDGE_MARGIN * 2)
-    )
-    local block_h = math.ceil(row_h + pad_y * 2)
-    local anchor_x = panel_w * clamp(tonumber(settings.score_position_x) or 100, 0, 100) / 100
-    local anchor_y = panel_h * clamp(tonumber(settings.score_position_y) or 75, 0, 100) / 100
-    local x = clamp(
-        anchor_x - block_w * 0.5,
-        HEIST_SCORE_EDGE_MARGIN,
-        math.max(HEIST_SCORE_EDGE_MARGIN, panel_w - HEIST_SCORE_EDGE_MARGIN - block_w)
-    )
-    local y = clamp(
-        anchor_y - block_h * 0.5,
-        HEIST_SCORE_EDGE_MARGIN,
-        math.max(HEIST_SCORE_EDGE_MARGIN, panel_h - HEIST_SCORE_EDGE_MARGIN - block_h)
-    )
-    local total_color = total < 0
-        and KILLFEED_SCORE_PENALTY_COLOR
-        or KILLFEED_SCORE_COLOR
-
-    draw_heist_score_frame(panel, x, y, block_w, block_h, total_color, alpha, 101)
-
-    -- When the panel is narrower than the block's natural width,
-    -- reduce right-to-left text areas rather than letting them
-    -- overlap or exit the frame.
-    local content_left = math.min(x + pad_x, x + block_w)
-    local content_right = math.max(content_left, x + block_w - pad_x)
-    local label_x = content_left
-
-    value_w = math.min(value_w, math.max(0, content_right - content_left))
-    local value_x = content_right - value_w
-    local cursor_x = value_x
-    local best_value_x = cursor_x
-    local best_label_x = cursor_x
-
-    if show_best_streak then
-        cursor_x = cursor_x - math.min(value_gap, math.max(0, cursor_x - content_left))
-        best_value_w = math.min(best_value_w, math.max(0, cursor_x - content_left))
-        best_value_x = cursor_x - best_value_w
-        cursor_x = best_value_x
-
-        cursor_x = cursor_x - math.min(best_group_gap, math.max(0, cursor_x - content_left))
-        best_label_w = math.min(best_label_w, math.max(0, cursor_x - content_left))
-        best_label_x = cursor_x - best_label_w
-        cursor_x = best_label_x
-    end
-
-    cursor_x = cursor_x - math.min(label_gap, math.max(0, cursor_x - content_left))
-    label_w = math.min(label_w, math.max(0, cursor_x - label_x))
-    local row_y = y + pad_y
-
-    panel:text({
-        text = labels.total,
-        font = font,
-        font_size = label_font_size,
-        color = HEIST_SCORE_LABEL_COLOR,
-        align = "left",
-        vertical = "center",
-        x = label_x,
-        y = row_y,
-        w = label_w,
-        h = row_h,
-        layer = 103,
-        alpha = alpha * 0.85,
-    })
-    panel:text({
-        text = total_text,
-        font = font,
-        font_size = value_font_size,
-        color = total_color,
-        align = "right",
-        vertical = "center",
-        x = value_x,
-        y = row_y,
-        w = value_w,
-        h = row_h,
-        layer = 103,
-        alpha = alpha,
-    })
-
-    if show_best_streak then
-        panel:text({
-            text = labels.best_short,
-            font = font,
-            font_size = best_label_font_size,
-            color = HEIST_SCORE_LABEL_COLOR,
-            align = "right",
-            vertical = "center",
-            x = best_label_x,
-            y = row_y,
-            w = best_label_w,
-            h = row_h,
-            layer = 103,
-            alpha = alpha * 0.6,
-        })
-        panel:text({
-            text = best_streak_text,
-            font = font,
-            font_size = best_value_font_size,
-            color = HEIST_SCORE_BEST_VALUE_COLOR,
-            align = "right",
-            vertical = "center",
-            x = best_value_x,
-            y = row_y,
-            w = best_value_w,
-            h = row_h,
-            layer = 103,
-            alpha = alpha * 0.85,
-        })
-    end
-end
 
 -- ═══════════════════════════════════════════════════
 -- Dessin du HUD
@@ -4528,7 +4301,7 @@ function KH:draw()
 
     if s.enable_killfeed and s.show_total_score ~= false
             and self._heist_score_recorded then
-        draw_heist_score_widget(self, self._panel, w, h, size, alpha, s)
+        KH.DrawHeistScoreWidget(self, self._panel, w, h, size, alpha, s)
     end
 end
 
