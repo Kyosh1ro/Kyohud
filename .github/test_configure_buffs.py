@@ -51,8 +51,6 @@ class ConfigureBuffsTests(unittest.TestCase):
             # Cerveau (Mastermind)
             self.assertTrue(lua.eval("kyohud._defaults.forced_friendship"))
             self.assertTrue(lua.eval("kyohud._defaults.aggressive_reload_aced"))
-            self.assertTrue(lua.eval("kyohud._defaults.combat_medic"))
-            self.assertFalse(lua.eval("kyohud._defaults.combat_medic_passive"))
             self.assertFalse(lua.eval("kyohud._defaults.hostage_taker"))
             self.assertTrue(lua.eval("kyohud._defaults.inspire"))
             self.assertFalse(lua.eval("kyohud._defaults.painkiller"))
@@ -258,8 +256,6 @@ class ConfigureBuffsTests(unittest.TestCase):
         expected_mastermind = [
             "ky_buff_forced_friendship",
             "ky_buff_aggressive_reload_aced",
-            "ky_buff_combat_medic",
-            "ky_buff_combat_medic_passive",
             "ky_buff_hostage_taker",
             "ky_buff_inspire",
             "ky_buff_painkiller",
@@ -333,8 +329,8 @@ class ConfigureBuffsTests(unittest.TestCase):
 
             # Individual buff callbacks
             individual_buffs = [
-                "forced_friendship", "aggressive_reload_aced", "combat_medic",
-                "combat_medic_passive", "hostage_taker", "inspire", "painkiller",
+                "forced_friendship", "aggressive_reload_aced",
+                "hostage_taker", "inspire", "painkiller",
                 "partner_in_crime", "quick_fix", "uppers", "inspire_debuff",
                 "inspire_revive_debuff", "bulletproof", "bullet_storm", "die_hard",
                 "overkill", "underdog", "bullseye_debuff", "lock_n_load",
