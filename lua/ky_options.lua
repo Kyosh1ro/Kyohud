@@ -40,8 +40,6 @@ KH._defaults = {
     -- Individual buff toggles (Cerveau/Mastermind)
     forced_friendship = true,
     aggressive_reload_aced = true,
-    combat_medic = true,
-    combat_medic_passive = false,
     hostage_taker = false,
     inspire = true,
     painkiller = false,
@@ -298,8 +296,8 @@ MenuCallbackHandler.KY_BackCallback   = function() end
 -- preserving false, then saves and optionally refreshes the HUD.
 local BUFF_TOGGLE_IDS = {
     -- Cerveau (Mastermind)
-    "forced_friendship", "aggressive_reload_aced", "combat_medic",
-    "combat_medic_passive", "hostage_taker", "inspire", "painkiller",
+    "forced_friendship", "aggressive_reload_aced",
+    "hostage_taker", "inspire", "painkiller",
     "partner_in_crime", "quick_fix", "uppers", "inspire_debuff",
     "inspire_revive_debuff",
     -- Exécuteur (Enforcer)
