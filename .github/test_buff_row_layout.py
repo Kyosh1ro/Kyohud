@@ -288,32 +288,38 @@ class BuffRowLayoutTests(unittest.TestCase):
             assert(dodge_bitmap and dodge_bitmap.rotation == nil,
                 "renderer rotated the Burglar dodge icon")
 
-            local has_health_green_frame = false
+            -- At game_t=100 the A→B→C→A cycle is at phase 1 (segment 1, frac 0),
+            -- i.e. exactly the gray mid color 707A75 (B). The renderer must use
+            -- that color for both the frame gradient and the outline strokes.
+            local mid_r = 112 / 255
+            local mid_g = 122 / 255
+            local mid_b = 117 / 255
+            local has_health_mid_frame = false
             for _, gradient in ipairs(panel.gradients) do
                 for _, point in ipairs(gradient.gradient_points or {}) do
                     if type(point) == "table" and type(point.r) == "number"
-                        and point.r > 0.25 and point.r < 0.55
-                        and point.g > 0.80 and point.g < 1.0
-                        and point.b > 0.55 and point.b < 0.85 then
-                        has_health_green_frame = true
+                        and math.abs(point.r - mid_r) < 0.005
+                        and math.abs(point.g - mid_g) < 0.005
+                        and math.abs(point.b - mid_b) < 0.005 then
+                        has_health_mid_frame = true
                     end
                 end
             end
-            assert(has_health_green_frame,
-                "renderer did not use an animated PV+ green for the health regeneration frame")
+            assert(has_health_mid_frame,
+                "renderer did not use the PV+ animated mid color 707A75 for the health regeneration frame at game_t=100")
 
-            local green_outline_strokes = 0
+            local mid_outline_strokes = 0
             for _, rect in ipairs(panel.rects) do
                 if rect.color and type(rect.color.r) == "number"
-                    and rect.color.r > 0.25 and rect.color.r < 0.55
-                    and rect.color.g > 0.80 and rect.color.g < 1.0
-                    and rect.color.b > 0.55 and rect.color.b < 0.85 then
-                    green_outline_strokes = green_outline_strokes + 1
+                    and math.abs(rect.color.r - mid_r) < 0.005
+                    and math.abs(rect.color.g - mid_g) < 0.005
+                    and math.abs(rect.color.b - mid_b) < 0.005 then
+                    mid_outline_strokes = mid_outline_strokes + 1
                 end
             end
-            assert(green_outline_strokes == 4,
-                "PV+ must have a complete visible green outline, got "
-                .. tostring(green_outline_strokes) .. " strokes")
+            assert(mid_outline_strokes == 4,
+                "PV+ must have a complete visible mid-color outline at game_t=100, got "
+                .. tostring(mid_outline_strokes) .. " strokes")
 
             local first_outline_color = panel.rects[1].color
             local static_frame_color
