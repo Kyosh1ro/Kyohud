@@ -1,5 +1,5 @@
 v1.0.0 (22.09.2026):
-- Optimisation.
+- Performance optimizations.
 - Public release.
 
 r25 (21.09.2026):
