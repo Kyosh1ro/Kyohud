@@ -41,6 +41,7 @@ class BuffFrameAnimationTests(unittest.TestCase):
         lua.execute(_BOOTSTRAP)
         lua.execute((ROOT / "lua" / "hudlist.lua").read_text(encoding="utf-8-sig"))
         lua.execute((ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig"))
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
         lua.execute('kyohud.settings = {enable_buffs = true}')
         return lua
 
