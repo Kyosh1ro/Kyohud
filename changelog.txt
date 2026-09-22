@@ -1,11 +1,5 @@
 v1.0.0 (22.09.2026):
-- Extracted the combat medal subsystem into lua/ky_combat_medals.lua.
-- Extracted the heist score widget into lua/ky_heist_score.lua.
-- Extracted the HUD banners into lua/ky_hud_banners.lua.
-- Extracted the buff renderer into lua/ky_buff_render.lua.
-- Extracted the killfeed renderer into lua/ky_killfeed_render.lua.
-- Significantly reduced the size of lua/core.lua through modularisation.
-- Switched to semantic versioning (MAJOR.MINOR.PATCH).
+- Optimisation.
 - Public release.
 
 r25 (21.09.2026):
