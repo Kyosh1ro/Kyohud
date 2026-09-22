@@ -6,6 +6,7 @@ v1.0.0 (22.09.2026):
 - Extracted the killfeed renderer into lua/ky_killfeed_render.lua.
 - Significantly reduced the size of lua/core.lua through modularisation.
 - Switched to semantic versioning (MAJOR.MINOR.PATCH).
+- Public release.
 
 r25 (21.09.2026):
 - Added the Inspire buff and fixed its application on allies.
