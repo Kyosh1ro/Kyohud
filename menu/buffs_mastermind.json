@@ -26,26 +26,6 @@
         },
         {
             "type": "toggle",
-            "id": "ky_buff_combat_medic",
-            "title": "ky_opt_buff_combat_medic",
-            "description": "ky_opt_buff_combat_medic_desc",
-            "value": "combat_medic",
-            "callback": "KY_ToggleBuff_combat_medic",
-            "enabled_by": "enable_buffs",
-            "default_value": true
-        },
-        {
-            "type": "toggle",
-            "id": "ky_buff_combat_medic_passive",
-            "title": "ky_opt_buff_combat_medic_passive",
-            "description": "ky_opt_buff_combat_medic_passive_desc",
-            "value": "combat_medic_passive",
-            "callback": "KY_ToggleBuff_combat_medic_passive",
-            "enabled_by": "enable_buffs",
-            "default_value": false
-        },
-        {
-            "type": "toggle",
             "id": "ky_buff_hostage_taker",
             "title": "ky_opt_buff_hostage_taker",
             "description": "ky_opt_buff_hostage_taker_desc",

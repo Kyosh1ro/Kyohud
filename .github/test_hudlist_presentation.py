@@ -35,6 +35,8 @@ class HUDListPresentationTests(unittest.TestCase):
         ''')
         lua.execute((ROOT / "lua" / "hudlist.lua").read_text(encoding="utf-8-sig"))
         lua.execute((ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig"))
+        lua.execute((ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig"))
+        lua.execute((ROOT / "lua" / "ky_hud_banners.lua").read_text(encoding="utf-8-sig"))
         lua.execute('kyohud.settings = {enable_buffs = true}')
         return lua
 
@@ -94,11 +96,11 @@ class HUDListPresentationTests(unittest.TestCase):
             assert(buffs.total_dodge_chance.fixed_slot == 9)
         ''')
 
-    def test_dodge_uses_dark_clover_green_and_health_regen_has_green_frame(self):
+    def test_dodge_uses_caribbean_green_and_health_regen_has_green_frame(self):
         lua = self.make_runtime()
         lua.execute('''
             local config = kyohud.KYO_BUFF_CONFIG
-            assert(config.colors.total_dodge_chance == "2E8B57")
+            assert(config.colors.total_dodge_chance == "2FD3B0")
             assert(config.colors.passive_health_regen == "4ADE9B")
             assert(config.colors.total_dodge_chance ~= config.colors.passive_health_regen)
             assert(config.buffs.total_dodge_chance.color == "total_dodge_chance")

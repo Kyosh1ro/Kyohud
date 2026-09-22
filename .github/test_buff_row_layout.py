@@ -14,6 +14,7 @@ class BuffRowLayoutTests(unittest.TestCase):
     def setUp(self):
         self.lua = LuaRuntime(unpack_returned_tuples=True)
         self.lua.globals().ModPath = ROOT.as_posix() + "/"
+        self.lua.globals().RequiredScript = "lib/managers/hudmanagerpd2"
         self.lua.execute('''
             Hooks = {callbacks = {}}
             function Hooks:PostHook(class, method, id, fn) self.callbacks[id] = fn end
@@ -62,6 +63,18 @@ class BuffRowLayoutTests(unittest.TestCase):
         )
         self.lua.execute(
             (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
+            (ROOT / "lua" / "ky_hud_banners.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
+            (ROOT / "lua" / "ky_killfeed_render.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
+            (ROOT / "lua" / "ky_buff_presentation.lua").read_text(encoding="utf-8-sig")
+        )
+        self.lua.execute(
+            (ROOT / "lua" / "ky_buff_render.lua").read_text(encoding="utf-8-sig")
         )
 
     def test_zero_buffs_returns_empty_layout(self):
@@ -275,32 +288,38 @@ class BuffRowLayoutTests(unittest.TestCase):
             assert(dodge_bitmap and dodge_bitmap.rotation == nil,
                 "renderer rotated the Burglar dodge icon")
 
-            local has_health_green_frame = false
+            -- At game_t=100 the A→B→C→A cycle is at phase 1 (segment 1, frac 0),
+            -- i.e. exactly the gray mid color 707A75 (B). The renderer must use
+            -- that color for both the frame gradient and the outline strokes.
+            local mid_r = 112 / 255
+            local mid_g = 122 / 255
+            local mid_b = 117 / 255
+            local has_health_mid_frame = false
             for _, gradient in ipairs(panel.gradients) do
                 for _, point in ipairs(gradient.gradient_points or {}) do
                     if type(point) == "table" and type(point.r) == "number"
-                        and point.r > 0.25 and point.r < 0.55
-                        and point.g > 0.80 and point.g < 1.0
-                        and point.b > 0.55 and point.b < 0.85 then
-                        has_health_green_frame = true
+                        and math.abs(point.r - mid_r) < 0.005
+                        and math.abs(point.g - mid_g) < 0.005
+                        and math.abs(point.b - mid_b) < 0.005 then
+                        has_health_mid_frame = true
                     end
                 end
             end
-            assert(has_health_green_frame,
-                "renderer did not use an animated PV+ green for the health regeneration frame")
+            assert(has_health_mid_frame,
+                "renderer did not use the PV+ animated mid color 707A75 for the health regeneration frame at game_t=100")
 
-            local green_outline_strokes = 0
+            local mid_outline_strokes = 0
             for _, rect in ipairs(panel.rects) do
                 if rect.color and type(rect.color.r) == "number"
-                    and rect.color.r > 0.25 and rect.color.r < 0.55
-                    and rect.color.g > 0.80 and rect.color.g < 1.0
-                    and rect.color.b > 0.55 and rect.color.b < 0.85 then
-                    green_outline_strokes = green_outline_strokes + 1
+                    and math.abs(rect.color.r - mid_r) < 0.005
+                    and math.abs(rect.color.g - mid_g) < 0.005
+                    and math.abs(rect.color.b - mid_b) < 0.005 then
+                    mid_outline_strokes = mid_outline_strokes + 1
                 end
             end
-            assert(green_outline_strokes == 4,
-                "PV+ must have a complete visible green outline, got "
-                .. tostring(green_outline_strokes) .. " strokes")
+            assert(mid_outline_strokes == 4,
+                "PV+ must have a complete visible mid-color outline at game_t=100, got "
+                .. tostring(mid_outline_strokes) .. " strokes")
 
             local first_outline_color = panel.rects[1].color
             local static_frame_color
@@ -430,21 +449,20 @@ class BuffRowLayoutTests(unittest.TestCase):
         ''')
 
     def test_buff_scale_is_local_to_buff_rendering(self):
-        source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
-        buff_block = source.split("-- ── Draw buffs ──", 1)[1].split(
-            "-- ── Draw streak banner and horizontal killfeed ──", 1
+        core_source = (ROOT / "lua" / "core.lua").read_text(encoding="utf-8-sig")
+        module_source = (ROOT / "lua" / "ky_killfeed_render.lua").read_text(encoding="utf-8-sig")
+        buff_block = core_source.split("-- ── Draw buffs ──", 1)[1].split(
+            "Killfeed rendering delegated to ky_killfeed_render.lua", 1
         )[0]
-        later_block = source.split(
-            "-- ── Draw streak banner and horizontal killfeed ──", 1
+        later_block = core_source.split(
+            "-- ── Draw buffs ──", 1
         )[1]
         self.assertNotRegex(buff_block, r"(?m)^\s*size\s*=")
         self.assertIn("local buff_size = layout.effective_size", buff_block)
-        self.assertIn("local item_h = clamp(size * 0.72 + 6, 28, 42)", later_block)
-        self.assertIn("local font_size = clamp(size * 0.48, 15, 21)", later_block)
-        self.assertIn(
-            "draw_heist_score_widget(self, self._panel, w, h, size, alpha, s)",
-            later_block,
-        )
+        self.assertIn("KH:render_killfeed(self._panel, w, h, size, alpha, radius)", later_block)
+        self.assertIn("KH.DrawHeistScoreWidget(self, self._panel, w, h, size, alpha, s)", later_block)
+        self.assertIn("local item_h = clamp(size * 0.72 + 6, 28, 42)", module_source)
+        self.assertIn("local font_size = clamp(size * 0.48, 15, 21)", module_source)
 
 
 if __name__ == "__main__":
