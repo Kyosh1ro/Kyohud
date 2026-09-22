@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to rebuild (for example, r76)
+        description: Existing release tag to rebuild (for example, v1.0.0)
         required: true
         type: string
 
@@ -29,19 +29,17 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Validate tag and mod version
+      - name: Validate tag and mod version (SemVer strict)
         shell: pwsh
-        run: |
-          $mod = Get-Content -LiteralPath .\mod.txt -Raw | ConvertFrom-Json
-          $expectedTag = "r$($mod.version)"
-
-          if ($env:RELEASE_TAG -ne $expectedTag) {
-              throw "Release tag '$env:RELEASE_TAG' does not match mod.txt version '$($mod.version)'. Expected '$expectedTag'."
-          }
+        run: python .\.github\validate_release_version.py $env:RELEASE_TAG .\mod.txt
 
       - name: Test SuperBLT hashing implementation
         shell: pwsh
         run: python .\.github\test_superblt_hash.py -v
+
+      - name: Test release version validation
+        shell: pwsh
+        run: python .\.github\test_release_version_validation.py -v
 
       - name: Stage the distributable mod
         shell: pwsh
