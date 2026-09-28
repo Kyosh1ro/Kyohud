@@ -1,3 +1,7 @@
+v1.0.1 (28.09.2026):
+- Refined English and French multikill announcements for clearer wording and more consistent progression across all three variants.
+- Translated "KILL CHAIN" to "À LA CHAÎNE" in French.
+
 v1.0.0 (22.09.2026):
 - Performance optimizations.
 - Public release.

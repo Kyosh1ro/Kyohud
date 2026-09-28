@@ -480,12 +480,12 @@ KH.localized_text = localized_text
 
 local COMBO_LABELS = {
     [2] = {
-        { id = "ky_hud_combo_2",   fallback = "CLEAN PAIR" },
-        { id = "ky_hud_combo_2_2", fallback = "DOUBLE TAP" },
-        { id = "ky_hud_combo_2_3", fallback = "TWO FOR ONE" },
+        { id = "ky_hud_combo_2",   fallback = "DOUBLE KILL" },
+        { id = "ky_hud_combo_2_2", fallback = "DOUBLE IMPACT" },
+        { id = "ky_hud_combo_2_3", fallback = "DEADLY DUO" },
     },
     [3] = {
-        { id = "ky_hud_combo_3",   fallback = "EXCELLENT" },
+        { id = "ky_hud_combo_3",   fallback = "TRIPLE KILL" },
         { id = "ky_hud_combo_3_2", fallback = "TRIPLE THREAT" },
         { id = "ky_hud_combo_3_3", fallback = "THREE OF A KIND" },
     },
@@ -497,32 +497,32 @@ local COMBO_LABELS = {
     [5] = {
         { id = "ky_hud_combo_5",   fallback = "FRENZY" },
         { id = "ky_hud_combo_5_2", fallback = "HIGH FIVE" },
-        { id = "ky_hud_combo_5_3", fallback = "FIVEFOLD FURY" },
+        { id = "ky_hud_combo_5_3", fallback = "FATAL HAND" },
     },
     [6] = {
         { id = "ky_hud_combo_6",   fallback = "CARNAGE" },
         { id = "ky_hud_combo_6_2", fallback = "SIX FEET UNDER" },
-        { id = "ky_hud_combo_6_3", fallback = "SIXFOLD SLAUGHTER" },
+        { id = "ky_hud_combo_6_3", fallback = "SLAUGHTER" },
     },
     [7] = {
         { id = "ky_hud_combo_7",   fallback = "MASSACRE" },
         { id = "ky_hud_combo_7_2", fallback = "LUCKY SEVEN" },
-        { id = "ky_hud_combo_7_3", fallback = "SEVENTH HEAVEN" },
+        { id = "ky_hud_combo_7_3", fallback = "BLOODBATH" },
     },
     [8] = {
         { id = "ky_hud_combo_8",   fallback = "EXTERMINATION" },
-        { id = "ky_hud_combo_8_2", fallback = "EIGHT COUNT" },
-        { id = "ky_hud_combo_8_3", fallback = "OCTUPLE ONSLAUGHT" },
+        { id = "ky_hud_combo_8_2", fallback = "EIGHT DOWN" },
+        { id = "ky_hud_combo_8_3", fallback = "ONSLAUGHT" },
     },
     [9] = {
         { id = "ky_hud_combo_9",   fallback = "APOCALYPSE" },
-        { id = "ky_hud_combo_9_2", fallback = "CLOUD NINE" },
+        { id = "ky_hud_combo_9_2", fallback = "UNTOUCHABLE" },
         { id = "ky_hud_combo_9_3", fallback = "NINE LIVES DENIED" },
     },
     [10] = {
-        { id = "ky_hud_combo_10",   fallback = "PERFECT HEIST" },
+        { id = "ky_hud_combo_10",   fallback = "TOTAL ANNIHILATION" },
         { id = "ky_hud_combo_10_2", fallback = "TEN OUT OF TEN" },
-        { id = "ky_hud_combo_10_3", fallback = "DECADE OF DOOM" },
+        { id = "ky_hud_combo_10_3", fallback = "CLEAN SWEEP" },
     },
 }
 local COMBO_LABEL_VARIANT_COUNT = #COMBO_LABELS[2]
