@@ -794,10 +794,7 @@ local function update_position_buffs(manager, t)
         return
     end
 
-    local upgrade_ok, has_uppers = pcall(function()
-        return manager:has_category_upgrade("first_aid_kit", "first_aid_kit_auto_recovery")
-    end)
-    if upgrade_ok and has_uppers and FirstAidKitBase and FirstAidKitBase.GetFirstAidKit then
+    if FirstAidKitBase and FirstAidKitBase.GetFirstAidKit then
         local kit_ok, kit = pcall(function()
             return FirstAidKitBase.GetFirstAidKit(unit:position())
         end)
