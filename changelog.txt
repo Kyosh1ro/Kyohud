@@ -1,3 +1,6 @@
+v1.0.2 (14.10.2026):
+- Fixed the Uppers buff indicator for allied first aid kits when the local player does not own the skill.
+
 v1.0.1 (29.09.2026):
 - Refined English and French multikill announcements for clearer wording and more consistent progression across all three variants.
 - Translated "KILL CHAIN" to "À LA CHAÎNE" in French.
