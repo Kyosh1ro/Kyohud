@@ -345,7 +345,115 @@ class HUDListModernBuffTests(unittest.TestCase):
 
             manager.has_category_upgrade = function() return false end
             Hooks.post.update(manager, 100.9, 0.3)
+            assert(scans == 4)
+        ''')
+
+    def test_uppers_activates_for_allied_kit_without_local_skill(self):
+        lua = self.runtime()
+        lua.execute('''
+            local scans = 0
+            local last_position = nil
+            local pos = {x = 0, y = 0, z = 0}
+            local function valid_kit(p)
+                scans = scans + 1
+                last_position = p
+                return {}
+            end
+            FirstAidKitBase = {GetFirstAidKit = valid_kit}
+            local unit = {position = function() return pos end}
+            local manager = {}
+            function manager:player_unit() return unit end
+            function manager:has_category_upgrade(category, upgrade)
+                return false
+            end
+            function manager:smoke_screens() return {} end
+
+            Hooks.post.update(manager, 100, 0.01)
+            assert(scans == 1, "native query must run regardless of local skill")
+            assert(last_position == pos, "player position must be forwarded to native query")
+            assert(kyohud.hudlist:get_buff("uppers") ~= nil, "uppers must activate for allied eligible kit")
+
+            FirstAidKitBase.GetFirstAidKit = valid_kit
+            Hooks.post.update(manager, 100.25, 0.25)
+            assert(kyohud.hudlist:get_buff("uppers") ~= nil, "uppers must be active before removal test")
+            FirstAidKitBase.GetFirstAidKit = function(p) scans = scans + 1; last_position = p; return nil end
+            Hooks.post.update(manager, 100.50, 0.25)
             assert(scans == 3)
+            assert(kyohud.hudlist:get_buff("uppers") == nil, "no eligible kit must deactivate")
+
+            FirstAidKitBase.GetFirstAidKit = valid_kit
+            Hooks.post.update(manager, 100.75, 0.25)
+            assert(kyohud.hudlist:get_buff("uppers") ~= nil, "uppers must be active before removal test")
+            FirstAidKitBase.GetFirstAidKit = function(p) scans = scans + 1; last_position = p; error("native fail") end
+            Hooks.post.update(manager, 101.0, 0.25)
+            assert(scans == 5)
+            assert(kyohud.hudlist:get_buff("uppers") == nil, "failing native query must deactivate safely")
+
+            FirstAidKitBase.GetFirstAidKit = valid_kit
+            Hooks.post.update(manager, 101.25, 0.25)
+            assert(kyohud.hudlist:get_buff("uppers") ~= nil, "uppers must be active before removal test")
+            FirstAidKitBase = nil
+            Hooks.post.update(manager, 101.50, 0.25)
+            assert(scans == 6, "missing FirstAidKitBase must not call native query")
+            assert(kyohud.hudlist:get_buff("uppers") == nil, "missing class must deactivate")
+
+            FirstAidKitBase = {GetFirstAidKit = valid_kit}
+            Hooks.post.update(manager, 101.75, 0.25)
+            assert(kyohud.hudlist:get_buff("uppers") ~= nil, "uppers must be active before removal test")
+            FirstAidKitBase = {}
+            Hooks.post.update(manager, 102.0, 0.25)
+            assert(scans == 7, "missing GetFirstAidKit must not call native query")
+            assert(kyohud.hudlist:get_buff("uppers") == nil, "missing method must deactivate")
+
+            FirstAidKitBase = {GetFirstAidKit = valid_kit}
+            Hooks.post.update(manager, 102.25, 0.25)
+            assert(kyohud.hudlist:get_buff("uppers") ~= nil, "uppers must be active before removal test")
+            local pre_scans = scans
+            local dead_unit = {alive = false, position = function() return {} end}
+            local dead_manager = {}
+            function dead_manager:player_unit() return dead_unit end
+            function dead_manager:smoke_screens() return {} end
+            Hooks.post.update(dead_manager, 102.50, 0.25)
+            assert(scans == pre_scans, "dead player must not trigger native scan")
+            assert(kyohud.hudlist:get_buff("uppers") == nil, "dead player must deactivate")
+
+            FirstAidKitBase = {GetFirstAidKit = valid_kit}
+            Hooks.post.update(manager, 102.75, 0.25)
+            assert(kyohud.hudlist:get_buff("uppers") ~= nil, "uppers must be active before removal test")
+            pre_scans = scans
+            local no_unit_manager = {}
+            function no_unit_manager:player_unit() return nil end
+            function no_unit_manager:smoke_screens() return {} end
+            Hooks.post.update(no_unit_manager, 103.0, 0.25)
+            assert(scans == pre_scans, "missing player unit must not trigger native scan")
+            assert(kyohud.hudlist:get_buff("uppers") == nil, "missing player unit must deactivate")
+        ''')
+
+    def test_uppers_polling_does_not_query_local_upgrade(self):
+        lua = self.runtime()
+        lua.execute('''
+            local upgrade_queries = 0
+            local scans = 0
+            FirstAidKitBase = {GetFirstAidKit = function()
+                scans = scans + 1
+                return {}
+            end}
+            local unit = {position = function() return {} end}
+            local manager = {}
+            function manager:player_unit() return unit end
+            function manager:has_category_upgrade(category, upgrade)
+                if category == "first_aid_kit" and upgrade == "first_aid_kit_auto_recovery" then
+                    upgrade_queries = upgrade_queries + 1
+                end
+                return true
+            end
+            function manager:smoke_screens() return {} end
+
+            Hooks.post.update(manager, 100, 0.01)
+            Hooks.post.update(manager, 100.25, 0.25)
+            Hooks.post.update(manager, 100.50, 0.25)
+            assert(upgrade_queries == 0, "local first_aid_kit upgrade must not be queried")
+            assert(scans == 3, "native proximity query must run each poll cycle")
         ''')
 
     def test_uppers_cooldown_requires_a_real_native_transition(self):
