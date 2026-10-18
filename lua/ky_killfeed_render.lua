@@ -291,6 +291,32 @@ local function draw_chevrons(panel, x, y, direction, color, alpha, layer, style)
     end
 end
 
+-- Cache lookup: nested numeric buckets for exact r, g, b channels plus an
+-- alpha key rounded to 2 decimals. Payloads are allocated only on misses;
+-- distinct Color objects with equal RGB share the same cached entry.
+local function color_alpha_get(cache, color, alpha_key)
+    local b1 = cache[color.r or 0]
+    if not b1 then return nil end
+    local b2 = b1[color.g or 0]
+    if not b2 then return nil end
+    local b3 = b2[color.b or 0]
+    if not b3 then return nil end
+    return b3[alpha_key]
+end
+
+local function color_alpha_set(cache, color, alpha_key, value)
+    local cr = color.r or 0
+    local b1 = cache[cr]
+    if not b1 then b1 = {}; cache[cr] = b1 end
+    local cg = color.g or 0
+    local b2 = b1[cg]
+    if not b2 then b2 = {}; b1[cg] = b2 end
+    local cb = color.b or 0
+    local b3 = b2[cb]
+    if not b3 then b3 = {}; b2[cb] = b3 end
+    b3[alpha_key] = value
+end
+
 -- Draw killfeed card frame (moved from core.lua lines 1065-1123)
 local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
     local bg_key = math.floor(alpha * 100 + 0.5)
@@ -314,16 +340,14 @@ local function draw_killfeed_card_frame(panel, x, y, w, h, color, alpha, layer)
         layer = layer,
     })
 
-    local color_key = color.r and (color.r * 0x10000 + color.g * 0x100 + color.b) or 0
-    local top_edge_key = color_key * 100 + bg_key
-    local top_edge_gradient = RENDER_CACHES.killfeed_top_edge[top_edge_key]
+    local top_edge_gradient = color_alpha_get(RENDER_CACHES.killfeed_top_edge, color, bg_key)
     if not top_edge_gradient then
         top_edge_gradient = {
             0, color:with_alpha(alpha * 0.9),
             0.5, color:with_alpha(alpha * 0.5),
             1, color:with_alpha(alpha * 0.9),
         }
-        RENDER_CACHES.killfeed_top_edge[top_edge_key] = top_edge_gradient
+        color_alpha_set(RENDER_CACHES.killfeed_top_edge, color, bg_key, top_edge_gradient)
     end
 
     panel:gradient({
