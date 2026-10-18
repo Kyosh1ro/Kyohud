@@ -167,6 +167,30 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
                 color    = Color(0.95, 0.8, 0.3),             -- gold/loot green
                 icon     = { hud_tweak = "pd2_lootdrop" },
             },
+            stealth_melee = {
+                id       = "ky_hud_event_medal_stealth_melee",
+                fallback = "In Contact",
+                color    = Color(0.45, 0.78, 0.55),           -- muted green
+                icon     = { preplanning = 72 },             -- crowbar
+            },
+            silent_guard = {
+                id       = "ky_hud_event_medal_silent_guard",
+                fallback = "Silent",
+                color    = Color(0.35, 0.68, 0.82),           -- cool blue
+                icon     = { preplanning = 105 },            -- sleeping/unalerted
+            },
+            backstab = {
+                id       = "ky_hud_event_medal_backstab",
+                fallback = "Backstab",
+                color    = Color(0.75, 0.35, 0.42),           -- muted crimson
+                icon     = { preplanning = 94 },             -- sneaking burglar
+            },
+            tied_civilian = {
+                id       = "ky_hud_event_medal_tied_civilian",
+                fallback = "Under Control",
+                color    = Color(0.58, 0.72, 0.45),           -- sage
+                icon     = { hud_tweak = "equipment_cable_ties" },
+            },
         },
         -- A Lua table indexed by key has no stable iteration order. This list freezes the emission order: two kills with the same events always produce exactly the same medal sequence.
         --
@@ -175,6 +199,7 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
             "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
             "showstopper", "rope", "blindfire", "first_blood", "hotswap",
             "overwatch", "long_shot", "air_kill", "loot_carrier", "spray_down",
+            "stealth_melee", "silent_guard", "backstab",
         },
         -- Last Breath remains a critical signal but must not fill the queue during a low-health kill burst. The first card is immediate and the bound is inclusive: a new card is allowed exactly at 30 s.
         LAST_BREATH_MEDAL_COOLDOWN = 30,

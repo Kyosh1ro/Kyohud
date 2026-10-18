@@ -136,7 +136,7 @@ class KillfeedRenderExtractionTests(unittest.TestCase):
     def test_module_contains_extracted_functions(self):
         self.assertIn("function KH:render_killfeed(panel, w, h, size, alpha, radius)", self.module_source)
         self.assertIn(
-            "local function measure_killfeed_entries(panel, kills, first_kill, count, font, font_size)",
+            "local function measure_killfeed_entries(panel, kills, first_kill, count, font, font_size, stealth_label)",
             self.module_source,
         )
         self.assertIn("local function combo_color(count)", self.module_source)
