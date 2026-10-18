@@ -512,6 +512,12 @@ end
 KH._recorded_kill_units = KH._recorded_kill_units
     or setmetatable({}, { __mode = "k" })
 
+function KH:GetActionScore(action)
+    if action ~= "pager_answered" then return nil end
+    local difficulty = Global and Global.game_settings and Global.game_settings.difficulty
+    return 5 * (DIFFICULTY_MULTIPLIERS[difficulty] or 1)
+end
+
 function KH:RecordScoredKill(unit, unit_id, display_name, is_civilian, attack_info, event_info, kill_source)
     if not self.add_kill then return end
     if unit and self._recorded_kill_units[unit] then return end
@@ -587,6 +593,10 @@ local EVENT_INFO = {
     air_kill = false,
     magazine_kill = false,
     spray_down = false,
+    stealth_melee = false,
+    silent_guard = false,
+    backstab = false,
+    stealth = false,
 }
 
 -- The PreHook and PostHook of `CopDamage:die` belong to the same script load
@@ -641,14 +651,20 @@ local function event_info(unit, headshot, is_civilian, info)
     EVENT_INFO.air_kill = false
     EVENT_INFO.magazine_kill = false
     EVENT_INFO.spray_down = false
+    EVENT_INFO.stealth_melee = false
+    EVENT_INFO.silent_guard = false
+    EVENT_INFO.backstab = false
+    EVENT_INFO.stealth = false
 
     consume_enemy_kill_state(unit, EVENT_INFO)
-    if is_civilian then return nil end
+    if is_civilian then
+        if KH.ConsumeStealthContext then KH:ConsumeStealthContext(unit) end
+        return nil
+    end
 
     EVENT_INFO.headshot = headshot == true
     EVENT_INFO.grave = KH.IsLocalPlayerDowned and KH:IsLocalPlayerDowned() or false
-    -- Conditions remain independent: a downed kill can thus also
-    -- meet the low health criterion if the engine reports a ratio < 10%.
+    -- Conditions remain independent: a downed kill can also meet the low HP criterion.
     EVENT_INFO.low_hp = KH.IsLocalPlayerLowHealth
         and KH:IsLocalPlayerLowHealth()
         or false
@@ -672,6 +688,24 @@ local function event_info(unit, headshot, is_civilian, info)
     local revenge_targets = KH._revenge_targets
     EVENT_INFO.revenge = revenge_targets and revenge_targets[unit] == true or false
     if EVENT_INFO.revenge then revenge_targets[unit] = nil end
+
+    if KH.ConsumeStealthContext then
+        local stealth_ctx = KH:ConsumeStealthContext(unit)
+        if stealth_ctx and stealth_ctx.whisper then
+            EVENT_INFO.stealth = true
+            local is_melee = info and info.variant == "melee"
+            local cool = stealth_ctx.cool or false
+            if is_melee and cool then
+                EVENT_INFO.silent_guard = true
+            elseif is_melee then
+                EVENT_INFO.stealth_melee = true
+            end
+            if stealth_ctx.backstab then
+                EVENT_INFO.backstab = true
+            end
+        end
+    end
+
     return EVENT_INFO
 end
 

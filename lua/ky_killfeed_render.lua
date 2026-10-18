@@ -109,7 +109,7 @@ end
 -- ═══════════════════════════════════════════════════
 
 -- Measure killfeed entries (moved from core.lua lines 264-302)
-local function measure_killfeed_entries(panel, kills, first_kill, count, font, font_size)
+local function measure_killfeed_entries(panel, kills, first_kill, count, font, font_size, stealth_label)
     local measurer = nil
 
     local function measure(text)
@@ -137,10 +137,20 @@ local function measure_killfeed_entries(panel, kills, first_kill, count, font, f
 
     for slot = 1, count do
         local kill = kills[first_kill + slot - 1]
-        if kill and kill._measure_font_size ~= font_size then
-            kill._measured_name_w = measure(kill.display_text or kill.name)
-            kill._measured_score_w = kill.score_text and measure(kill.score_text) or 0
-            kill._measure_font_size = font_size
+        if kill then
+            local base_name = kill.display_text or kill.name
+            local label = kill.stealth and not kill.special_kind and not kill.action and stealth_label or nil
+            if kill._display_base_name ~= base_name or kill._display_stealth_label ~= label then
+                kill._display_base_name = base_name
+                kill._display_stealth_label = label
+                kill._full_display_text = label and (label .. " " .. base_name) or base_name
+                kill._measure_font_size = nil
+            end
+            if kill._measure_font_size ~= font_size then
+                kill._measured_name_w = measure(kill._full_display_text)
+                kill._measured_score_w = kill.score_text and measure(kill.score_text) or 0
+                kill._measure_font_size = font_size
+            end
         end
     end
 
@@ -433,6 +443,16 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
         local available_w = math.max(1, w - 16 - score_w - score_gap)
         local first_kill = #self._kills - visible_count + 1
         local banner_w = math.min(clamp(size * 7.5, 220, 320), math.max(1, w - 16))
+        if special_banner_active and special_banner.multikill_style then
+            local reserved = C.MULTIKILL_CHEVRON_MARGIN + C.MULTIKILL_CHEVRON_GROUP_W
+                + C.BANNER_CHEVRON_TEXT_GAP
+            local label_w = approximate_text_width(special_banner.label, clamp(size * 0.65, 17, 27))
+            banner_w = math.min(math.max(1, w - 16), math.max(banner_w, label_w + reserved * 2 + 12))
+        end
+
+        local stealth_label = KH.localized_text
+            and KH.localized_text("ky_hud_stealth_kill_label", "STEALTH")
+            or "STEALTH"
 
         measure_killfeed_entries(
             panel,
@@ -440,7 +460,8 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
             first_kill,
             visible_count,
             kill_font,
-            kill_font_size
+            kill_font_size,
+            stealth_label
         )
 
         local item_widths = {}
@@ -448,12 +469,13 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
         for slot = 1, visible_count do
             local kill = self._kills[first_kill + slot - 1]
             local name_w = kill._measured_name_w
-                or approximate_text_width(kill.display_text or kill.name, kill_font_size)
+                or approximate_text_width(kill._full_display_text or kill.display_text or kill.name, kill_font_size)
             local score_w = kill.score_text
                 and (kill._measured_score_w or approximate_text_width(kill.score_text, kill_font_size))
                 or 0
             local content_gap = kill.score_text and text_gap or 0
             local leading_icon = kill.sentry_icon
+                or kill.action_icon
                 or (kill.headshot and kill.headshot_icon)
             local icon_reserved = leading_icon
                 and (headshot_icon_size + headshot_icon_gap)
@@ -585,22 +607,22 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
                     KH.BANNER_FRAME_STYLE
                 )
 
-                local arrow_group_w = special_banner_active
-                    and C.SPECIAL_CHEVRON_GROUP_W
-                    or C.MULTIKILL_CHEVRON_GROUP_W
-                local arrow_margin = special_banner_active
-                    and C.SPECIAL_CHEVRON_MARGIN
-                    or C.MULTIKILL_CHEVRON_MARGIN
+                local multikill_style = not special_banner_active or special_banner.multikill_style == true
+                local arrow_group_w = multikill_style
+                    and C.MULTIKILL_CHEVRON_GROUP_W or C.SPECIAL_CHEVRON_GROUP_W
+                local arrow_margin = multikill_style
+                    and C.MULTIKILL_CHEVRON_MARGIN or C.SPECIAL_CHEVRON_MARGIN
                 local arrow_reserved = arrow_margin + arrow_group_w + C.BANNER_CHEVRON_TEXT_GAP
                 local arrow_y = by + bh * 0.5
                 local left_arrow_x = bx + arrow_margin
                 local right_arrow_x = bx + bw - arrow_margin - arrow_group_w
 
-                if special_banner_active then
+                if not multikill_style then
                     draw_chevrons(panel, left_arrow_x, arrow_y, 1, color, banner_alpha, 106)
                     draw_chevrons(panel, right_arrow_x, arrow_y, -1, color, banner_alpha, 106)
                 else
-                    local filled = multikill_chevron_fill(combo.count)
+                    local filled = special_banner_active and C.MULTIKILL_CHEVRON_SLOTS
+                        or multikill_chevron_fill(combo.count)
                     draw_multikill_chevrons(
                         panel, left_arrow_x, arrow_y, 1, color, banner_alpha, 106, filled
                     )
@@ -616,6 +638,10 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
                     and special_banner.label
                     or combo.label
                     or combo_label(combo.count, combo.label_variant)
+                if special_banner_active and special_banner.multikill_style then
+                    font_size = math.min(font_size,
+                        text_w / math.max(1, approximate_text_width(label, 1)))
+                end
                 draw_glowing_text(
                     panel,
                     label,
@@ -754,6 +780,7 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
 
             local item_color = kill.sentry and Color.white
                 or (kill.special_kind and special_enemy_color(kill.special_kind))
+                or (kill.stealth and KH.STEALTH_KILLFEED_COLOR)
                 or feed_color
             draw_killfeed_card_frame(
                 panel,
@@ -769,6 +796,7 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
             local leading_icon = kill.sentry_icon
+                or kill.action_icon
                 or (kill.headshot and kill.headshot_icon)
             local minimum_text_w = 1 + (score_text and (text_gap + 1) or 0)
             local icon_available_w = math.max(0, inner_w - minimum_text_w)
@@ -817,11 +845,17 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
                 bitmap:set_alpha(item_alpha)
             end
 
+            local name_text = kill._full_display_text or kill.display_text or kill.name
+            local name_color = kill.special_kind and item_color or RENDER_CACHES.killfeed_name_color
+            if kill.stealth and not kill.special_kind then
+                name_color = KH.STEALTH_KILLFEED_COLOR or item_color
+            end
+
             panel:text({
-                text = kill.display_text or kill.name,
+                text = name_text,
                 font = kill_font,
                 font_size = kill_font_size,
-                color = kill.special_kind and item_color or RENDER_CACHES.killfeed_name_color,
+                color = name_color,
                 align = score_text and "right" or "center",
                 vertical = "center",
                 x = text_x,
