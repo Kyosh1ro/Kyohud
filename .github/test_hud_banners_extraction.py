@@ -55,7 +55,7 @@ class HudBannersExtractionTests(unittest.TestCase):
             assert(kyohud.BANNER_FRAME_STYLE.glow_alpha == 0.16)
             assert(kyohud.BANNER_FRAME_STYLE.brackets.extension == 4)
             assert(kyohud.MAX_BANNER_QUEUE == 4)
-            assert(#kyohud.DEBUG_BANNER_PREVIEWS == 35)
+            assert(#kyohud.DEBUG_BANNER_PREVIEWS == 28)
             assert(type(kyohud.DrawTacticalFrame) == "function")
             assert(type(kyohud.BannerPriority) == "function")
             assert(type(kyohud.BannerQueueInsertIndex) == "function")

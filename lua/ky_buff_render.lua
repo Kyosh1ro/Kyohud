@@ -109,32 +109,11 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
             math.max(min_size, math.floor(y + h + 0.5) - top)
     end
 
-    -- Cache lookup: nested numeric buckets for exact r, g, b channels plus an
-    -- alpha key rounded to 2 decimals. Payloads are allocated only on misses;
-    -- distinct Color objects with equal RGB share the same cached entry.
-    local function color_alpha_get(cache, color, alpha_key)
-        local b1 = cache[color.r or 0]
-        if not b1 then return nil end
-        local b2 = b1[color.g or 0]
-        if not b2 then return nil end
-        local b3 = b2[color.b or 0]
-        if not b3 then return nil end
-        return b3[alpha_key]
-    end
-
-    local function color_alpha_set(cache, color, alpha_key, value)
-        local cr = color.r or 0
-        local b1 = cache[cr]
-        if not b1 then b1 = {}; cache[cr] = b1 end
-        local cg = color.g or 0
-        local b2 = b1[cg]
-        if not b2 then b2 = {}; b1[cg] = b2 end
-        local cb = color.b or 0
-        local b3 = b2[cb]
-        if not b3 then b3 = {}; b2[cb] = b3 end
-        b3[alpha_key] = value
-    end
-
+    -- `edge_points` is built once per (color, alpha) pair: buff cells share the same
+    -- riser gradient, and KH:draw may render several per frame. The cache key is a
+    -- plain string — color reference plus alpha rounded to three digits — so a
+    -- repeated alpha during the same frame reuses the existing table instead of
+    -- allocating a new one. Inlined in draw_buff_cell_frame to avoid a top-level local.
     local function draw_buff_cell_frame(panel, x, y, w, h, alpha, layer, color)
         local left, top, width, height = align_buff_cell_rect(x, y, w, h)
         local has_custom_outline = color ~= nil
@@ -164,14 +143,17 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
 
         -- Risers share the same gradient points table; `panel:gradient` accepts the
         -- same reference for both without modification.
-        local edge_points = color_alpha_get(RENDER_CACHES.edge_points, color, bg_key)
+        -- P4+P6: clé numérique pour color+alpha (pas de string concat)
+        local color_key = color.r and (color.r * 0x10000 + color.g * 0x100 + color.b) or 0
+        local edge_key = color_key * 100 + bg_key
+        local edge_points = RENDER_CACHES.edge_points[edge_key]
         if not edge_points then
             edge_points = {
                 0, color:with_alpha(alpha * C.BUFF_CELL_EDGE_ALPHA_TOP),
                 0.55, color:with_alpha(alpha * C.BUFF_CELL_EDGE_ALPHA_MID),
                 1, color:with_alpha(alpha * C.BUFF_CELL_EDGE_ALPHA_BOTTOM),
             }
-            color_alpha_set(RENDER_CACHES.edge_points, color, bg_key, edge_points)
+            RENDER_CACHES.edge_points[edge_key] = edge_points
         end
         panel:gradient({
             x = left,
@@ -192,14 +174,16 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
             layer = layer + 1,
         })
 
-        local footer_gradient = color_alpha_get(RENDER_CACHES.buff_cell_footer, color, bg_key)
+        -- Cache footer gradient par color+alpha
+        local footer_key = color_key * 100 + bg_key
+        local footer_gradient = RENDER_CACHES.buff_cell_footer[footer_key]
         if not footer_gradient then
             footer_gradient = {
                 0,   color:with_alpha(alpha * C.BUFF_CELL_FOOTER_ALPHA_END),
                 0.5, color:with_alpha(alpha * C.BUFF_CELL_EDGE_ALPHA_BOTTOM),
                 1,   color:with_alpha(alpha * C.BUFF_CELL_FOOTER_ALPHA_END),
             }
-            color_alpha_set(RENDER_CACHES.buff_cell_footer, color, bg_key, footer_gradient)
+            RENDER_CACHES.buff_cell_footer[footer_key] = footer_gradient
         end
 
         panel:gradient({
@@ -214,10 +198,12 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
 
         if has_custom_outline then
             local stroke = 2
-            local outline_color = color_alpha_get(RENDER_CACHES.buff_cell_outline, color, bg_key)
+            -- Cache outline_color par color+alpha
+            local outline_key = footer_key
+            local outline_color = RENDER_CACHES.buff_cell_outline[outline_key]
             if not outline_color then
                 outline_color = color:with_alpha(math.min(1, alpha * 1.15))
-                color_alpha_set(RENDER_CACHES.buff_cell_outline, color, bg_key, outline_color)
+                RENDER_CACHES.buff_cell_outline[outline_key] = outline_color
             end
             local outline_layer = layer + 1
             panel:rect({
