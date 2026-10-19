@@ -114,9 +114,7 @@ local function add_fallbacks(loc)
         ky_opt_buff_second_wind = "Second Wind",
         ky_opt_buff_second_wind_desc = "Display Second Wind buff",
         ky_opt_buff_sixth_sense = "Sixth Sense",
-        ky_opt_buff_sixth_sense_desc = "Display Sixth Sense buff",
-        ky_opt_buff_old_sixth_sense = "Old Sixth Sense",
-        ky_opt_buff_old_sixth_sense_desc = "Display Old Sixth Sense buff",
+        ky_opt_buff_sixth_sense_desc = "Display Sixth Sense buff with scanned person count",
         ky_opt_buff_unseen_strike = "Unseen Strike",
         ky_opt_buff_unseen_strike_desc = "Display Unseen Strike buff",
 

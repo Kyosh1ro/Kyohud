@@ -93,9 +93,7 @@
   "ky_opt_buff_second_wind": "Second souffle",
   "ky_opt_buff_second_wind_desc": "Afficher le buff Second souffle",
   "ky_opt_buff_sixth_sense": "Sixième sens",
-  "ky_opt_buff_sixth_sense_desc": "Afficher le buff Sixième sens",
-  "ky_opt_buff_old_sixth_sense": "Ancien sixième sens",
-  "ky_opt_buff_old_sixth_sense_desc": "Afficher le buff Ancien sixième sens",
+  "ky_opt_buff_sixth_sense_desc": "Afficher le buff Sixième sens avec le nombre de personnes détectées",
   "ky_opt_buff_unseen_strike": "Frappe invisible",
   "ky_opt_buff_unseen_strike_desc": "Afficher le buff Frappe invisible",
 

@@ -263,8 +263,10 @@ class HUDListGameHookTests(unittest.TestCase):
             """,
         )
         lua.execute('''
-            assert(#Hooks.installed == 1)
+            assert(#Hooks.installed == 3)
             assert(Hooks.installed[1][2] == "_do_action_intimidate")
+            assert(Hooks.installed[2][2] == "_update_omniscience")
+            assert(Hooks.installed[3][2] == "_update_omniscience")
 
             Hooks.callbacks._do_action_intimidate({}, 100, "cmd_come")
             assert(kyohud.hudlist:get_buffs().inspire_debuff == nil)

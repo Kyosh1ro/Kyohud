@@ -115,6 +115,9 @@ function Provider:reset()
     self._next_stack_id = 0
     self._next_position_buff_check_t = 0
     self._active_grenade_cooldown_id = nil
+    if KH._sixth_sense_cache then
+        for k in pairs(KH._sixth_sense_cache) do KH._sixth_sense_cache[k] = nil end
+    end
 end
 
 function Provider:get_composite_source_count(id)
@@ -1282,6 +1285,139 @@ elseif RequiredScript == "lib/units/beings/player/states/playerstandard"
                 duration = duration,
             })
         end)
+
+    KH._sixth_sense_cache = KH._sixth_sense_cache or {}
+
+    local function sixth_sense_cache_for(self)
+        local cache = KH._sixth_sense_cache[self]
+        if not cache then
+            cache = {}
+            KH._sixth_sense_cache[self] = cache
+        end
+        return cache
+    end
+
+    local function sixth_sense_clear_cache(cache)
+        cache.ready = nil
+        cache.count = nil
+        cache.last_emitted_value = nil
+        cache.last_emitted_active = nil
+        cache.prev_deadline = nil
+        cache.prev_pos_exists = nil
+        cache.scan_was_due = nil
+    end
+
+    Hooks:PreHook(PlayerStandard, "_update_omniscience",
+        "KyoHUD_HUDList_SixthSensePreObserve",
+        function(self, t, dt)
+            local cache = sixth_sense_cache_for(self)
+            local state_data = self and self._state_data
+            if type(state_data) ~= "table" then
+                cache.prev_deadline = nil
+                cache.prev_pos_exists = false
+                cache.scan_was_due = false
+                return
+            end
+            cache.prev_deadline = state_data.omniscience_t
+            cache.prev_pos_exists = state_data.omniscience_pos ~= nil
+            local t_num = finite_number(t)
+            cache.scan_was_due = cache.prev_pos_exists
+                and cache.prev_deadline ~= nil
+                and t_num ~= nil
+                and t_num >= cache.prev_deadline
+        end)
+
+    Hooks:PostHook(PlayerStandard, "_update_omniscience",
+        "KyoHUD_HUDList_SixthSenseObserve",
+        function(self, t, dt)
+            local settings = KH.settings
+            if type(settings) == "table" and settings.sixth_sense == false then
+                if Provider._buffs.sixth_sense then
+                    Provider:event("buff", "deactivate", "sixth_sense")
+                end
+                local cache = KH._sixth_sense_cache[self]
+                if cache then sixth_sense_clear_cache(cache) end
+                return
+            end
+
+            local state_data = self and self._state_data
+            if type(state_data) ~= "table" then
+                if Provider._buffs.sixth_sense then
+                    Provider:event("buff", "deactivate", "sixth_sense")
+                end
+                local cache = KH._sixth_sense_cache[self]
+                if cache then sixth_sense_clear_cache(cache) end
+                return
+            end
+
+            local cache = sixth_sense_cache_for(self)
+            local new_deadline = state_data.omniscience_t
+            local t_current = finite_number(t) or current_time()
+
+            if new_deadline == nil then
+                if cache.last_emitted_active ~= false then
+                    Provider:event("buff", "deactivate", "sixth_sense")
+                end
+                sixth_sense_clear_cache(cache)
+                cache.last_emitted_active = false
+                return
+            end
+
+            if cache.prev_deadline == nil then
+                cache.ready = false
+                if cache.last_emitted_active ~= true or cache.last_emitted_value ~= 0 then
+                    Provider:event("buff", "activate", "sixth_sense", {
+                        t = t_current,
+                        value = 0,
+                    })
+                    cache.last_emitted_value = 0
+                    cache.last_emitted_active = true
+                end
+                return
+            end
+
+            if cache.scan_was_due and new_deadline ~= cache.prev_deadline then
+                cache.ready = true
+            end
+
+            local count
+            if cache.ready then
+                count = 0
+                local units_detected = state_data.omniscience_units_detected
+                if type(units_detected) == "table" then
+                    for _, expire_t in pairs(units_detected) do
+                        local expire = finite_number(expire_t)
+                        if expire and expire > t_current then
+                            count = count + 1
+                        end
+                    end
+                end
+                cache.count = count
+            else
+                count = 0
+                cache.count = 0
+            end
+
+            if cache.last_emitted_value ~= count or cache.last_emitted_active ~= true then
+                Provider:event("buff", "activate", "sixth_sense", {
+                    t = t_current,
+                    value = count,
+                })
+                cache.last_emitted_value = count
+                cache.last_emitted_active = true
+            end
+        end)
+
+    if type(PlayerStandard.exit) == "function" then
+        Hooks:PostHook(PlayerStandard, "exit",
+            "KyoHUD_HUDList_SixthSenseExit",
+            function(self, state_data, new_state_name)
+                if Provider._buffs.sixth_sense then
+                    Provider:event("buff", "deactivate", "sixth_sense")
+                end
+                KH._sixth_sense_cache[self] = nil
+            end)
+    end
 
 elseif RequiredScript == "lib/units/beings/player/playerinventory"
         and not KH._hudlist_loaded_scripts[RequiredScript] then

@@ -955,6 +955,11 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         melee_damage_increase = melee_damage_increase_text,
         passive_health_regen = passive_health_regen_text,
         total_dodge_chance = total_dodge_chance_text,
+        sixth_sense_count = function(sources)
+            local value = largest_source_value(sources)
+            if value == nil or value <= 0 then return nil end
+            return tostring(value)
+        end,
         -- Underdog merged card: the basic upgrade (dmg_multiplier_outnumbered) is a
         -- damage multiplier (e.g. 1.15 -> "+15%"), the aced upgrade
         -- (dmg_dampener_outnumbered) is a damage-taken multiplier (e.g. 0.9 ->

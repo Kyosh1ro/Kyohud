@@ -282,6 +282,152 @@ class BuffFrameAnimationTests(unittest.TestCase):
                 "_compute_frame_color must return nil for rejected buff")
         ''')
 
+    def test_sixth_sense_has_animation_cache(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local cache = kyohud._frame_anim_cache
+            assert(cache ~= nil, "_frame_anim_cache must exist")
+            local anim = cache.sixth_sense
+            assert(anim ~= nil, "sixth_sense must have an animation entry")
+            assert(type(anim.period) == "number" and anim.period > 0,
+                "period must be a positive number")
+            assert(anim.tri == true,
+                "sixth_sense must be a three-color cycle (tri=true)")
+            assert(type(anim.r1) == "number" and type(anim.g1) == "number" and type(anim.b1) == "number",
+                "first endpoint must have r/g/b")
+            assert(type(anim.r2) == "number" and type(anim.g2) == "number" and type(anim.b2) == "number",
+                "second endpoint must have r/g/b")
+            assert(type(anim.r3) == "number" and type(anim.g3) == "number" and type(anim.b3) == "number",
+                "third endpoint must have r/g/b when tri=true")
+            local function neq(a, b) return a ~= b end
+            assert(neq(anim.r1, anim.r2) or neq(anim.g1, anim.g2) or neq(anim.b1, anim.b2),
+                "A and B must differ")
+            assert(neq(anim.r2, anim.r3) or neq(anim.g2, anim.g3) or neq(anim.b2, anim.b3),
+                "B and C must differ")
+            assert(neq(anim.r1, anim.r3) or neq(anim.g1, anim.g3) or neq(anim.b1, anim.b3),
+                "A and C must differ")
+        ''')
+
+    def test_sixth_sense_blue_endpoints(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local anim = kyohud._frame_anim_cache.sixth_sense
+            local expected_a = {0x52/255, 0xA8/255, 0xFF/255}
+            local expected_b = {0x24/255, 0x4B/255, 0x73/255}
+            local expected_c = {0xC9/255, 0xE6/255, 0xFF/255}
+            assert(math.abs(anim.r1 - expected_a[1]) < 0.01 and
+                   math.abs(anim.g1 - expected_a[2]) < 0.01 and
+                   math.abs(anim.b1 - expected_a[3]) < 0.01,
+                "A endpoint must be #52A8FF (bright blue)")
+            assert(math.abs(anim.r2 - expected_b[1]) < 0.01 and
+                   math.abs(anim.g2 - expected_b[2]) < 0.01 and
+                   math.abs(anim.b2 - expected_b[3]) < 0.01,
+                "B endpoint must be #244B73 (dark blue)")
+            assert(math.abs(anim.r3 - expected_c[1]) < 0.01 and
+                   math.abs(anim.g3 - expected_c[2]) < 0.01 and
+                   math.abs(anim.b3 - expected_c[3]) < 0.01,
+                "C endpoint must be #C9E6FF (pale blue)")
+        ''')
+
+    def test_sixth_sense_period_matches_pv_plus(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local pv_period = kyohud._frame_anim_cache.passive_health_regen.period
+            local ss_period = kyohud._frame_anim_cache.sixth_sense.period
+            assert(ss_period == pv_period,
+                "sixth_sense period (" .. ss_period .. ") must match PV+ period (" .. pv_period .. ")")
+            assert(ss_period >= 2.0 and ss_period <= 3.0,
+                "period must be between 2 and 3 seconds, got " .. ss_period)
+        ''')
+
+    def test_sixth_sense_frame_color_changes_over_time(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local r0, g0, b0 = kyohud:_compute_frame_color("sixth_sense", 0)
+            assert(r0 ~= nil, "must return a color at t=0")
+            local period = kyohud._frame_anim_cache.sixth_sense.period
+            local r1, g1, b1 = kyohud:_compute_frame_color("sixth_sense", period * 0.25)
+            assert(r1 ~= nil, "must return a color at t=period/4")
+            assert(r0 ~= r1 or g0 ~= g1 or b0 ~= b1,
+                "frame color must change between t=0 and t=period/4")
+        ''')
+
+    def test_sixth_sense_hits_three_exact_milestones(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local anim = kyohud._frame_anim_cache.sixth_sense
+            local period = anim.period
+            assert(anim.tri, "this test expects the three-color cycle")
+
+            local r0, g0, b0 = kyohud:_compute_frame_color("sixth_sense", 0)
+            assert(math.abs(r0 - anim.r1) < 0.001 and math.abs(g0 - anim.g1) < 0.001
+                and math.abs(b0 - anim.b1) < 0.001,
+                "t=0 must equal A")
+
+            local rB, gB, bB = kyohud:_compute_frame_color("sixth_sense", period / 3)
+            assert(math.abs(rB - anim.r2) < 0.001 and math.abs(gB - anim.g2) < 0.001
+                and math.abs(bB - anim.b2) < 0.001,
+                "t=period/3 must equal B")
+
+            local rC, gC, bC = kyohud:_compute_frame_color("sixth_sense", period * 2 / 3)
+            assert(math.abs(rC - anim.r3) < 0.001 and math.abs(gC - anim.g3) < 0.001
+                and math.abs(bC - anim.b3) < 0.001,
+                "t=2*period/3 must equal C")
+        ''')
+
+    def test_sixth_sense_frame_loops_without_jump(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local period = kyohud._frame_anim_cache.sixth_sense.period
+            local r0, g0, b0 = kyohud:_compute_frame_color("sixth_sense", 0)
+            local r_end, g_end, b_end = kyohud:_compute_frame_color("sixth_sense", period)
+            assert(math.abs(r0 - r_end) < 0.001 and math.abs(g0 - g_end) < 0.001
+                and math.abs(b0 - b_end) < 0.001,
+                "animation must loop cleanly at period boundary")
+            local r_2p, g_2p, b_2p = kyohud:_compute_frame_color("sixth_sense", period * 2)
+            assert(math.abs(r0 - r_2p) < 0.001 and math.abs(g0 - g_2p) < 0.001
+                and math.abs(b0 - b_2p) < 0.001,
+                "animation must loop cleanly over multiple periods")
+        ''')
+
+    def test_sixth_sense_distinct_from_pv_plus_green(self):
+        lua = self.make_runtime()
+        lua.execute('''
+            local ss = kyohud._frame_anim_cache.sixth_sense
+            local pv = kyohud._frame_anim_cache.passive_health_regen
+            local dist_a = math.sqrt(
+                (ss.r1 - pv.r1)^2 + (ss.g1 - pv.g1)^2 + (ss.b1 - pv.b1)^2)
+            local dist_b = math.sqrt(
+                (ss.r2 - pv.r2)^2 + (ss.g2 - pv.g2)^2 + (ss.b2 - pv.b2)^2)
+            assert(dist_a > 0.1,
+                "sixth_sense A must be clearly distinct from PV+ A, dist=" .. dist_a)
+            assert(dist_b > 0.1,
+                "sixth_sense B must be clearly distinct from PV+ B, dist=" .. dist_b)
+        ''')
+
+    def test_pv_plus_green_unaffected_by_sixth_sense(self):
+        """PV+ frame animation endpoints and period must remain unchanged."""
+        lua = self.make_runtime()
+        lua.execute('''
+            local anim = kyohud._frame_anim_cache.passive_health_regen
+            local expected_a = {0x4A/255, 0xDE/255, 0x9B/255}
+            local expected_b = {0x70/255, 0x7A/255, 0x75/255}
+            local expected_c = {0xD6/255, 0xFF/255, 0xEE/255}
+            assert(math.abs(anim.r1 - expected_a[1]) < 0.01 and
+                   math.abs(anim.g1 - expected_a[2]) < 0.01 and
+                   math.abs(anim.b1 - expected_a[3]) < 0.01,
+                "PV+ A endpoint must still be #4ADE9B (green)")
+            assert(math.abs(anim.r2 - expected_b[1]) < 0.01 and
+                   math.abs(anim.g2 - expected_b[2]) < 0.01 and
+                   math.abs(anim.b2 - expected_b[3]) < 0.01,
+                "PV+ B endpoint must still be #707A75 (mid)")
+            assert(math.abs(anim.r3 - expected_c[1]) < 0.01 and
+                   math.abs(anim.g3 - expected_c[2]) < 0.01 and
+                   math.abs(anim.b3 - expected_c[3]) < 0.01,
+                "PV+ C endpoint must still be #D6FFEE (pulse)")
+            assert(anim.period == 3, "PV+ period must still be 3")
+        ''')
+
 
 if __name__ == "__main__":
     unittest.main()
