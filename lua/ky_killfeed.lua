@@ -211,6 +211,8 @@ end
 function KH:GetKillWeaponFamily(attack_info)
     if type(attack_info) ~= "table" then return nil end
 
+    if attack_info.throwing == true then return nil end
+
     local variant = attack_info.variant
     local variant_family = type(variant) == "string"
         and WEAPON_FAMILY_BY_VARIANT[variant]
@@ -218,6 +220,66 @@ function KH:GetKillWeaponFamily(attack_info)
 
     return family_from_weapon_unit(attack_info.weapon_unit)
         or family_from_weapon_id(attack_info.weapon_id)
+end
+
+local THROWING_PROJECTILE_ENTRIES = {
+    wpn_prj_jav     = true,
+    wpn_prj_target  = true,
+    wpn_prj_hur     = true,
+    wpn_prj_four    = true,
+    wpn_prj_ace     = true,
+}
+
+local THROWING_DOT_VARIANTS = {
+    poison     = true,
+    fire       = true,
+    dot        = true,
+    explosion  = true,
+}
+
+function KH:IsThrowingKill(attack_info)
+    if type(attack_info) ~= "table" then return false end
+    local variant = attack_info.variant
+    if type(variant) == "string" and THROWING_DOT_VARIANTS[variant] then return false end
+
+    return self:_classify_throwing_by_id(attack_info.weapon_id)
+        or self:_classify_throwing_by_unit(attack_info.weapon_unit)
+end
+
+function KH:_classify_throwing_by_unit(weapon_unit)
+    if not weapon_unit then return false end
+
+    local alive_ok, is_alive = pcall(alive, weapon_unit)
+    if not alive_ok or not is_alive then return false end
+
+    local base_ok, base = pcall(function() return weapon_unit:base() end)
+    if not base_ok or not base then return false end
+
+    if not base.thrower_unit then return false end
+
+    local thrower_ok, thrower = pcall(function() return base:thrower_unit() end)
+    if not thrower_ok or not thrower then return false end
+
+    local player_ok, player = pcall(function()
+        return managers and managers.player and managers.player:player_unit()
+    end)
+    if not player_ok or not player then return false end
+    if thrower ~= player then return false end
+
+    local entry_ok, entry = pcall(function()
+        if base.projectile_entry then return base:projectile_entry() end
+        if base.get_name_id then return base:get_name_id() end
+        return nil
+    end)
+    if entry_ok and type(entry) == "string" and THROWING_PROJECTILE_ENTRIES[entry] then
+        return true
+    end
+    return false
+end
+
+function KH:_classify_throwing_by_id(weapon_id)
+    if type(weapon_id) ~= "string" or weapon_id == "" then return false end
+    return THROWING_PROJECTILE_ENTRIES[weapon_id] == true
 end
 
 -- ── Kill Events ──
@@ -564,12 +626,13 @@ end -- end of guard _killscore_catalog_loaded
 
 -- Single working table: the kill cause is read only for the duration of
 -- attribution, without allocating a table per death.
-local ATTACK_INFO = { variant = nil, weapon_unit = nil, weapon_id = nil }
+local ATTACK_INFO = { variant = nil, weapon_unit = nil, weapon_id = nil, throwing = false }
 
 local function attack_info(variant, weapon_unit, weapon_id)
     ATTACK_INFO.variant = variant
     ATTACK_INFO.weapon_unit = weapon_unit
     ATTACK_INFO.weapon_id = weapon_id
+    ATTACK_INFO.throwing = KH.IsThrowingKill and KH:IsThrowingKill(ATTACK_INFO) or false
     return ATTACK_INFO
 end
 
@@ -597,6 +660,7 @@ local EVENT_INFO = {
     silent_guard = false,
     backstab = false,
     stealth = false,
+    deadly_throw = false,
 }
 
 -- The PreHook and PostHook of `CopDamage:die` belong to the same script load
@@ -655,6 +719,7 @@ local function event_info(unit, headshot, is_civilian, info)
     EVENT_INFO.silent_guard = false
     EVENT_INFO.backstab = false
     EVENT_INFO.stealth = false
+    EVENT_INFO.deadly_throw = false
 
     consume_enemy_kill_state(unit, EVENT_INFO)
     if is_civilian then
@@ -705,6 +770,8 @@ local function event_info(unit, headshot, is_civilian, info)
             end
         end
     end
+
+    EVENT_INFO.deadly_throw = info and info.throwing == true or false
 
     return EVENT_INFO
 end

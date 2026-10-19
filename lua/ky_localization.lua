@@ -272,12 +272,21 @@ local function add_fallbacks(loc)
         ky_hud_event_medal_stealth_melee = "In Contact",
         ky_hud_event_medal_silent_guard = "Silent",
         ky_hud_event_medal_backstab = "Backstab",
+        ky_hud_event_medal_deadly_throw = "Deadly Throw",
         ky_hud_event_medal_tied_civilian = "Under Control",
         ky_hud_stealth_kill_label = "STEALTH",
         ky_hud_pager_answered = "Pager answered",
         ky_hud_pager_banner_1 = "PAGER ANSWERED",
         ky_hud_pager_banner_2 = "ALL CLEAR",
         ky_hud_pager_banner_3 = "NOTHING TO REPORT",
+
+        ky_hud_throw_kill_1 = "DEADLY THROW",
+        ky_hud_throw_kill_2 = "THROWN BLADE",
+        ky_hud_throw_kill_3 = "PERFECT THROW",
+
+        ky_hud_stealth_throw_1 = "SILENT THROW",
+        ky_hud_stealth_throw_2 = "QUIET TAKEDOWN",
+        ky_hud_stealth_throw_3 = "GHOST PRECISION",
     })
 end
 

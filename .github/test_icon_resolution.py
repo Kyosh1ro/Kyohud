@@ -49,11 +49,12 @@ class IconResolutionTests(unittest.TestCase):
 
     def assert_native_failure_uses_fallback(self, native_setup):
         lua = self.load_chunk(native_setup)
-        texture, rect = lua.eval(
+        texture, rect, rotation = lua.eval(
             'kyohud.__test_get_icon_data({texture = "third_party/bad"})'
         )
         self.assertEqual(texture, FALLBACK_TEXTURE)
         self.assertIsNone(rect)
+        self.assertIsNone(rotation)
 
     def test_db_has_failure_uses_fallback(self):
         self.assert_native_failure_uses_fallback('''
