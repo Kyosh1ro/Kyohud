@@ -75,10 +75,14 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         { combo = 0, medal = "event", event = "stealth_melee" },
         { combo = 0, medal = "event", event = "silent_guard" },
         { combo = 0, medal = "event", event = "backstab" },
+        { combo = 0, medal = "event", event = "deadly_throw" },
         { combo = 0, medal = "event", event = "tied_civilian" },
         { combo = 0, banner = "pager", variant = 1 },
         { combo = 0, banner = "pager", variant = 2 },
         { combo = 0, banner = "pager", variant = 3 },
+        { combo = 0, banner = "stealth_throw", variant = 1 },
+        { combo = 0, banner = "stealth_throw", variant = 2 },
+        { combo = 0, banner = "stealth_throw", variant = 3 },
     }
 
     -- Expose values consumed by core.lua; module-private values stay in C.
@@ -188,6 +192,25 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         return #queue + 1
     end
     KH.BannerQueueInsertIndex = banner_queue_insert_index
+
+    -- ═══════════════════════════════════════════════════
+    -- Stealth throw banner: multikill-style banner for stealth throw kills
+    -- ═══════════════════════════════════════════════════
+    local STEALTH_THROW_LABELS = {
+        { "ky_hud_stealth_throw_1", "SILENT THROW" },
+        { "ky_hud_stealth_throw_2", "QUIET TAKEDOWN" },
+        { "ky_hud_stealth_throw_3", "GHOST PRECISION" },
+    }
+
+    function KH:MakeStealthThrowBanner(variant)
+        local label = STEALTH_THROW_LABELS[variant or 1] or STEALTH_THROW_LABELS[1]
+        return {
+            kind = "stealth_throw",
+            multikill_style = true,
+            label = self.localized_text(label[1], label[2]),
+            color = self.STEALTH_KILLFEED_COLOR,
+        }
+    end
 
     KH._hud_banners_initialized = true
 end

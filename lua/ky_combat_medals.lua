@@ -185,6 +185,12 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
                 color    = Color(0.75, 0.35, 0.42),           -- muted crimson
                 icon     = { preplanning = 94 },             -- sneaking burglar
             },
+            deadly_throw = {
+                id       = "ky_hud_event_medal_deadly_throw",
+                fallback = "Deadly Throw",
+                color    = Color(0.78, 0.58, 0.92),           -- violet-silver
+                icon     = { texture = "guis/dlcs/pim/textures/pd2/blackmarket/icons/grenades/wpn_prj_target", rotation = 135 },
+            },
             tied_civilian = {
                 id       = "ky_hud_event_medal_tied_civilian",
                 fallback = "Under Control",
@@ -199,7 +205,7 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
             "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
             "showstopper", "rope", "blindfire", "first_blood", "hotswap",
             "overwatch", "long_shot", "air_kill", "loot_carrier", "spray_down",
-            "stealth_melee", "silent_guard", "backstab",
+            "stealth_melee", "silent_guard", "backstab", "deadly_throw",
         },
         -- Last Breath remains a critical signal but must not fill the queue during a low-health kill burst. The first card is immediate and the bound is inclusive: a new card is allowed exactly at 30 s.
         LAST_BREATH_MEDAL_COOLDOWN = 30,
@@ -322,12 +328,12 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         if not label then return nil end
 
         local color = definition.color or HUD_ACCENT_COLOR
-        local texture, rect = get_icon_data(definition.icon)
+        local texture, rect, rotation = get_icon_data(definition.icon)
         return {
             kind       = C.MEDAL_KIND_EVENT,
             event      = id,
             tier_index = definition.tiers and (tier_index or 1) or nil,
-            icon       = { texture = texture, rect = rect },
+            icon       = { texture = texture, rect = rect, rotation = rotation },
             icon_color = color,
             label      = localized_text(label.id, label.fallback),
             color      = color,

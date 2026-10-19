@@ -56,6 +56,7 @@ KH._dozer_banner_index = KH._dozer_banner_index or 0
 KH._debug_banner_preview_index = KH._debug_banner_preview_index or 0
 KH._special_enemy_combos = {}
 KH._special_enemy_label_indices = KH._special_enemy_label_indices or {}
+KH._throw_kill_variant_index = KH._throw_kill_variant_index or 0
 KH._update_acc  = 0
 
 local MAX_KILLFEED_SIZE = 5
@@ -359,7 +360,7 @@ local function get_icon_data(icon)
         texture_rect = nil
     end
 
-    return texture, texture_rect
+    return texture, texture_rect, icon.rotation
 end
 KH.get_icon_data = get_icon_data
 
@@ -544,6 +545,33 @@ local COMBO_LABELS = {
     },
 }
 local COMBO_LABEL_VARIANT_COUNT = #COMBO_LABELS[2]
+
+local THROW_KILL_LABELS = {
+    { id = "ky_hud_throw_kill_1", fallback = "DEADLY THROW" },
+    { id = "ky_hud_throw_kill_2", fallback = "THROWN BLADE" },
+    { id = "ky_hud_throw_kill_3", fallback = "PERFECT THROW" },
+}
+local THROW_KILL_VARIANT_COUNT = #THROW_KILL_LABELS
+
+local function throw_kill_label(variant_index, enemy_name)
+    local definition = THROW_KILL_LABELS[variant_index or 1] or THROW_KILL_LABELS[1]
+    local text = localized_text(definition.id, definition.fallback)
+    if enemy_name and enemy_name ~= "" then
+        text = text .. " " .. enemy_name
+    end
+    return text
+end
+
+local THROW_ICON_DESCRIPTOR
+local function throw_icon_descriptor()
+    if not THROW_ICON_DESCRIPTOR then
+        THROW_ICON_DESCRIPTOR = {
+            texture = "guis/dlcs/pim/textures/pd2/blackmarket/icons/grenades/wpn_prj_target",
+            rotation = 135,
+        }
+    end
+    return THROW_ICON_DESCRIPTOR
+end
 
 -- DOZER_BANNER_LABELS and BOSS_BANNER_LABELS remain in core.lua (used by SPECIAL_KILL_BANNER_DEFINITIONS at top level)
 local DOZER_BANNER_LABELS = {
@@ -1329,6 +1357,8 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self:_clear_medal_cards()
     self._special_enemy_combos = {}
     clear_recorded_kill_units(self)
+    self._throw_kill_variant_index = 0
+    self._stealth_throw_banner_index = 0
     if self.ResetPagerState then self:ResetPagerState() end
 
     if rearm_bridge_sync then
@@ -1551,6 +1581,19 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         self._special_enemy_label_indices[special_enemy_kind] = special_label_index
     end
 
+    local throw_display_text = nil
+    local throw_icon = nil
+    local is_throwing = not is_sentry and event_info and event_info.deadly_throw == true
+    if is_throwing then
+        self._throw_kill_variant_index = ((self._throw_kill_variant_index or 0)
+            % THROW_KILL_VARIANT_COUNT) + 1
+        throw_display_text = throw_kill_label(
+            self._throw_kill_variant_index,
+            enemy_name or "Enemy"
+        )
+        throw_icon = throw_icon_descriptor()
+    end
+
     local entry = {
         name       = enemy_name or "Enemy",
         score      = score,
@@ -1559,7 +1602,7 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
         sentry     = is_sentry,
         sentry_icon = is_sentry and KH.SentryIconDescriptor() or nil,
         special_kind = special_definition and special_enemy_kind or nil,
-        display_text = special_enemy_label(
+        display_text = throw_display_text or special_enemy_label(
             special_enemy_kind,
             special_label_index,
             special_count
@@ -1570,10 +1613,23 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     if entry.headshot then
         entry.headshot_icon = headshot_icon_descriptor()
     end
+    if throw_icon then
+        entry.throw_icon = throw_icon
+    end
     if not is_sentry and event_info and event_info.stealth == true then
         entry.stealth = true
     end
     table.insert(self._kills, entry)
+
+    -- Stealth throw banner: multikill-style banner for stealth throw kills
+    -- Triggered only when: throw kill + stealth + contributes_to_combo + not sentry
+    -- Uses rotating index to cycle through 3 banner variants
+    if is_throwing and not is_sentry and contributes_to_combo ~= false
+            and event_info and event_info.stealth == true then
+        self._stealth_throw_banner_index = ((self._stealth_throw_banner_index or 0) % 3) + 1
+        local banner = self:MakeStealthThrowBanner(self._stealth_throw_banner_index)
+        self:_show_special_banner(t, banner, false)
+    end
 
     while #self._kills > killfeed_size(self.settings) do
         table.remove(self._kills, 1)
@@ -2266,7 +2322,12 @@ function KH:DebugSimulate(n)
         log("[KyoHUD] Preview is only available from the main menu.")
         return
     end
+    -- Preserve throw variant and stealth cycle indices across preview resets
+    local saved_throw_variant_index = self._throw_kill_variant_index
+    local saved_throw_stealth_cycle = self._throw_preview_stealth_cycle
     self:ResetHeistCombatState()
+    self._throw_kill_variant_index = saved_throw_variant_index
+    self._throw_preview_stealth_cycle = saved_throw_stealth_cycle
     self._debug_preview_active = true
     n = n or 8
 
@@ -2382,16 +2443,35 @@ function KH:DebugSimulate(n)
     local third_demo_kill = next_preview.medal == "sentry_kill"
         and { name = "SWAT", score = 1, sentry = true }
         or { name = "Shield", score = 5, special_kind = "shield", special_count = 2, label_index = 1 }
+    local has_throw_preview = next_preview.medal == "event"
+        and next_preview.event == "deadly_throw"
 
-    -- Simulate a few kills. The sentry card temporarily replaces the Shield
-    -- only during its own preview case to keep both tests.
-    local demo_kills = {
+    local base_kills = {
         { name = "Medic", score = 6, headshot = true, special_kind = "medic", special_count = 2, label_index = 1 },
         { name = "Captain Winters", score = 100, special_kind = "boss", special_count = 1, label_index = 1 },
         third_demo_kill,
         { name = "Cloaker", score = 8, special_kind = "cloaker", special_count = 2, label_index = 1 },
         { name = "Taser", score = 7, special_kind = "taser", special_count = 2, label_index = 1 },
     }
+
+    local demo_kills = {}
+    if has_throw_preview then
+        self._throw_kill_variant_index = ((self._throw_kill_variant_index or 0)
+            % THROW_KILL_VARIANT_COUNT) + 1
+        self._throw_preview_stealth_cycle = ((self._throw_preview_stealth_cycle or 0) + 1)
+        local throw_stealth = (self._throw_preview_stealth_cycle % 2) == 0
+        demo_kills[#demo_kills + 1] = {
+            name = "Guard",
+            score = 5,
+            throwing = true,
+            throw_variant_index = self._throw_kill_variant_index,
+            stealth = throw_stealth,
+        }
+    end
+    for _, k in ipairs(base_kills) do
+        demo_kills[#demo_kills + 1] = k
+    end
+
     t_now = now()
     self._killfeed_score_total = 0
     self._killfeed_score_has_value = false
@@ -2400,6 +2480,14 @@ function KH:DebugSimulate(n)
     self._heist_score_recorded = false
     for i = 1, killfeed_size(self.settings) do
         local demo = demo_kills[i]
+        if not demo then break end
+        local demo_display = demo.throwing
+            and throw_kill_label(demo.throw_variant_index or 1, demo.name)
+            or special_enemy_label(
+                demo.special_kind,
+                demo.label_index,
+                demo.special_count
+            )
         table.insert(self._kills, {
             name       = demo.name,
             score      = demo.score,
@@ -2408,14 +2496,11 @@ function KH:DebugSimulate(n)
             headshot_icon = demo.headshot and headshot_icon_descriptor() or nil,
             sentry     = demo.sentry == true,
             sentry_icon = demo.sentry and KH.SentryIconDescriptor() or nil,
-            special_kind = demo.special_kind,
-            display_text = special_enemy_label(
-                demo.special_kind,
-                demo.label_index,
-                demo.special_count
-            ),
+            special_kind = demo.throwing and nil or demo.special_kind,
+            display_text = demo_display,
+            throw_icon = demo.throwing and throw_icon_descriptor() or nil,
+            stealth    = demo.stealth == true or nil,
             start_t    = t_now,
-            -- No t_end: debug kills remain visible until DebugClear.
         })
         if type(demo.score) == "number" then
             self._killfeed_score_total = self._killfeed_score_total + demo.score
@@ -2449,6 +2534,9 @@ function KH:DebugSimulate(n)
         self:AddActionEntry("pager_answered", localized_text("ky_hud_pager_answered", "Pager answered"),
             self.GetActionScore and self:GetActionScore("pager_answered") or 5,
             self.GetPagerIconDescriptor and self:GetPagerIconDescriptor() or nil)
+        self._kills[#self._kills].t_end = nil
+    elseif preview.banner == "stealth_throw" and self.MakeStealthThrowBanner then
+        self:_show_special_banner(t_now, self:MakeStealthThrowBanner(preview.variant), true)
         self._kills[#self._kills].t_end = nil
     elseif preview.medal == "weapon_streak" then
         self:_show_medal_card(
