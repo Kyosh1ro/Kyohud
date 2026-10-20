@@ -456,7 +456,11 @@ local VISUALS = {
     second_wind = skill_icon("scavenger"),
     sicario_dodge = perk_icon(1, 0, "max"),
     sicario_dodge_debuff = perk_icon(1, 0, "max"),
-    sixth_sense = skill_icon("chameleon"),
+    sixth_sense = {
+        skill_id = "chameleon",
+        show_value = true,
+        icon_provenance = "current skilltree skill chameleon icon_xy",
+    },
     smoke_screen_grenade = perk_icon(0, 0, "max"),
     smoke_screen_grenade_debuff = perk_icon(0, 0, "max"),
     sociopath_debuff = perk_icon(3, 5),

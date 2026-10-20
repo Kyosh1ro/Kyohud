@@ -808,9 +808,101 @@ class KillfeedRenderExtractionTests(unittest.TestCase):
         """The first line of core.lua must not start with a BOM."""
         raw = (ROOT / "lua" / "core.lua").read_bytes()
         self.assertFalse(raw.startswith(b'\xef\xbb\xbf'),
-            "core.lua must not start with a UTF-8 BOM")
+            "core.lua must not start with a BOM")
         self.assertTrue(raw.startswith(b'-- core.lua'),
             "core.lua must start with '-- core.lua'")
+
+    def test_medal_width_stable_across_banner_label_lengths(self):
+        """Medal card width must remain stable regardless of special banner label length.
+
+        Regression: when a special multikill-style banner (like pager or stealth_throw)
+        expands, the medal card width should NOT expand with it. The medal should use
+        the original clamped banner width, not the expanded one.
+        """
+        lua = _make_lua()
+        _load_production_chunks(lua)
+        _make_full_panel(lua)
+
+        # Helper function to render and capture medal width
+        lua.execute('''
+            function capture_medal_width(banner_label)
+                game_t = 100
+                kyohud._panel.rects = {}
+                kyohud._panel.gradients = {}
+
+                kyohud._kills = {}
+                kyohud._killfeed_score_total = 0
+                kyohud._killfeed_score_has_value = false
+
+                -- Set up medal card
+                kyohud._medal_card = {
+                    preview = true,
+                    started_t = 100,
+                    t_end = 200,
+                    label = "STREAK",
+                    color = Color(0.5, 1, 0.5),
+                    kind = kyohud.MEDAL_KIND_WEAPON_STREAK,
+                }
+
+                -- Set up special banner with given label
+                if banner_label then
+                    kyohud._special_kill_banner = {
+                        preview = true,
+                        started_t = 100,
+                        t_end = 200,
+                        label = banner_label,
+                        color = Color(1, 0.5, 0),
+                        multikill_style = true,
+                    }
+                else
+                    kyohud._special_kill_banner = nil
+                end
+
+                kyohud.settings = {
+                    enable_killfeed = true,
+                    icon_size = 32,
+                    opacity = 0.9,
+                    killfeed_size = 5,
+                    circle_radius = 250,
+                }
+
+                kyohud:render_killfeed(kyohud._panel, 800, 600, 32, 0.9, 250)
+
+                -- Find medal frame width by looking for the gradient at layer 101
+                -- that's positioned in the medal area (below banner)
+                local medal_w = nil
+                for _, g in ipairs(kyohud._panel.gradients) do
+                    if g.layer == 101 and g.h and g.h > 26 and g.h < 40 then
+                        -- This is the medal frame gradient
+                        medal_w = g.w
+                        break
+                    end
+                end
+                return medal_w
+            end
+        ''')
+
+        # Render with no banner
+        lua.execute('no_banner_width = capture_medal_width(nil)')
+        no_banner_w = lua.eval('no_banner_width')
+
+        # Render with short banner label
+        lua.execute('short_banner_width = capture_medal_width("OK")')
+        short_banner_w = lua.eval('short_banner_width')
+
+        # Render with long banner label (should trigger expansion)
+        lua.execute('long_banner_width = capture_medal_width("THIS IS A VERY LONG MULTIKILL BANNER LABEL THAT SHOULD TRIGGER EXPANSION")')
+        long_banner_w = lua.eval('long_banner_width')
+
+        # All medal widths should be equal
+        self.assertIsNotNone(no_banner_w, "Medal should be rendered without banner")
+        self.assertIsNotNone(short_banner_w, "Medal should be rendered with short banner")
+        self.assertIsNotNone(long_banner_w, "Medal should be rendered with long banner")
+
+        self.assertEqual(no_banner_w, short_banner_w,
+            "Medal width should not change with short banner")
+        self.assertEqual(no_banner_w, long_banner_w,
+            "Medal width should not expand with long multikill-style banner")
 
 
 if __name__ == "__main__":

@@ -61,7 +61,6 @@ KH._defaults = {
     dire_need = true,
     second_wind = true,
     sixth_sense = true,
-    old_sixth_sense = false,
     unseen_strike = true,
     -- Individual buff toggles (Fugitif/Fugitive)
     berserker = true,
@@ -306,7 +305,7 @@ local BUFF_TOGGLE_IDS = {
     -- Technicien (Technician)
     "lock_n_load",
     -- Fantôme (Ghost)
-    "dire_need", "second_wind", "sixth_sense", "old_sixth_sense",
+    "dire_need", "second_wind", "sixth_sense",
     "unseen_strike",
     -- Fugitif (Fugitive)
     "berserker", "bloodthirst_basic", "bloodthirst_aced", "desperado",

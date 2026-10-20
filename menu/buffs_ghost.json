@@ -36,16 +36,6 @@
         },
         {
             "type": "toggle",
-            "id": "ky_buff_old_sixth_sense",
-            "title": "ky_opt_buff_old_sixth_sense",
-            "description": "ky_opt_buff_old_sixth_sense_desc",
-            "value": "old_sixth_sense",
-            "callback": "KY_ToggleBuff_old_sixth_sense",
-            "enabled_by": "enable_buffs",
-            "default_value": false
-        },
-        {
-            "type": "toggle",
             "id": "ky_buff_unseen_strike",
             "title": "ky_opt_buff_unseen_strike",
             "description": "ky_opt_buff_unseen_strike_desc",

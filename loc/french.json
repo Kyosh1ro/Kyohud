@@ -93,9 +93,7 @@
   "ky_opt_buff_second_wind": "Second souffle",
   "ky_opt_buff_second_wind_desc": "Afficher le buff Second souffle",
   "ky_opt_buff_sixth_sense": "Sixième sens",
-  "ky_opt_buff_sixth_sense_desc": "Afficher le buff Sixième sens",
-  "ky_opt_buff_old_sixth_sense": "Ancien sixième sens",
-  "ky_opt_buff_old_sixth_sense_desc": "Afficher le buff Ancien sixième sens",
+  "ky_opt_buff_sixth_sense_desc": "Afficher le buff Sixième sens avec le nombre de personnes détectées",
   "ky_opt_buff_unseen_strike": "Frappe invisible",
   "ky_opt_buff_unseen_strike_desc": "Afficher le buff Frappe invisible",
 
@@ -244,10 +242,21 @@
   "ky_hud_event_medal_stealth_melee": "Au contact",
   "ky_hud_event_medal_silent_guard": "Sans un bruit",
   "ky_hud_event_medal_backstab": "Dans le dos",
+  "ky_hud_event_medal_deadly_throw": "Lancer mortel",
   "ky_hud_event_medal_tied_civilian": "Sous contrôle",
+  "ky_hud_event_medal_tied_civilian_2": "Pas un geste",
+  "ky_hud_event_medal_tied_civilian_3": "Bien ficelé",
   "ky_hud_stealth_kill_label": "FURTIF",
   "ky_hud_pager_answered": "Réponse au pager",
   "ky_hud_pager_banner_1": "MESSAGE REÇU",
   "ky_hud_pager_banner_2": "TOUT EST CALME",
-  "ky_hud_pager_banner_3": "RIEN À SIGNALER"
+  "ky_hud_pager_banner_3": "RIEN À SIGNALER",
+
+  "ky_hud_throw_kill_1": "LANCER MORTEL",
+  "ky_hud_throw_kill_2": "LAME LANCÉE",
+  "ky_hud_throw_kill_3": "LANCER PRÉCIS",
+
+  "ky_hud_stealth_throw_1": "LANCER SILENCIEUX",
+  "ky_hud_stealth_throw_2": "ÉLIMINATION DISCRÈTE",
+  "ky_hud_stealth_throw_3": "PRÉCISION FANTÔME"
 }

@@ -93,9 +93,7 @@
   "ky_opt_buff_second_wind": "Second Wind",
   "ky_opt_buff_second_wind_desc": "Display Second Wind buff",
   "ky_opt_buff_sixth_sense": "Sixth Sense",
-  "ky_opt_buff_sixth_sense_desc": "Display Sixth Sense buff",
-  "ky_opt_buff_old_sixth_sense": "Old Sixth Sense",
-  "ky_opt_buff_old_sixth_sense_desc": "Display Old Sixth Sense buff",
+  "ky_opt_buff_sixth_sense_desc": "Display Sixth Sense buff with scanned person count",
   "ky_opt_buff_unseen_strike": "Unseen Strike",
   "ky_opt_buff_unseen_strike_desc": "Display Unseen Strike buff",
 
@@ -244,10 +242,21 @@
   "ky_hud_event_medal_stealth_melee": "In Contact",
   "ky_hud_event_medal_silent_guard": "Silent",
   "ky_hud_event_medal_backstab": "Backstab",
+  "ky_hud_event_medal_deadly_throw": "Deadly Throw",
   "ky_hud_event_medal_tied_civilian": "Under Control",
+  "ky_hud_event_medal_tied_civilian_2": "Hold Still",
+  "ky_hud_event_medal_tied_civilian_3": "Nicely Tied",
   "ky_hud_stealth_kill_label": "STEALTH",
   "ky_hud_pager_answered": "Pager answered",
   "ky_hud_pager_banner_1": "PAGER ANSWERED",
   "ky_hud_pager_banner_2": "ALL CLEAR",
-  "ky_hud_pager_banner_3": "NOTHING TO REPORT"
+  "ky_hud_pager_banner_3": "NOTHING TO REPORT",
+
+  "ky_hud_throw_kill_1": "DEADLY THROW",
+  "ky_hud_throw_kill_2": "THROWN BLADE",
+  "ky_hud_throw_kill_3": "PERFECT THROW",
+
+  "ky_hud_stealth_throw_1": "SILENT THROW",
+  "ky_hud_stealth_throw_2": "QUIET TAKEDOWN",
+  "ky_hud_stealth_throw_3": "GHOST PRECISION"
 }

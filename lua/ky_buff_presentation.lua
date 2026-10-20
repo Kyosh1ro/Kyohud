@@ -20,9 +20,22 @@ kyohud.KYO_BUFF_CONFIG = {
         passive_health_regen = "4ADE9B",
         passive_health_regen_mid = "707A75",
         passive_health_regen_pulse = "D6FFEE",
+        sixth_sense = "52A8FF",
+        sixth_sense_dark = "244B73",
+        sixth_sense_pale = "C9E6FF",
         total_dodge_chance = "2FD3B0",
     },
     buffs = {
+        sixth_sense = {
+            color = "sixth_sense",
+            frame_color = "sixth_sense",
+            frame_animation = {
+                color_b = "sixth_sense_dark",
+                color_c = "sixth_sense_pale",
+                period = 3,
+            },
+            value_format = "sixth_sense_count",
+        },
         -- Underdog: one card, one timer. The combined value line shows the
         -- basic damage bonus (dmg+) and the aced damage reduction (dmg-),
         -- each in its own color via `value_text_split`.

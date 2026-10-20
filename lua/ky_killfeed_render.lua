@@ -467,6 +467,7 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
         local available_w = math.max(1, w - 16 - score_w - score_gap)
         local first_kill = #self._kills - visible_count + 1
         local banner_w = math.min(clamp(size * 7.5, 220, 320), math.max(1, w - 16))
+        local base_banner_w = banner_w
         if special_banner_active and special_banner.multikill_style then
             local reserved = C.MULTIKILL_CHEVRON_MARGIN + C.MULTIKILL_CHEVRON_GROUP_W
                 + C.BANNER_CHEVRON_TEXT_GAP
@@ -499,6 +500,7 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
                 or 0
             local content_gap = kill.score_text and text_gap or 0
             local leading_icon = kill.sentry_icon
+                or kill.throw_icon
                 or kill.action_icon
                 or (kill.headshot and kill.headshot_icon)
             local icon_reserved = leading_icon
@@ -691,7 +693,7 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
                 local fade_out = clamp(remaining / 0.3, 0, 1)
                 local medal_alpha = alpha * fade_out
                 local scale = 1 + (1 - intro) * 0.05
-                local mw = banner_w * scale
+                local mw = base_banner_w * scale
                 local mh = medal_h * scale
                 local mx = block_center - mw * 0.5
                 local my = medal_y - (mh - medal_h) * 0.5
@@ -758,6 +760,9 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
                     local bmp = panel:bitmap(params)
                     bmp:set_color(medal_card.icon_color or medal_color)
                     bmp:set_alpha(medal_alpha)
+                    if icon.rotation then
+                        bmp:set_rotation(icon.rotation)
+                    end
                 end
 
                 draw_glowing_text(
@@ -820,6 +825,7 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
             local score_text = kill.score_text
             local inner_w = math.max(1, item_w - text_padding * 2)
             local leading_icon = kill.sentry_icon
+                or kill.throw_icon
                 or kill.action_icon
                 or (kill.headshot and kill.headshot_icon)
             local minimum_text_w = 1 + (score_text and (text_gap + 1) or 0)
@@ -867,6 +873,9 @@ function KH:render_killfeed(panel, w, h, size, alpha, radius)
                 local bitmap = panel:bitmap(params)
                 bitmap:set_color(item_color)
                 bitmap:set_alpha(item_alpha)
+                if leading_icon.rotation then
+                    bitmap:set_rotation(leading_icon.rotation)
+                end
             end
 
             local name_text = kill._full_display_text or kill.display_text or kill.name

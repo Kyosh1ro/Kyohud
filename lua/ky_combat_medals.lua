@@ -185,6 +185,12 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
                 color    = Color(0.75, 0.35, 0.42),           -- muted crimson
                 icon     = { preplanning = 94 },             -- sneaking burglar
             },
+            deadly_throw = {
+                id       = "ky_hud_event_medal_deadly_throw",
+                fallback = "Deadly Throw",
+                color    = Color(0.78, 0.58, 0.92),           -- violet-silver
+                icon     = { texture = "guis/dlcs/pim/textures/pd2/blackmarket/icons/grenades/wpn_prj_target", rotation = 135 },
+            },
             tied_civilian = {
                 id       = "ky_hud_event_medal_tied_civilian",
                 fallback = "Under Control",
@@ -199,7 +205,7 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
             "first_strike", "grave", "low_hp", "reload", "revenge", "bulltrue",
             "showstopper", "rope", "blindfire", "first_blood", "hotswap",
             "overwatch", "long_shot", "air_kill", "loot_carrier", "spray_down",
-            "stealth_melee", "silent_guard", "backstab",
+            "stealth_melee", "silent_guard", "backstab", "deadly_throw",
         },
         -- Last Breath remains a critical signal but must not fill the queue during a low-health kill burst. The first card is immediate and the bound is inclusive: a new card is allowed exactly at 30 s.
         LAST_BREATH_MEDAL_COOLDOWN = 30,
@@ -237,6 +243,14 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         MEDAL_ICON_H_RATIO = 0.6,
         MEDAL_ICON_MIN = 12,
         MEDAL_ICON_MAX = 24,
+        TIED_CIVILIAN_LABELS = {
+            { id = "ky_hud_event_medal_tied_civilian", fallback = "Under Control" },
+            { id = "ky_hud_event_medal_tied_civilian_2", fallback = "Hold Still" },
+            { id = "ky_hud_event_medal_tied_civilian_3", fallback = "Nicely Tied" },
+        },
+        TIED_CIVILIAN_VARIANT_COUNT = 3,
+        TIED_CIVILIAN_STEALTH_COLOR = Color(0.58, 0.72, 0.45),
+        TIED_CIVILIAN_LOUD_COLOR = Color(1, 0.63, 0.12),
     }
 
     -- Derived constant computed once at module init.
@@ -264,6 +278,10 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
     KH.MEDAL_ICON_H_RATIO = C.MEDAL_ICON_H_RATIO
     KH.MEDAL_ICON_MIN = C.MEDAL_ICON_MIN
     KH.MEDAL_ICON_MAX = C.MEDAL_ICON_MAX
+    KH.TIED_CIVILIAN_LABELS = C.TIED_CIVILIAN_LABELS
+    KH.TIED_CIVILIAN_VARIANT_COUNT = C.TIED_CIVILIAN_VARIANT_COUNT
+    KH.TIED_CIVILIAN_STEALTH_COLOR = C.TIED_CIVILIAN_STEALTH_COLOR
+    KH.TIED_CIVILIAN_LOUD_COLOR = C.TIED_CIVILIAN_LOUD_COLOR
 
     -- Sentry icon descriptor: shared between medal cards and killfeed entries.
     -- Cached on KH so all call sites resolve the same texture/rect once.
@@ -322,12 +340,12 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         if not label then return nil end
 
         local color = definition.color or HUD_ACCENT_COLOR
-        local texture, rect = get_icon_data(definition.icon)
+        local texture, rect, rotation = get_icon_data(definition.icon)
         return {
             kind       = C.MEDAL_KIND_EVENT,
             event      = id,
             tier_index = definition.tiers and (tier_index or 1) or nil,
-            icon       = { texture = texture, rect = rect },
+            icon       = { texture = texture, rect = rect, rotation = rotation },
             icon_color = color,
             label      = localized_text(label.id, label.fallback),
             color      = color,
@@ -353,6 +371,22 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
     function KH:ShowEventMedal(id, count)
         local card = set_event_medal_count(make_event_medal_card(id), count)
         self:_show_medal_card(now(), card, false)
+        return card
+    end
+
+    function KH:ShowTiedCivilianMedal(variant_index, is_stealth, preview)
+        local variant = C.TIED_CIVILIAN_LABELS[variant_index] or C.TIED_CIVILIAN_LABELS[1]
+        local color = is_stealth ~= false and C.TIED_CIVILIAN_STEALTH_COLOR or C.TIED_CIVILIAN_LOUD_COLOR
+        local texture, rect = get_icon_data({ hud_tweak = "equipment_cable_ties" })
+        local card = {
+            kind = C.MEDAL_KIND_EVENT,
+            event = "tied_civilian",
+            icon = { texture = texture, rect = rect },
+            icon_color = color,
+            label = localized_text(variant.id, variant.fallback),
+            color = color,
+        }
+        self:_show_medal_card(now(), card, preview == true)
         return card
     end
 

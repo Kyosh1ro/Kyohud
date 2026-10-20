@@ -75,7 +75,6 @@ class ConfigureBuffsTests(unittest.TestCase):
             self.assertTrue(lua.eval("kyohud._defaults.dire_need"))
             self.assertTrue(lua.eval("kyohud._defaults.second_wind"))
             self.assertTrue(lua.eval("kyohud._defaults.sixth_sense"))
-            self.assertFalse(lua.eval("kyohud._defaults.old_sixth_sense"))
             self.assertTrue(lua.eval("kyohud._defaults.unseen_strike"))
 
             # Fugitif (Fugitive) - 537-548
@@ -298,7 +297,6 @@ class ConfigureBuffsTests(unittest.TestCase):
             "ky_buff_dire_need",
             "ky_buff_second_wind",
             "ky_buff_sixth_sense",
-            "ky_buff_old_sixth_sense",
             "ky_buff_unseen_strike",
         ]
         self.assertEqual(ghost_toggles, expected_ghost)
@@ -334,7 +332,7 @@ class ConfigureBuffsTests(unittest.TestCase):
                 "partner_in_crime", "quick_fix", "uppers", "inspire_debuff",
                 "inspire_revive_debuff", "bulletproof", "bullet_storm", "die_hard",
                 "overkill", "underdog", "bullseye_debuff", "lock_n_load",
-                "dire_need", "second_wind", "sixth_sense", "old_sixth_sense",
+                "dire_need", "second_wind", "sixth_sense",
                 "unseen_strike", "berserker", "bloodthirst_basic", "bloodthirst_aced",
                 "desperado", "frenzy", "messiah", "running_from_death", "swan_song",
                 "trigger_happy", "up_you_go",
