@@ -72,6 +72,7 @@ local KILLFEED_SCORE_COLOR = Color(1, 0.63, 0.12)
 local KILLFEED_SCORE_PENALTY_COLOR = Color(1, 0.22, 0.12)
 KH.KILLFEED_SCORE_COLOR = KILLFEED_SCORE_COLOR
 KH.KILLFEED_SCORE_PENALTY_COLOR = KILLFEED_SCORE_PENALTY_COLOR
+KH.STEALTH_KILLFEED_COLOR = Color(0.45, 0.78, 0.55)
 dofile(MY_MOD_PATH .. "lua/ky_buff_presentation.lua")
 local KYO_BUFF_CONFIG = assert(KH.KYO_BUFF_CONFIG, "KyoHUD buff presentation config is missing")
 local KYO_BUFF_COLORS = assert(KYO_BUFF_CONFIG.colors, "KyoHUD buff colors are missing")
@@ -276,7 +277,7 @@ end
 KH.has_texture = has_texture
 
 --- Resolves an icon from a HUDList-compatible description table.
---- Supports: skills_new, skills, perks, hud_tweak, hud_icons, hudtabs, hudpickups, waypoints, direct texture
+--- Supports: skills_new, skills, perks, preplanning, hud_tweak, hud_icons, hudtabs, hudpickups, waypoints, direct texture
 local function get_icon_data(icon)
     if not icon then return FALLBACK_TEXTURE, nil end
 
@@ -314,6 +315,23 @@ local function get_icon_data(icon)
             icon.texture_bundle_folder and string.format("dlcs/%s/", tostring(icon.texture_bundle_folder)) or "")
         local x, y = unpack(icon.perks)
         texture_rect = { x * 64, y * 64, 64, 64 }
+    elseif icon.preplanning then
+        local id = icon.preplanning
+        if type(id) ~= "number" or id ~= math.floor(id) or id < 11
+                or id % 10 < 1 or id % 10 > 5 then
+            return FALLBACK_TEXTURE, nil
+        end
+        texture = "guis/dlcs/deep/textures/pd2/pre_planning/preplan_icon_types"
+        -- Verified native grid. Resolve before rendering, not in the draw loop.
+        texture_rect = { (math.floor(id / 10) - 1) * 48, (id % 10 - 1) * 48, 48, 48 }
+        pcall(function()
+            local preplanning = tweak_data and tweak_data.preplanning
+            local gui = preplanning and preplanning.gui
+            texture = gui and gui.type_icons_path or texture
+            if preplanning and preplanning.get_type_texture_rect then
+                texture_rect = preplanning:get_type_texture_rect(id) or texture_rect
+            end
+        end)
     elseif icon.hud_tweak then
         local ok, tx, rect = pcall(function()
             return tweak_data.hud_icons:get_icon_data(icon.hud_tweak, texture_rect)
@@ -1311,6 +1329,7 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self:_clear_medal_cards()
     self._special_enemy_combos = {}
     clear_recorded_kill_units(self)
+    if self.ResetPagerState then self:ResetPagerState() end
 
     if rearm_bridge_sync then
         self._bridge_delayed_sync_acc = 0
@@ -1347,6 +1366,30 @@ function KH:_register_rope_kill(t)
         streak.tier_index = next_index
         return next_index
     end
+end
+
+-- Non-kill actions share the bounded feed and score burst, never kill counters,
+-- weapon streaks, First Blood, medals or multikill timing.
+function KH:AddActionEntry(action, label, score, icon)
+    if not self.settings or type(score) ~= "number" then return end
+    local t = now()
+    if not has_active_killfeed_entry(self._kills, t) then
+        self._killfeed_score_total = 0
+    end
+    self._killfeed_score_total = (self._killfeed_score_total or 0) + score
+    self._killfeed_score_has_value = true
+    self:_record_heist_score(score)
+    table.insert(self._kills, {
+        action = action,
+        action_icon = icon,
+        name = label,
+        score = score,
+        score_text = format_kill_score(score),
+        stealth = true,
+        start_t = t,
+        t_end = t + KILLFEED_ENTRY_DURATION,
+    })
+    while #self._kills > killfeed_size(self.settings) do table.remove(self._kills, 1) end
 end
 
 function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, special_enemy_kind, weapon_family, event_info, kill_source)
@@ -1526,6 +1569,9 @@ function KH:add_kill(enemy_name, score, contributes_to_combo, special_banner, sp
     }
     if entry.headshot then
         entry.headshot_icon = headshot_icon_descriptor()
+    end
+    if not is_sentry and event_info and event_info.stealth == true then
+        entry.stealth = true
     end
     table.insert(self._kills, entry)
 
@@ -2398,6 +2444,12 @@ function KH:DebugSimulate(n)
     self._banner_queue = {}
     if preview.banner == "boss" then
         self:_show_boss_banner(t_now, true)
+    elseif preview.banner == "pager" and self.MakePagerBanner then
+        self:_show_special_banner(t_now, self:MakePagerBanner(preview.variant), true)
+        self:AddActionEntry("pager_answered", localized_text("ky_hud_pager_answered", "Pager answered"),
+            self.GetActionScore and self:GetActionScore("pager_answered") or 5,
+            self.GetPagerIconDescriptor and self:GetPagerIconDescriptor() or nil)
+        self._kills[#self._kills].t_end = nil
     elseif preview.medal == "weapon_streak" then
         self:_show_medal_card(
             t_now, make_weapon_streak_card(preview.family, preview.tier_index), true

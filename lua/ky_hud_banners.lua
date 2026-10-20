@@ -72,6 +72,13 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         { combo = 0, medal = "event", event = "air_kill" },
         { combo = 0, medal = "event", event = "wall_bang", event_count = 3 },
         { combo = 0, medal = "event", event = "loot_carrier" },
+        { combo = 0, medal = "event", event = "stealth_melee" },
+        { combo = 0, medal = "event", event = "silent_guard" },
+        { combo = 0, medal = "event", event = "backstab" },
+        { combo = 0, medal = "event", event = "tied_civilian" },
+        { combo = 0, banner = "pager", variant = 1 },
+        { combo = 0, banner = "pager", variant = 2 },
+        { combo = 0, banner = "pager", variant = 3 },
     }
 
     -- Expose values consumed by core.lua; module-private values stay in C.

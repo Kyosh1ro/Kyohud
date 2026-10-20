@@ -239,5 +239,15 @@
   "ky_hud_event_medal_no_flashbang": "Anti-Flash",
   "ky_hud_event_medal_air_kill": "Tir aérien",
   "ky_hud_event_medal_wall_bang": "Perce-Muraille",
-  "ky_hud_event_medal_loot_carrier": "Bas les pattes"
+  "ky_hud_event_medal_loot_carrier": "Bas les pattes",
+
+  "ky_hud_event_medal_stealth_melee": "Au contact",
+  "ky_hud_event_medal_silent_guard": "Sans un bruit",
+  "ky_hud_event_medal_backstab": "Dans le dos",
+  "ky_hud_event_medal_tied_civilian": "Sous contrôle",
+  "ky_hud_stealth_kill_label": "FURTIF",
+  "ky_hud_pager_answered": "Réponse au pager",
+  "ky_hud_pager_banner_1": "MESSAGE REÇU",
+  "ky_hud_pager_banner_2": "TOUT EST CALME",
+  "ky_hud_pager_banner_3": "RIEN À SIGNALER"
 }
