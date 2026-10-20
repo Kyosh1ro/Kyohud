@@ -243,6 +243,14 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         MEDAL_ICON_H_RATIO = 0.6,
         MEDAL_ICON_MIN = 12,
         MEDAL_ICON_MAX = 24,
+        TIED_CIVILIAN_LABELS = {
+            { id = "ky_hud_event_medal_tied_civilian", fallback = "Under Control" },
+            { id = "ky_hud_event_medal_tied_civilian_2", fallback = "Hold Still" },
+            { id = "ky_hud_event_medal_tied_civilian_3", fallback = "Nicely Tied" },
+        },
+        TIED_CIVILIAN_VARIANT_COUNT = 3,
+        TIED_CIVILIAN_STEALTH_COLOR = Color(0.58, 0.72, 0.45),
+        TIED_CIVILIAN_LOUD_COLOR = Color(1, 0.63, 0.12),
     }
 
     -- Derived constant computed once at module init.
@@ -270,6 +278,10 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
     KH.MEDAL_ICON_H_RATIO = C.MEDAL_ICON_H_RATIO
     KH.MEDAL_ICON_MIN = C.MEDAL_ICON_MIN
     KH.MEDAL_ICON_MAX = C.MEDAL_ICON_MAX
+    KH.TIED_CIVILIAN_LABELS = C.TIED_CIVILIAN_LABELS
+    KH.TIED_CIVILIAN_VARIANT_COUNT = C.TIED_CIVILIAN_VARIANT_COUNT
+    KH.TIED_CIVILIAN_STEALTH_COLOR = C.TIED_CIVILIAN_STEALTH_COLOR
+    KH.TIED_CIVILIAN_LOUD_COLOR = C.TIED_CIVILIAN_LOUD_COLOR
 
     -- Sentry icon descriptor: shared between medal cards and killfeed entries.
     -- Cached on KH so all call sites resolve the same texture/rect once.
@@ -359,6 +371,22 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
     function KH:ShowEventMedal(id, count)
         local card = set_event_medal_count(make_event_medal_card(id), count)
         self:_show_medal_card(now(), card, false)
+        return card
+    end
+
+    function KH:ShowTiedCivilianMedal(variant_index, is_stealth, preview)
+        local variant = C.TIED_CIVILIAN_LABELS[variant_index] or C.TIED_CIVILIAN_LABELS[1]
+        local color = is_stealth ~= false and C.TIED_CIVILIAN_STEALTH_COLOR or C.TIED_CIVILIAN_LOUD_COLOR
+        local texture, rect = get_icon_data({ hud_tweak = "equipment_cable_ties" })
+        local card = {
+            kind = C.MEDAL_KIND_EVENT,
+            event = "tied_civilian",
+            icon = { texture = texture, rect = rect },
+            icon_color = color,
+            label = localized_text(variant.id, variant.fallback),
+            color = color,
+        }
+        self:_show_medal_card(now(), card, preview == true)
         return card
     end
 

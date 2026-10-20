@@ -226,8 +226,6 @@ if RequiredScript == "lib/units/civilians/logics/civilianlogicsurrender"
             if not_tied then return end
             if data.is_tied ~= true then return end
 
-            if not intent.whisper then return end
-
             local intent_t = tonumber(intent.t)
             local now_t = KH.now and KH.now()
             if intent_t and now_t and (now_t - intent_t) > TIE_INTENT_EXPIRY then return end
@@ -242,7 +240,11 @@ if RequiredScript == "lib/units/civilians/logics/civilianlogicsurrender"
             if KH._stealth_tied_units[unit_key] then return end
             KH._stealth_tied_units[unit_key] = true
 
-            if KH.ShowEventMedal then
+            if KH.ShowTiedCivilianMedal then
+                KH._tied_civilian_variant_index = ((KH._tied_civilian_variant_index or 0)
+                    % (KH.TIED_CIVILIAN_VARIANT_COUNT or 3)) + 1
+                KH:ShowTiedCivilianMedal(KH._tied_civilian_variant_index, intent.whisper)
+            elseif KH.ShowEventMedal then
                 KH:ShowEventMedal("tied_civilian")
             end
         end)
@@ -274,8 +276,6 @@ if RequiredScript == "lib/units/enemies/cop/huskcopbrain"
             KH._stealth_tie_intents[unit] = nil
             if not intent then return end
 
-            if not intent.whisper then return end
-
             local intent_t = tonumber(intent.t)
             local now_t = KH.now and KH.now()
             if intent_t and now_t and (now_t - intent_t) > TIE_INTENT_EXPIRY then return end
@@ -289,7 +289,11 @@ if RequiredScript == "lib/units/enemies/cop/huskcopbrain"
             if KH._stealth_tied_units[unit_key] then return end
             KH._stealth_tied_units[unit_key] = true
 
-            if KH.ShowEventMedal then
+            if KH.ShowTiedCivilianMedal then
+                KH._tied_civilian_variant_index = ((KH._tied_civilian_variant_index or 0)
+                    % (KH.TIED_CIVILIAN_VARIANT_COUNT or 3)) + 1
+                KH:ShowTiedCivilianMedal(KH._tied_civilian_variant_index, intent.whisper)
+            elseif KH.ShowEventMedal then
                 KH:ShowEventMedal("tied_civilian")
             end
         end)
@@ -316,8 +320,6 @@ if RequiredScript == "lib/units/interactions/interactionext"
 
             local lp = local_player_unit()
             if not lp or player ~= lp then return end
-
-            if not KH:IsWhisperMode() then return end
 
             if not is_civilian_unit(unit) then return end
 
@@ -356,7 +358,7 @@ if RequiredScript == "lib/units/interactions/interactionext"
 
             KH._stealth_tie_intents[unit] = nil
             KH._stealth_tie_intents[unit] = {
-                whisper = true,
+                whisper = KH:IsWhisperMode(),
                 t = KH.now and KH.now() or 0,
             }
         end)
@@ -386,6 +388,8 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         if type(intents) == "table" then
             for k in pairs(intents) do intents[k] = nil end
         end
+
+        self._tied_civilian_variant_index = nil
     end
 
     KH._stealth_hud_hooks_installed = true

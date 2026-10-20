@@ -244,6 +244,8 @@
   "ky_hud_event_medal_backstab": "Dans le dos",
   "ky_hud_event_medal_deadly_throw": "Lancer mortel",
   "ky_hud_event_medal_tied_civilian": "Sous contrôle",
+  "ky_hud_event_medal_tied_civilian_2": "Pas un geste",
+  "ky_hud_event_medal_tied_civilian_3": "Bien ficelé",
   "ky_hud_stealth_kill_label": "FURTIF",
   "ky_hud_pager_answered": "Réponse au pager",
   "ky_hud_pager_banner_1": "MESSAGE REÇU",

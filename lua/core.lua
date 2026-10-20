@@ -1358,6 +1358,7 @@ function KH:ResetHeistCombatState(rearm_bridge_sync)
     self._special_enemy_combos = {}
     clear_recorded_kill_units(self)
     self._throw_kill_variant_index = 0
+    self._tied_civilian_variant_index = 0
     self._stealth_throw_banner_index = 0
     if self.ResetPagerState then self:ResetPagerState() end
 
@@ -2547,8 +2548,12 @@ function KH:DebugSimulate(n)
     elseif preview.medal == "sentry_kill" then
         self:_show_medal_card(t_now, KH.MakeSentryKillMedalCard(preview.kills), true)
     elseif preview.medal == "event" then
-        local card = KH.MakeEventMedalCard(preview.event, preview.tier_index)
-        self:_show_medal_card(t_now, KH.SetEventMedalCount(card, preview.event_count), true)
+        if preview.event == "tied_civilian" and preview.tied_variant and KH.ShowTiedCivilianMedal then
+            KH:ShowTiedCivilianMedal(preview.tied_variant, preview.tied_stealth ~= false, true)
+        else
+            local card = KH.MakeEventMedalCard(preview.event, preview.tier_index)
+            self:_show_medal_card(t_now, KH.SetEventMedalCount(card, preview.event_count), true)
+        end
     end
 end
 
