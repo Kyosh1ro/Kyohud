@@ -22,9 +22,12 @@ class LocalBuffCatalogRemovalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             (temp_root / "lua").mkdir()
-            for source in (ROOT / "lua").glob("*.lua"):
+            for source in (ROOT / "lua").rglob("*.lua"):
                 if source.name != catalog_name:
-                    (temp_root / "lua" / source.name).write_bytes(source.read_bytes())
+                    rel = source.relative_to(ROOT / "lua")
+                    dest = temp_root / "lua" / rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(source.read_bytes())
 
             for script_path in script_paths:
                 with self.subTest(script_path=script_path):
@@ -87,7 +90,7 @@ class LocalBuffCatalogRemovalTests(unittest.TestCase):
         ]
         runtime_sources = "\n".join(
             path.read_text(encoding="utf-8-sig")
-            for path in (ROOT / "lua").glob("*.lua")
+            for path in (ROOT / "lua").rglob("*.lua")
             if path.name != catalog_name
         )
         for symbol in removed_symbols:

@@ -601,7 +601,7 @@ class HostClientOfflineTests(unittest.TestCase):
 class NoExternalGlobalsTests(unittest.TestCase):
     def test_no_lua_file_creates_hudlist_or_gameinfomanager_global(self):
         forbidden = {"HUDList", "HUDListManager", "GameInfoManager"}
-        for lua_file in (ROOT / "lua").glob("*.lua"):
+        for lua_file in (ROOT / "lua").rglob("*.lua"):
             source = lua_file.read_text(encoding="utf-8-sig")
             for name in forbidden:
                 assignments = re.findall(

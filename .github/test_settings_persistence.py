@@ -3,6 +3,7 @@
 Run: uv run --with lupa python -B -m unittest discover -s .github -p test_settings_persistence.py -v
 """
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,9 @@ from lupa.luajit21 import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
 OPTIONS_CHUNK = (ROOT / "lua" / "ky_options.lua").read_text(encoding="utf-8-sig")
+
+sys.path.insert(0, str(ROOT / ".github"))
+from test_hud_runtime import acceptance_env as runtime_acceptance_env
 
 
 class SettingsPersistenceTests(unittest.TestCase):
@@ -500,6 +504,222 @@ class SettingsPersistenceTests(unittest.TestCase):
             self.assertEqual(2, reloaded.eval("kyohud.settings.language"))
             self.assertFalse(settings_path.exists())
             self.assertTrue(backup_path.exists())
+
+
+class FoundationSettingsTests(unittest.TestCase):
+    def _load_with_decoded(self, decoded_table):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        save_dir = self._tmpdir.name
+        settings_path = Path(save_dir) / "kyohud_settings.json"
+        settings_path.write_text("dummy", encoding="utf-8")
+        lua = LuaRuntime(unpack_returned_tuples=True)
+        lua.globals().ModPath = ROOT.as_posix() + "/"
+        lua.globals().SavePath = Path(save_dir).as_posix() + "/"
+        lua.execute(r'''
+            kyohud = nil
+            Kyosh1roHUD = nil
+            MenuCallbackHandler = {}
+            Hooks = {callbacks = {}}
+            function Hooks:Add(event, id, callback) self.callbacks[id] = callback end
+            MenuHelper = {}
+            BLT = nil
+            function log(...) end
+            json = {}
+            function json.encode(data) return "{}" end
+        ''')
+        lua.globals()._decoded = lua.table_from(decoded_table)
+        lua.execute(r'''
+            function json.decode(raw) return _decoded end
+        ''')
+        lua.execute(OPTIONS_CHUNK)
+        return lua
+
+    def test_old_file_no_foundation_defaults_false(self):
+        lua = self._load_with_decoded({"language": 1})
+        val = lua.eval("kyohud.settings.enable_hud_foundation")
+        self.assertFalse(bool(val),
+            "old save file without enable_hud_foundation must default to false")
+
+    def test_old_file_no_hud_scale_defaults_1(self):
+        lua = self._load_with_decoded({"language": 1})
+        val = lua.eval("kyohud.settings.hud_scale")
+        self.assertAlmostEqual(float(val), 1.0, places=2,
+            msg="old save file without hud_scale must default to 1")
+
+    def test_malformed_hud_scale_normalized(self):
+        lua = self._load_with_decoded({"hud_scale": 5.0})
+        val = lua.eval("kyohud.settings.hud_scale")
+        self.assertLessEqual(float(val), 2.0,
+            "hud_scale > 2.0 must be clamped to 2.0")
+
+    def test_negative_hud_scale_normalized(self):
+        lua = self._load_with_decoded({"hud_scale": -1})
+        val = lua.eval("kyohud.settings.hud_scale")
+        self.assertGreaterEqual(float(val), 0.5,
+            "negative hud_scale must be clamped to 0.5")
+
+
+class FoundationCallbackTests(unittest.TestCase):
+    def _load_with_runtime(self, initial_settings=None):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        save_dir = self._tmpdir.name
+        lua = runtime_acceptance_env()
+        lua.globals().ModPath = ROOT.as_posix() + "/"
+        lua.globals().SavePath = Path(save_dir).as_posix() + "/"
+        lua.execute(r'''
+            MenuCallbackHandler = MenuCallbackHandler or {}
+            MenuHelper = MenuHelper or {}
+            function MenuHelper:AddToggle(p) end
+            function MenuHelper:AddSlider(p) end
+            function MenuHelper:AddMultipleChoice(p) end
+            function MenuHelper:AddButton(p) end
+            function MenuHelper:AddDivider(p) end
+            function MenuHelper:NewMenu(id) end
+            function MenuHelper:BuildMenu(id, opts) return {} end
+            function MenuHelper:AddMenuItem(a,b,c,d) end
+            BLT = nil
+            function Hooks:Add(event, id, callback) end
+            function dofile(...) return true end
+        ''')
+        import json as py_json
+        def py_json_encode(lua_table):
+            d = {}
+            for k, v in lua_table.items():
+                d[str(k)] = v
+            return py_json.dumps(d)
+        def py_json_decode(raw_str):
+            d = py_json.loads(str(raw_str))
+            return lua.table_from(d)
+        lua.globals()._py_encode = py_json_encode
+        lua.globals()._py_decode = py_json_decode
+        lua.execute(r'''
+            json = {
+                encode = function(data) return _py_encode(data) end,
+                decode = function(raw) return _py_decode(raw) end,
+            }
+        ''')
+        lua.execute('kyohud.settings = {}')
+        if initial_settings:
+            settings_path = Path(save_dir) / "kyohud_settings.json"
+            settings_path.write_text(py_json.dumps(initial_settings), encoding="utf-8")
+        lua.execute(OPTIONS_CHUNK)
+        return lua
+
+    def test_foundation_toggle_on_creates_root(self):
+        lua = self._load_with_runtime()
+        lua.execute('''
+            local cb = MenuCallbackHandler.KY_ToggleHudFoundation
+            assert(type(cb) == "function", "KY_ToggleHudFoundation must exist")
+            kyohud.RefreshHUD = function() error("RefreshHUD must not be called by foundation toggle") end
+            cb(nil, {value = function() return "on" end})
+            local rt = kyohud.hud.runtime
+            _root = rt._root_panel
+            _alive = _root ~= nil
+            _mounted = rt._mounted
+        ''')
+        g = lua.globals()
+        self.assertTrue(bool(g._alive), "toggle on must create root")
+        self.assertTrue(bool(g._mounted), "toggle on must mount runtime")
+
+    def test_hud_scale_propagates_to_runtime_layout(self):
+        lua = self._load_with_runtime({"enable_hud_foundation": True, "hud_scale": 1.0})
+        lua.execute('''
+            local cb_toggle = MenuCallbackHandler.KY_ToggleHudFoundation
+            assert(type(cb_toggle) == "function")
+            cb_toggle(nil, {value = function() return "on" end})
+            local rt = kyohud.hud.runtime
+            _root_before = rt._root_panel
+            assert(_root_before ~= nil, "toggle on must create root")
+            kyohud.RefreshHUD = function() error("RefreshHUD must not be called by scale change") end
+            local cb_scale = MenuCallbackHandler.KY_SetHudScale
+            assert(type(cb_scale) == "function")
+            cb_scale(nil, {value = function() return "1.5" end})
+            _scale = rt._layout and rt._layout.scale
+            _root_after = rt._root_panel
+            _same_root = (_root_before == _root_after)
+            local ar = kyohud.hud.layout.anchor_rect(rt._layout, 50, 50, 200, 200)
+            _anchor_w = ar.w
+        ''')
+        g = lua.globals()
+        self.assertAlmostEqual(float(g._scale), 1.5, places=2,
+            msg="layout scale must be 1.5 after KY_SetHudScale")
+        self.assertTrue(bool(g._same_root),
+            "root identity must be stable across scale change")
+        self.assertAlmostEqual(float(g._anchor_w), 200.0, places=1,
+            msg="anchor_rect width must be 200 for ref_w=200 at 1280x720 with scale 1.5")
+
+    def test_foundation_toggle_off_saves_and_reloads_false(self):
+        lua = self._load_with_runtime()
+        import json as py_json
+        save_dir = self._tmpdir.name
+        lua.execute('''
+            local cb = MenuCallbackHandler.KY_ToggleHudFoundation
+            assert(type(cb) == "function")
+            cb(nil, {value = function() return "on" end})
+        ''')
+        self.assertTrue(bool(lua.eval("kyohud.settings.enable_hud_foundation")))
+        self.assertTrue(bool(lua.eval("kyohud.Save()")))
+        file_on = (Path(save_dir) / "kyohud_settings.json").read_text(encoding="utf-8")
+        self.assertTrue(py_json.loads(file_on)["enable_hud_foundation"],
+            "file on disk must have enable_hud_foundation=true")
+        lua.execute("kyohud.settings.enable_hud_foundation = false")
+        lua.execute("kyohud.Load()")
+        self.assertTrue(bool(lua.eval("kyohud.settings.enable_hud_foundation")),
+            "Load must read true from disk, overriding in-memory false")
+        lua.execute('''
+            local cb = MenuCallbackHandler.KY_ToggleHudFoundation
+            assert(type(cb) == "function")
+            cb(nil, {value = function() return "off" end})
+        ''')
+        self.assertFalse(bool(lua.eval("kyohud.settings.enable_hud_foundation")))
+        self.assertTrue(bool(lua.eval("kyohud.Save()")))
+        file_off = (Path(save_dir) / "kyohud_settings.json").read_text(encoding="utf-8")
+        self.assertFalse(py_json.loads(file_off)["enable_hud_foundation"],
+            "file on disk must have enable_hud_foundation=false")
+        lua.execute("kyohud.settings.enable_hud_foundation = true")
+        lua.execute("kyohud.Load()")
+        self.assertFalse(bool(lua.eval("kyohud.settings.enable_hud_foundation")),
+            "Load must read false from disk, overriding in-memory true")
+
+    def test_reset_defaults_via_real_callback(self):
+        lua = self._load_with_runtime({"enable_hud_foundation": True, "hud_scale": 1.0})
+        lua.execute('''
+            local cb = MenuCallbackHandler.KY_ToggleHudFoundation
+            assert(type(cb) == "function")
+            cb(nil, {value = function() return "on" end})
+            local rt = kyohud.hud.runtime
+            _root_before = rt._root_panel
+            assert(alive(_root_before), "root must be alive before reset")
+            _parent = rt._parent_panel
+            assert(alive(_parent), "parent must be alive before reset")
+            local reset_cb = MenuCallbackHandler.KY_ResetDefaults
+            assert(type(reset_cb) == "function", "KY_ResetDefaults must exist")
+            reset_cb()
+            _enable = kyohud.settings.enable_hud_foundation
+            _root_after = rt._root_panel
+            _old_alive = alive(_root_before)
+            _parent_alive = alive(_parent)
+        ''')
+        g = lua.globals()
+        self.assertFalse(bool(g._enable),
+            "ResetDefaults must set enable_hud_foundation to false")
+        self.assertFalse(bool(g._old_alive),
+            "old root must be dead after reset")
+        self.assertIsNone(g._root_after,
+            "root must be nil after reset")
+        self.assertTrue(bool(g._parent_alive),
+            "native parent must still be alive after reset")
+
+    def test_reset_defaults_guards_managers(self):
+        lua = self._load_with_runtime()
+        lua.execute('''
+            managers = nil
+            _ok = pcall(function() kyohud.ResetDefaults() end)
+        ''')
+        self.assertTrue(bool(lua.globals()._ok),
+            "ResetDefaults must not crash when managers is nil")
 
 
 if __name__ == "__main__":

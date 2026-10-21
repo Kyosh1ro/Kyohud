@@ -48,6 +48,11 @@ local function add_fallbacks(loc)
         ky_opt_reset                = "Reset to Defaults",
         ky_opt_reset_desc           = "Reset all settings to their default values",
 
+        ky_opt_enable_hud_foundation = "Enable HUD Foundation (Dev)",
+        ky_opt_enable_hud_foundation_desc = "Development foundation for the upcoming HUD overhaul. No visual replacements yet; default off.",
+        ky_opt_hud_scale            = "HUD Scale",
+        ky_opt_hud_scale_desc       = "Scale factor for HUD elements (0.5-2.0). Default: 1.0",
+
         ky_hud_score_total       = "TOTAL SCORE",
         ky_hud_score_best_streak = "BEST STREAK",
         ky_hud_score_best_short  = "BEST",

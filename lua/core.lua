@@ -1660,6 +1660,43 @@ local function get_hud_panel()
     return nil
 end
 
+function KH:_sync_combat_panel_geometry(parent)
+    local root = self._panel
+    if not root then return false end
+
+    local pw = parent:w()
+    local ph = parent:h()
+    if type(pw) ~= "number" or type(ph) ~= "number" then return false end
+    if pw <= 0 or ph <= 0 then return false end
+    if pw ~= pw or ph ~= ph then return false end
+    if pw >= math.huge or ph >= math.huge then return false end
+
+    local rx = root:x()
+    local ry = root:y()
+    local rw = root:w()
+    local rh = root:h()
+    if type(rx) ~= "number" or type(ry) ~= "number"
+            or type(rw) ~= "number" or type(rh) ~= "number" then return false end
+
+    if rx == 0 and ry == 0 and rw == pw and rh == ph then
+        return true
+    end
+
+    local setter = root.set_shape
+    if not setter then return false end
+
+    setter(root, 0, 0, pw, ph)
+
+    local vx = root:x()
+    local vy = root:y()
+    local vw = root:w()
+    local vh = root:h()
+    if vx ~= 0 or vy ~= 0 then return false end
+    if vw ~= pw or vh ~= ph then return false end
+
+    return true
+end
+
 function KH:ensure_panel(force)
     local parent = get_hud_panel()
     if not parent then return false end
@@ -1679,6 +1716,9 @@ function KH:ensure_panel(force)
             layer = 100,
         })
     end
+
+    local ok_sync, sync_result = pcall(self._sync_combat_panel_geometry, self, parent)
+    if not ok_sync or not sync_result then return false end
     return true
 end
 

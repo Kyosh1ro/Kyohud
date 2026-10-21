@@ -79,6 +79,8 @@ KH._defaults = {
     total_dodge_chance = true,
     melee_damage_increase = true,
     passive_health_regen = true,
+    enable_hud_foundation = false,
+    hud_scale = 1,
 }
 
 local HUD_DEFAULT_LAYOUTS = {
@@ -209,11 +211,21 @@ function KH.Load()
                 )
             )
             KH.settings.circle_radius = normalized_radius
-            -- Rewrite old saved settings to remove obsolete buff filters and
-            -- `buff_duration`, and normalize the old vertical offset range.
+
+            local saved_scale = KH.settings.hud_scale
+            local normalized_scale = saved_scale
+            if type(saved_scale) ~= "number" or saved_scale ~= saved_scale
+                    or saved_scale == math.huge or saved_scale == -math.huge then
+                normalized_scale = KH._defaults.hud_scale
+            else
+                normalized_scale = math.max(0.5, math.min(2.0, saved_scale))
+            end
+            KH.settings.hud_scale = normalized_scale
+
             if loaded_legacy_settings or data.buff_duration ~= nil
                     or data.buff_categories ~= nil or data.buff_toggles ~= nil
-                    or saved_radius ~= normalized_radius then
+                    or saved_radius ~= normalized_radius
+                    or saved_scale ~= normalized_scale then
                 KH.Save()
             end
         end
@@ -229,6 +241,9 @@ function KH.ResetDefaults()
     update_best_streak_menu_enabled()
     if update_buff_position_menu_enabled then update_buff_position_menu_enabled() end
     if KH.RefreshHUD then KH:RefreshHUD() end
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
 end
 
 -- ═══════════════════════════════════════════════════
@@ -290,6 +305,28 @@ end
 MenuCallbackHandler.KY_SetIconSize    = make_slider_cb("icon_size", true)
 MenuCallbackHandler.KY_ResetDefaults  = function() KH.ResetDefaults() end
 MenuCallbackHandler.KY_BackCallback   = function() end
+
+MenuCallbackHandler.KY_ToggleHudFoundation = function(self, item)
+    KH.settings.enable_hud_foundation = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
+MenuCallbackHandler.KY_SetHudScale = function(self, item)
+    local v = tonumber(item:value()) or KH._defaults.hud_scale
+    if type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge then
+        v = math.max(0.5, math.min(2.0, v))
+    else
+        v = KH._defaults.hud_scale
+    end
+    KH.settings.hud_scale = v
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
 
 -- Buff toggle callbacks. Each one sets KH.settings[buff_id] explicitly,
 -- preserving false, then saves and optionally refreshes the HUD.

@@ -33,6 +33,10 @@
   "ky_opt_icon_size_desc": "Taille des icônes de buff et kill (32-40 pixels). Par défaut : 32",
   "ky_opt_reset": "Réinitialiser par défaut",
   "ky_opt_reset_desc": "Remettre tous les paramètres à leurs valeurs par défaut",
+  "ky_opt_enable_hud_foundation": "Activer la base HUD (Dev)",
+  "ky_opt_enable_hud_foundation_desc": "Fondation de développement pour la refonte HUD à venir. Aucun remplacement visuel pour l'instant ; désactivé par défaut.",
+  "ky_opt_hud_scale": "Échelle du HUD",
+  "ky_opt_hud_scale_desc": "Facteur d'échelle des éléments du HUD (0,5-2,0). Par défaut : 1,0",
 
   "ky_hud_score_total": "SCORE TOTAL",
   "ky_hud_score_best_streak": "BEST STREAK",
