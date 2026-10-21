@@ -26,8 +26,10 @@ class ModTxtStructureTests(unittest.TestCase):
 
     def test_hud_foundation_scripts_present(self):
         paths = [h["script_path"] for h in self.meta["hooks"]]
-        for s in ("lua/hud/layout.lua", "lua/hud/native_visibility.lua", "lua/hud/runtime.lua"):
-            self.assertIn(s, paths)
+        foundation_paths = {p for p in paths if p.startswith("lua/hud/") and p != "lua/hud/mission.lua"}
+        expected = {"lua/hud/layout.lua", "lua/hud/native_visibility.lua", "lua/hud/runtime.lua"}
+        self.assertEqual(foundation_paths, expected,
+            f"foundation must be exactly {expected}, got {foundation_paths}")
 
     def test_foundation_order_layout_before_visibility_before_runtime(self):
         paths = [h["script_path"] for h in self.meta["hooks"]]
@@ -49,7 +51,7 @@ class ModTxtStructureTests(unittest.TestCase):
 
     def test_all_hud_foundation_hooks_use_hudmanagerpd2(self):
         for h in self.meta["hooks"]:
-            if h["script_path"].startswith("lua/hud/"):
+            if h["script_path"] in {"lua/hud/layout.lua", "lua/hud/native_visibility.lua", "lua/hud/runtime.lua"}:
                 self.assertEqual(
                     h["hook_id"], "lib/managers/hudmanagerpd2",
                     f"{h['script_path']} must hook hudmanagerpd2",
@@ -109,7 +111,7 @@ class ManifestIntegrationAcceptanceTests(unittest.TestCase):
         "lua/ky_hud_banners.lua", "lua/ky_killfeed_render.lua",
         "lua/ky_stealth.lua", "lua/ky_pager.lua",
         "lua/hud/layout.lua", "lua/hud/native_visibility.lua",
-        "lua/hud/runtime.lua",
+        "lua/hud/runtime.lua", "lua/hud/mission.lua",
     ]
 
     def test_actual_manifest_order_and_graphics_isolation(self):

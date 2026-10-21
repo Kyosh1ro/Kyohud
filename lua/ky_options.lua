@@ -81,6 +81,7 @@ KH._defaults = {
     passive_health_regen = true,
     enable_hud_foundation = false,
     hud_scale = 1,
+    enable_mission = false,
 }
 
 local HUD_DEFAULT_LAYOUTS = {
@@ -244,6 +245,9 @@ function KH.ResetDefaults()
     if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
         kyohud.hud.runtime:refresh_settings(managers.hud)
     end
+    if managers and managers.hud and kyohud.hud and kyohud.hud.mission and kyohud.hud.mission.refresh_settings then
+        kyohud.hud.mission:refresh_settings(managers.hud)
+    end
 end
 
 -- ═══════════════════════════════════════════════════
@@ -311,6 +315,17 @@ MenuCallbackHandler.KY_ToggleHudFoundation = function(self, item)
     KH.Save()
     if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
         kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
+MenuCallbackHandler.KY_ToggleMission = function(self, item)
+    KH.settings.enable_mission = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+    if managers and managers.hud and kyohud.hud and kyohud.hud.mission and kyohud.hud.mission.refresh_settings then
+        kyohud.hud.mission:refresh_settings(managers.hud)
     end
 end
 

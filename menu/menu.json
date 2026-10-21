@@ -203,6 +203,15 @@
       "display_precision": 2
     },
     {
+      "type": "toggle",
+      "id": "ky_enable_mission",
+      "title": "ky_opt_enable_mission",
+      "description": "ky_opt_enable_mission_desc",
+      "callback": "KY_ToggleMission",
+      "value": "enable_mission",
+      "default_value": false
+    },
+    {
       "type": "divider",
       "size": 15
     },

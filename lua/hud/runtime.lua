@@ -121,6 +121,7 @@ function RT:mount(manager)
             self._parent_panel = parent
             self._mounted = true
             self:_do_refresh()
+            self:_coordinate_mission("mount")
             return
         end
         return
@@ -146,6 +147,14 @@ function RT:mount(manager)
         if dok then self._disabled = (dval == true) end
     end
     self:_do_refresh()
+    self:_coordinate_mission("mount")
+end
+
+function RT:_coordinate_mission(method_name, ...)
+    local mission = kyohud.hud.mission
+    if mission and type(mission[method_name]) == "function" and self._manager then
+        mission[method_name](mission, self._manager, ...)
+    end
 end
 
 function RT:_do_refresh()
@@ -179,6 +188,7 @@ function RT:_do_refresh()
 end
 
 function RT:unmount()
+    self:_coordinate_mission("unmount")
     if not self._mounted and not self._root_panel then return true end
     if self._root_panel then
         local removed = self:_try_remove_root()
@@ -194,14 +204,17 @@ function RT:unmount()
 end
 
 function RT:rebuild(manager)
+    self:_coordinate_mission("unmount")
     if self._root_panel then
         local removed = self:_try_remove_root()
         if not removed then
+            self:_coordinate_mission("mount", manager)
             return
         end
     end
     self._mounted = false
     self:mount(manager)
+    self:_coordinate_mission("rebuild", manager)
 end
 
 function RT:refresh_settings(manager)
@@ -211,6 +224,7 @@ function RT:refresh_settings(manager)
             return
         end
         self:_do_refresh()
+        self:_coordinate_mission("refresh_settings")
     else
         if self._mounted or self._root_panel then
             self:unmount()
@@ -230,6 +244,7 @@ function RT:destroy(manager)
     if manager and self._manager and manager ~= self._manager then
         return
     end
+    self:_coordinate_mission("destroy", manager)
     self:unmount()
     self._mounted_manager_id = nil
 end
@@ -251,6 +266,7 @@ function RT:update(manager, t, dt)
 
     if self._needs_refresh and self._root_panel and panel_alive(self._root_panel) then
         self:_do_refresh()
+        self:_coordinate_mission("update", t, dt)
         return
     end
 
@@ -258,6 +274,7 @@ function RT:update(manager, t, dt)
         self._manager = mgr
     end
     self:mount(mgr)
+    self:_coordinate_mission("update", t, dt)
 end
 
 kyohud.hud._installed_hooks = kyohud.hud._installed_hooks or {}
@@ -280,8 +297,12 @@ end
 
 if RequiredScript == REQUIRED_CONTEXT then
     local function cb_mount(self)
-        kyohud.hud.runtime:mount(self)
+        local mission = kyohud.hud.mission
+        if mission then
+            mission:on_heist_start(self)
+        end
         kyohud.hud.runtime:on_heist_start(self)
+        kyohud.hud.runtime:mount(self)
     end
     local function cb_rebuild(self)
         if kyohud.hud.runtime._mounted and kyohud.hud.runtime._manager == self then
