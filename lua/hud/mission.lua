@@ -63,7 +63,6 @@ local CALL_OK = "ok"
 local CALL_MISSING = "missing"
 local CALL_ERROR = "error"
 
-local NATIVE_RESERVED_Y = 100
 local ROW_MARGIN = 10
 local REF_FONT_SIZE = 20
 local MIN_FONT_SIZE = 12
@@ -185,8 +184,13 @@ function M:_compute_layout(parent_w, parent_h, scale)
     if title_w < min_title_w or timer_w <= 0 or bags_w <= 0 or row_h <= 0 then
         return nil
     end
+    local region = nil
+    if type(layout.objectives_region) == "function" then
+        region = layout.objectives_region(parent_w, parent_h)
+    end
+    if not region then return nil end
     local root_x = margin
-    local root_y = NATIVE_RESERVED_Y + margin
+    local root_y = region.y + region.h + margin
     if root_y + row_h > parent_h then return nil end
     if root_x + row_w > parent_w then return nil end
     return {

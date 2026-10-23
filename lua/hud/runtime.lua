@@ -122,6 +122,7 @@ function RT:mount(manager)
             self._mounted = true
             self:_do_refresh()
             self:_coordinate_mission("mount")
+            self:_coordinate_objectives("mount")
             return
         end
         return
@@ -148,12 +149,20 @@ function RT:mount(manager)
     end
     self:_do_refresh()
     self:_coordinate_mission("mount")
+    self:_coordinate_objectives("mount")
 end
 
 function RT:_coordinate_mission(method_name, ...)
     local mission = kyohud.hud.mission
     if mission and type(mission[method_name]) == "function" and self._manager then
         mission[method_name](mission, self._manager, ...)
+    end
+end
+
+function RT:_coordinate_objectives(method_name, ...)
+    local objectives = kyohud.hud.objectives
+    if objectives and type(objectives[method_name]) == "function" and self._manager then
+        objectives[method_name](objectives, self._manager, ...)
     end
 end
 
@@ -189,6 +198,7 @@ end
 
 function RT:unmount()
     self:_coordinate_mission("unmount")
+    self:_coordinate_objectives("unmount")
     if not self._mounted and not self._root_panel then return true end
     if self._root_panel then
         local removed = self:_try_remove_root()
@@ -205,16 +215,19 @@ end
 
 function RT:rebuild(manager)
     self:_coordinate_mission("unmount")
+    self:_coordinate_objectives("unmount")
     if self._root_panel then
         local removed = self:_try_remove_root()
         if not removed then
             self:_coordinate_mission("mount", manager)
+            self:_coordinate_objectives("mount", manager)
             return
         end
     end
     self._mounted = false
     self:mount(manager)
     self:_coordinate_mission("rebuild", manager)
+    self:_coordinate_objectives("rebuild", manager)
 end
 
 function RT:refresh_settings(manager)
@@ -225,6 +238,7 @@ function RT:refresh_settings(manager)
         end
         self:_do_refresh()
         self:_coordinate_mission("refresh_settings")
+        self:_coordinate_objectives("refresh_settings")
     else
         if self._mounted or self._root_panel then
             self:unmount()
@@ -245,6 +259,7 @@ function RT:destroy(manager)
         return
     end
     self:_coordinate_mission("destroy", manager)
+    self:_coordinate_objectives("destroy", manager)
     self:unmount()
     self._mounted_manager_id = nil
 end
@@ -267,6 +282,7 @@ function RT:update(manager, t, dt)
     if self._needs_refresh and self._root_panel and panel_alive(self._root_panel) then
         self:_do_refresh()
         self:_coordinate_mission("update", t, dt)
+        self:_coordinate_objectives("update", t, dt)
         return
     end
 
@@ -275,6 +291,7 @@ function RT:update(manager, t, dt)
     end
     self:mount(mgr)
     self:_coordinate_mission("update", t, dt)
+    self:_coordinate_objectives("update", t, dt)
 end
 
 kyohud.hud._installed_hooks = kyohud.hud._installed_hooks or {}
@@ -300,6 +317,10 @@ if RequiredScript == REQUIRED_CONTEXT then
         local mission = kyohud.hud.mission
         if mission then
             mission:on_heist_start(self)
+        end
+        local objectives = kyohud.hud.objectives
+        if objectives then
+            objectives:on_heist_start(self)
         end
         kyohud.hud.runtime:on_heist_start(self)
         kyohud.hud.runtime:mount(self)

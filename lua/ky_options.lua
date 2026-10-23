@@ -82,6 +82,8 @@ KH._defaults = {
     enable_hud_foundation = false,
     hud_scale = 1,
     enable_mission = false,
+    enable_objectives = false,
+    objectives_visible_limit = 1,
 }
 
 local HUD_DEFAULT_LAYOUTS = {
@@ -223,10 +225,21 @@ function KH.Load()
             end
             KH.settings.hud_scale = normalized_scale
 
+            local saved_limit = KH.settings.objectives_visible_limit
+            local normalized_limit = saved_limit
+            if type(saved_limit) ~= "number" or saved_limit ~= saved_limit
+                    or saved_limit == math.huge or saved_limit == -math.huge then
+                normalized_limit = KH._defaults.objectives_visible_limit
+            else
+                normalized_limit = math.max(1, math.min(3, math.floor(saved_limit)))
+            end
+            KH.settings.objectives_visible_limit = normalized_limit
+
             if loaded_legacy_settings or data.buff_duration ~= nil
                     or data.buff_categories ~= nil or data.buff_toggles ~= nil
                     or saved_radius ~= normalized_radius
-                    or saved_scale ~= normalized_scale then
+                    or saved_scale ~= normalized_scale
+                    or saved_limit ~= normalized_limit then
                 KH.Save()
             end
         end
@@ -329,6 +342,14 @@ MenuCallbackHandler.KY_ToggleMission = function(self, item)
     end
 end
 
+MenuCallbackHandler.KY_ToggleObjectives = function(self, item)
+    KH.settings.enable_objectives = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
 MenuCallbackHandler.KY_SetHudScale = function(self, item)
     local v = tonumber(item:value()) or KH._defaults.hud_scale
     if type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge then
@@ -337,6 +358,20 @@ MenuCallbackHandler.KY_SetHudScale = function(self, item)
         v = KH._defaults.hud_scale
     end
     KH.settings.hud_scale = v
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
+MenuCallbackHandler.KY_SetObjectivesVisibleLimit = function(self, item)
+    local v = tonumber(item:value())
+    if type(v) ~= "number" or v ~= v or v == math.huge or v == -math.huge then
+        v = KH._defaults.objectives_visible_limit
+    else
+        v = math.max(1, math.min(3, math.floor(v)))
+    end
+    KH.settings.objectives_visible_limit = v
     KH.Save()
     if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
         kyohud.hud.runtime:refresh_settings(managers.hud)

@@ -118,4 +118,16 @@ function L.anchor_rect(geom, x_pct, y_pct, ref_w, ref_h)
     return { x = x, y = y, w = rw, h = rh }
 end
 
+function L.objectives_region(w, h)
+    if not posfinite(w) or not posfinite(h) then
+        return nil
+    end
+    return {
+        x = 0,
+        y = 0,
+        w = math.min(500, w),
+        h = math.min(100, h),
+    }
+end
+
 kyohud.hud.layout = L

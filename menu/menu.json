@@ -212,6 +212,29 @@
       "default_value": false
     },
     {
+      "type": "toggle",
+      "id": "ky_enable_objectives",
+      "title": "ky_opt_enable_objectives",
+      "description": "ky_opt_enable_objectives_desc",
+      "callback": "KY_ToggleObjectives",
+      "value": "enable_objectives",
+      "default_value": false
+    },
+    {
+      "type": "slider",
+      "id": "ky_objectives_visible_limit",
+      "title": "ky_opt_objectives_visible_limit",
+      "description": "ky_opt_objectives_visible_limit_desc",
+      "callback": "KY_SetObjectivesVisibleLimit",
+      "value": "objectives_visible_limit",
+      "default_value": 1,
+      "min": 1,
+      "max": 3,
+      "step": 1,
+      "display_precision": 0,
+      "enabled_by": "enable_objectives"
+    },
+    {
       "type": "divider",
       "size": 15
     },

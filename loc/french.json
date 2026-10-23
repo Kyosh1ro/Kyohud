@@ -40,6 +40,10 @@
 
   "ky_opt_enable_mission": "Activer le HUD de mission",
   "ky_opt_enable_mission_desc": "Affiche le temps du braquage, le nom du niveau actuel et les sacs sécurisés sur une ligne compacte. Nécessite la base HUD.",
+  "ky_opt_enable_objectives": "Activer les objectifs",
+  "ky_opt_enable_objectives_desc": "Affiche les objectifs actifs dans leur propre zone. Nécessite la base HUD. Désactivé par défaut.",
+  "ky_opt_objectives_visible_limit": "Limite d'objectifs visibles",
+  "ky_opt_objectives_visible_limit_desc": "Nombre d'objectifs actifs affichés (1-3). Affiche les objectifs les plus récents, du plus ancien au plus récent dans la sélection. Par défaut : 1",
   "ky_hud_mission_title": "BRAQUAGE EN COURS",
   "ky_hud_mission_bags": "SACS",
 

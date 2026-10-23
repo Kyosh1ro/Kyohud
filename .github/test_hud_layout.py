@@ -304,6 +304,65 @@ class HudLayoutAnchorRectTests(unittest.TestCase):
         self.assertAlmostEqual(float(g._x1), float(g._x3), places=10)
         self.assertAlmostEqual(float(g._y1), float(g._y3), places=10)
 
+    def test_objectives_region_contract(self):
+        self.lua.execute("_f = kyohud.hud.layout.objectives_region")
+        self.assertIsNotNone(self.lua.globals()._f)
+        self.lua.execute("_t = type(kyohud.hud.layout.objectives_region)")
+        self.assertEqual(str(self.lua.globals()._t), "function")
+
+        self.lua.execute('''
+            local r = kyohud.hud.layout.objectives_region(1920, 1080)
+            _x=r.x; _y=r.y; _w=r.w; _h=r.h
+        ''')
+        g = self.lua.globals()
+        self.assertEqual(float(g._x), 0)
+        self.assertEqual(float(g._y), 0)
+        self.assertEqual(float(g._w), 500)
+        self.assertEqual(float(g._h), 100)
+
+        self.lua.execute('''
+            local r = kyohud.hud.layout.objectives_region(320, 80)
+            _x=r.x; _y=r.y; _w=r.w; _h=r.h
+        ''')
+        g = self.lua.globals()
+        self.assertEqual(float(g._x), 0)
+        self.assertEqual(float(g._y), 0)
+        self.assertEqual(float(g._w), 320)
+        self.assertEqual(float(g._h), 80)
+
+        self.lua.execute('''
+            local L = kyohud.hud.layout
+            local r1 = L.objectives_region(800, 600)
+            local _tmp = L.objectives_region(100, 100)
+            local r3 = L.objectives_region(800, 600)
+            _x1=r1.x; _y1=r1.y; _w1=r1.w; _h1=r1.h
+            _x3=r3.x; _y3=r3.y; _w3=r3.w; _h3=r3.h
+        ''')
+        g = self.lua.globals()
+        self.assertEqual(float(g._x1), float(g._x3))
+        self.assertEqual(float(g._y1), float(g._y3))
+        self.assertEqual(float(g._w1), float(g._w3))
+        self.assertEqual(float(g._h1), float(g._h3))
+
+        cases = [
+            ("0, 1080", "zero_w"),
+            ("1920, 0", "zero_h"),
+            ("-1, 1080", "neg_w"),
+            ("1920, -1", "neg_h"),
+            ("0/0, 1080", "nan_w"),
+            ("1920, 0/0", "nan_h"),
+            ("math.huge, 1080", "inf_w"),
+            ("1920, math.huge", "inf_h"),
+            ('"string", 1080', "type_w"),
+            ("1920, true", "type_h"),
+            ("nil, 1080", "nil_w"),
+            ("1920, nil", "nil_h"),
+        ]
+        for args, label in cases:
+            with self.subTest(label=label):
+                self.lua.execute(f"_r = kyohud.hud.layout.objectives_region({args})")
+                self.assertIsNone(self.lua.globals()._r)
+
 
 if __name__ == "__main__":
     unittest.main()

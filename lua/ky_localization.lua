@@ -55,6 +55,10 @@ local function add_fallbacks(loc)
 
         ky_opt_enable_mission       = "Enable Mission HUD",
         ky_opt_enable_mission_desc  = "Show heist timer, current level title and secured bag count in a compact row. Requires HUD Foundation.",
+        ky_opt_enable_objectives       = "Enable Objectives",
+        ky_opt_enable_objectives_desc  = "Show active objectives in their own area. Requires HUD Foundation. Default off.",
+        ky_opt_objectives_visible_limit = "Objectives Visible Limit",
+        ky_opt_objectives_visible_limit_desc = "Number of active objectives displayed (1-3). Shows the newest objectives, ordered oldest to newest within the selection. Default: 1",
         ky_hud_mission_title        = "HEIST IN PROGRESS",
         ky_hud_mission_bags         = "BAGS",
 
