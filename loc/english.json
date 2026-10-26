@@ -41,9 +41,17 @@
   "ky_opt_enable_mission": "Enable Mission HUD",
   "ky_opt_enable_mission_desc": "Show heist timer, current level title and secured bag count in a compact row. Requires HUD Foundation.",
   "ky_opt_enable_objectives": "Enable Objectives",
-  "ky_opt_enable_objectives_desc": "Show active objectives in their own area. Requires HUD Foundation. Default off.",
-  "ky_opt_objectives_visible_limit": "Objectives Visible Limit",
-  "ky_opt_objectives_visible_limit_desc": "Number of active objectives displayed (1-3). Shows the newest objectives, ordered oldest to newest within the selection. Default: 1",
+  "ky_opt_enable_objectives_desc": "Show the current objective and optional completed-objective history in their own area. Requires HUD Foundation. Default off.",
+  "ky_opt_objectives_visible_limit": "Objective History",
+  "ky_opt_objectives_visible_limit_desc": "Number of objective lines displayed (1-3). 1: current only; 2: current + last completed; 3: current + last 2 completed. Current objective is shown on top, then completed entries from newest to oldest. Not multiple active objectives at once. Default: 1",
+
+  "ky_opt_enable_assault": "Enable Assault HUD (Dev)",
+  "ky_opt_enable_assault_desc": "Show police assault status panel. Requires HUD Foundation. Experimental; no native alert coverage. Default off.",
+  "ky_hud_assault_status": "POLICE ASSAULT IN PROGRESS",
+  "ky_hud_assault_endless": "ENDLESS",
+  "ky_hud_hostages_label": "HOSTAGES",
+  "ky_hud_converted_label": "CONVERTED",
+
   "ky_hud_mission_title": "HEIST IN PROGRESS",
   "ky_hud_mission_bags": "BAGS",
 

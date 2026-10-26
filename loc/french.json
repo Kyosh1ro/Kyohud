@@ -41,9 +41,17 @@
   "ky_opt_enable_mission": "Activer le HUD de mission",
   "ky_opt_enable_mission_desc": "Affiche le temps du braquage, le nom du niveau actuel et les sacs sécurisés sur une ligne compacte. Nécessite la base HUD.",
   "ky_opt_enable_objectives": "Activer les objectifs",
-  "ky_opt_enable_objectives_desc": "Affiche les objectifs actifs dans leur propre zone. Nécessite la base HUD. Désactivé par défaut.",
-  "ky_opt_objectives_visible_limit": "Limite d'objectifs visibles",
-  "ky_opt_objectives_visible_limit_desc": "Nombre d'objectifs actifs affichés (1-3). Affiche les objectifs les plus récents, du plus ancien au plus récent dans la sélection. Par défaut : 1",
+  "ky_opt_enable_objectives_desc": "Affiche l'objectif courant et, selon le réglage, les derniers objectifs terminés dans leur propre zone. Nécessite la base HUD. Désactivé par défaut.",
+  "ky_opt_objectives_visible_limit": "Historique des objectifs",
+  "ky_opt_objectives_visible_limit_desc": "Nombre de lignes d'objectifs affichées (1-3). 1 : objectif courant uniquement ; 2 : courant + dernier terminé ; 3 : courant + 2 derniers terminés. L'objectif courant est affiché en haut, puis les entrées terminées de la plus récente à la plus ancienne. Pas d'objectifs actifs multiples simultanément. Par défaut : 1",
+
+  "ky_opt_enable_assault": "Activer le HUD d'assaut (Dev)",
+  "ky_opt_enable_assault_desc": "Affiche le panneau d'état de l'assaut policier. Nécessite la base HUD. Expérimental ; aucune couverture d'alertes natives. Désactivé par défaut.",
+  "ky_hud_assault_status": "ASSAUT POLICIER EN COURS",
+  "ky_hud_assault_endless": "SANS FIN",
+  "ky_hud_hostages_label": "OTAGES",
+  "ky_hud_converted_label": "CONVERTIS",
+
   "ky_hud_mission_title": "BRAQUAGE EN COURS",
   "ky_hud_mission_bags": "SACS",
 

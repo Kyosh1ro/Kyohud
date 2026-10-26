@@ -26,7 +26,7 @@ class ModTxtStructureTests(unittest.TestCase):
 
     def test_hud_foundation_scripts_present(self):
         paths = [h["script_path"] for h in self.meta["hooks"]]
-        foundation_paths = {p for p in paths if p.startswith("lua/hud/") and p != "lua/hud/mission.lua" and p != "lua/hud/objectives.lua"}
+        foundation_paths = {p for p in paths if p.startswith("lua/hud/") and p != "lua/hud/mission.lua" and p != "lua/hud/objectives.lua" and p != "lua/hud/assault.lua"}
         expected = {"lua/hud/layout.lua", "lua/hud/native_visibility.lua", "lua/hud/runtime.lua"}
         self.assertEqual(foundation_paths, expected,
             f"foundation must be exactly {expected}, got {foundation_paths}")
@@ -112,6 +112,7 @@ class ManifestIntegrationAcceptanceTests(unittest.TestCase):
         "lua/ky_stealth.lua", "lua/ky_pager.lua",
         "lua/hud/layout.lua", "lua/hud/native_visibility.lua",
         "lua/hud/runtime.lua", "lua/hud/mission.lua", "lua/hud/objectives.lua",
+        "lua/hud/assault.lua",
     ]
 
     def test_actual_manifest_order_and_graphics_isolation(self):

@@ -419,7 +419,7 @@ class EnableObjectivesOptionTests(unittest.TestCase):
 
             local sel3 = O:select_visible()
             _sel3_count = #sel3
-            _sel3_ok = (sel3[1] and sel3[1].id == "a") and (sel3[2] and sel3[2].id == "b") and (sel3[3] and sel3[3].id == "c")
+            _sel3_ok = (sel3[1] and sel3[1].id == "c")
 
             local f3 = io.open(kyohud._settings_path, "r")
             local content3 = f3:read("*all")
@@ -464,15 +464,15 @@ class EnableObjectivesOptionTests(unittest.TestCase):
         ''')
         self.assertEqual(lua.eval("_persisted_3"), 3, "Callback must persist integer 3")
         self.assertEqual(lua.eval("_active_count_3"), 3, "All 3 objectives must remain active")
-        self.assertEqual(lua.eval("_sel3_count"), 3, "select_visible must return 3 entries")
-        self.assertTrue(lua.eval("_sel3_ok"), "select_visible must return a,b,c")
+        self.assertEqual(lua.eval("_sel3_count"), 1, "select_visible must return 1 entry")
+        self.assertTrue(lua.eval("_sel3_ok"), "select_visible must return c")
         self.assertEqual(lua.eval("_saved_3"), 3, "Settings file must contain 3")
         self.assertEqual(lua.eval("_slot1_text_vis_3"), True, "Slot 1 text must be visible with limit 3")
-        self.assertEqual(lua.eval("_slot2_text_vis_3"), True, "Slot 2 text must be visible with limit 3")
-        self.assertEqual(lua.eval("_slot3_text_vis_3"), True, "Slot 3 text must be visible with limit 3")
-        self.assertEqual(lua.eval("_slot1_title_3"), "Objective A", "Slot 1 title must be Objective A with limit 3")
-        self.assertEqual(lua.eval("_slot2_title_3"), "Objective B", "Slot 2 title must be Objective B with limit 3")
-        self.assertEqual(lua.eval("_slot3_title_3"), "Objective C", "Slot 3 title must be Objective C with limit 3")
+        self.assertEqual(lua.eval("_slot2_text_vis_3"), False, "Slot 2 text must be hidden with limit 3")
+        self.assertEqual(lua.eval("_slot3_text_vis_3"), False, "Slot 3 text must be hidden with limit 3")
+        self.assertEqual(lua.eval("_slot1_title_3"), "Objective C", "Slot 1 title must be Objective C with limit 3")
+        self.assertEqual(lua.eval("_slot2_title_3"), "", "Slot 2 title must be empty string with limit 3")
+        self.assertEqual(lua.eval("_slot3_title_3"), "", "Slot 3 title must be empty string with limit 3")
         self.assertTrue(lua.eval("_verify_render_3"), "verify_render must pass with limit 3")
 
         self.assertEqual(lua.eval("_persisted_1"), 1, "Callback must persist integer 1")

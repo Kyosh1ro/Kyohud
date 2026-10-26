@@ -240,6 +240,17 @@ def _lua_with_native_hud_objectives():
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.globals().ModPath = ROOT.as_posix() + "/"
     lua.execute(STUBS)
+    lua.execute('''
+Color = function(...)
+    local args = {...}
+    if #args == 3 then
+        return {1, args[1], args[2], args[3]}
+    elseif #args == 4 then
+        return {args[1], args[2], args[3], args[4]}
+    end
+    return {1, 1, 1, 1}
+end
+''')
     lua.execute(DIESEL)
 
     # Define HUDObjectives native class and callback helper before loading objectives
@@ -467,6 +478,67 @@ def _lua_native_ready():
             O = kyohud.hud.objectives,
             nv = kyohud.hud.native_visibility,
         }
+
+        local function extend_prim_with_color(p)
+            if p._color_extended then return end
+            p._color_extended = true
+            if not p._color then
+                p._color = {1, 1, 1, 1}
+            end
+            function p:set_color(c)
+                if type(c) == "table" then
+                    if #c == 3 then
+                        self._color = {1, c[1], c[2], c[3]}
+                    else
+                        self._color = c
+                    end
+                end
+            end
+            function p:color()
+                return self._color
+            end
+        end
+
+        local O = kyohud.hud.objectives
+        if O._root_panel then
+            extend_prim_with_color(O._root_panel)
+            local orig_rect = O._root_panel.rect
+            if not orig_rect then
+                function O._root_panel:rect(opts)
+                    local ch = _make_panel(opts and opts.name)
+                    ch._parent = self
+                    if opts then
+                        if opts.x then ch._x = opts.x end
+                        if opts.y then ch._y = opts.y end
+                        if opts.w then ch._w = opts.w end
+                        if opts.h then ch._h = opts.h end
+                        if opts.visible ~= nil then ch._visible = opts.visible end
+                        if opts.alpha ~= nil then ch._alpha = opts.alpha end
+                        if opts.color ~= nil then ch._color = opts.color end
+                    end
+                    self._children[ch._name] = ch
+                    return ch
+                end
+                orig_rect = O._root_panel.rect
+            end
+            function O._root_panel:rect(...)
+                local r = orig_rect(self, ...)
+                extend_prim_with_color(r)
+                return r
+            end
+            for name, child in pairs(O._root_panel._children) do
+                extend_prim_with_color(child)
+            end
+        end
+        if O._slot_prims then
+            for i = 1, 3 do
+                local slot = O._slot_prims[i]
+                if slot then
+                    if slot.text then extend_prim_with_color(slot.text) end
+                    if slot.amount then extend_prim_with_color(slot.amount) end
+                end
+            end
+        end
     ''')
 
     return lua, True
@@ -1942,14 +2014,27 @@ class ObjectivesVisibilityIntegrationTests(unittest.TestCase):
                 "OM registry must be cleared after call 3")
             assert(#O._active == 0,
                 "O._active must be empty after call 3, got " .. #O._active)
+            assert(O._slot_prims[1].text:text() == "Collect bags",
+                "owned title must be retained after call 3, got " .. tostring(O._slot_prims[1].text:text()))
+            assert(O._slot_prims[1].amount:text() == "3/3",
+                "owned amount must be retained after call 3, got " .. tostring(O._slot_prims[1].amount:text()))
+            assert(O._slot_prims[1].text:visible() == true,
+                "owned title must be visible after call 3")
+            assert(O._slot_prims[1].amount:visible() == true,
+                "owned amount must be visible after call 3")
+
+            RT:update(managers.hud, 1.600, .600)
+            RT:update(managers.hud, 1.900, .300)
+            RT:update(managers.hud, 2.200, .300)
+
             assert(O._slot_prims[1].text:text() == "",
-                "owned title must be empty after call 3, got " .. tostring(O._slot_prims[1].text:text()))
+                "owned title must be empty after RT:update, got " .. tostring(O._slot_prims[1].text:text()))
             assert(O._slot_prims[1].amount:text() == "",
-                "owned amount must be empty after call 3, got " .. tostring(O._slot_prims[1].amount:text()))
+                "owned amount must be empty after RT:update, got " .. tostring(O._slot_prims[1].amount:text()))
             assert(O._slot_prims[1].text:visible() == false,
-                "owned title must be hidden after call 3")
+                "owned title must be hidden after RT:update")
             assert(O._slot_prims[1].amount:visible() == false,
-                "owned amount must be hidden after call 3")
+                "owned amount must be hidden after RT:update")
 
             local owner_count_immediate = 0
             for _, e in ipairs(nv._entries) do
@@ -1957,8 +2042,8 @@ class ObjectivesVisibilityIntegrationTests(unittest.TestCase):
                     owner_count_immediate = owner_count_immediate + 1
                 end
             end
-            assert(owner_count_immediate == 0,
-                "NV owner must be 0 immediately after call 3, got " .. owner_count_immediate)
+            assert(owner_count_immediate == 8,
+                "NV owner must be 8 during native completion, got " .. owner_count_immediate)
 
             assert(objectives_panel._scheduled_fn ~= nil,
                 "completion callback must be scheduled on objectives_panel")
@@ -2650,6 +2735,1295 @@ class ObjectivesVisibilityIntegrationTests(unittest.TestCase):
             assert(bg_box:visible() == true, "bg_box must remain visible after final disable")
             assert(sentinel:visible() == true, "sentinel must remain visible after final disable")
             assert(sentinel:alpha() == 1, "sentinel alpha must remain 1 after final disable")
+        ''')
+
+
+    def test_immediate_objective_announcement_transition(self):
+        """Immediate objective announcement transition characterization.
+
+        Baseline via _lua_native_ready: "collect" acquired, rendered, 8 masked.
+        Remove "collect" via OM:remove_objective to allow immediate activation.
+        (Removal legitimately releases NV because no selected active id remains.)
+        Introduce NEW "escape" via OM:activate_objective immediate (no active objs).
+        Native OM path: HUD notify BEFORE registry insertion.
+        Production on_om_activate updates O._active, sync_if_mounted.
+        Native HUDManager:activate_objective -> HUDObjectives:activate_objective.
+        HUDObjectives PRE hook: releases NV (8 leaves restored to originals).
+        Native body: sets title=false, amount=false, schedules open_right_done.
+        After OM:activate_objective returns:
+          - Owned text shows "Escape" (sync_if_mounted updated primitives)
+          - 8 native leaves masked, owner=8, verifier true (desired)
+        Run native open_right_done(false):
+          - PRE hook: releases NV (already released)
+          - Native body: sets title=true, amount=false (uses_amount=false)
+          - POST hook: re-acquires NV (hides all 8)
+        After open_right_done:
+          - 8 native leaves masked, owner=8
+          - Owned text still shows "Escape"
+        Preserve parent/sentinel/alpha throughout.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+            local native_obj = r.native_obj
+            local OM = managers.objectives
+
+            assert(O._mounted == true, "O must be mounted")
+            local vr_base = O:_verify_render()
+            assert(vr_base == true, "baseline verifier must be true")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "baseline leaf " .. i .. " must be false")
+            end
+
+            local owner_count_base = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_count_base = owner_count_base + 1
+                end
+            end
+            assert(owner_count_base == 8, "baseline owner must be 8")
+
+            OM:remove_objective("collect", nil)
+
+            assert(#O._active == 0, "O._active must be empty after remove")
+            assert(O._slot_prims[1].text:text() == "",
+                "owned title must be empty after remove")
+
+            OM._objectives["escape"] = {
+                id = "escape", text = "Escape the area", amount = nil,
+                current_amount = nil, sub_objectives = {},
+            }
+            OM:activate_objective("escape", nil, {})
+
+            assert(#O._active == 1, "O._active must have 1 entry")
+            assert(O._active[1].id == "escape", "active must be escape")
+            assert(O._active[1].pending == false, "escape must not be pending")
+            assert(O._slot_prims[1].text:text() == "Escape the area",
+                "owned title must show escape text")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must be masked on callback return, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_count_immediate = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_count_immediate = owner_count_immediate + 1
+                end
+            end
+            assert(owner_count_immediate == 8, "owner must be 8 on callback return")
+
+            local vr_immediate = O:_verify_render()
+            assert(vr_immediate == true, "verifier must be true on callback return")
+
+            native_obj:open_right_done(false)
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must be masked after open_right_done, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_count_after = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_count_after = owner_count_after + 1
+                end
+            end
+            assert(owner_count_after == 8, "owner must be 8 after open_right_done")
+
+            assert(O._slot_prims[1].text:text() == "Escape the area",
+                "owned title must still show escape after open_right_done")
+
+            local vr_after = O:_verify_render()
+            assert(vr_after == true, "verifier must be true after open_right_done")
+
+            assert(objectives_panel:visible() == true, "objectives_panel must remain visible")
+            assert(bg_box:visible() == true, "bg_box must remain visible")
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+        ''')
+
+    def test_delayed_objective_announcement_transition(self):
+        """Delayed objective announcement transition characterization.
+
+        Baseline via _lua_native_ready: "collect" acquired, rendered, 8 masked.
+        Introduce NEW "escape" via OM:activate_objective with explicit
+        {delay_presentation = true}. Native OM path: registry insertion, set
+        _delayed_presentation (because active objectives exist).
+        Production on_om_activate: sees delayed_presentation, sets pending=true.
+        After OM:activate_objective returns:
+          - O._active has "escape" with pending=true
+          - select_visible filters pending, so owned text still shows "collect"
+          - 8 native leaves still masked (NV not touched, no HUD notify yet)
+        OM:update with dt=2 expires timer, triggers HUD notify.
+        Native OM update: managers.hud:activate_objective.
+        Production on_hud_activate: clears pending flag, sync_if_mounted.
+        Native HUDManager:activate_objective -> HUDObjectives:activate_objective.
+        HUDObjectives PRE hook: releases NV (8 leaves restored).
+        Native body: sets title=false, amount=false, schedules open_right_done.
+        After OM:update returns:
+          - O._active "escape" pending=false
+          - Owned text shows "Escape" (sync_if_mounted updated)
+          - 8 native leaves masked, owner=8, verifier true (desired)
+        Run native open_right_done(false):
+          - PRE hook: releases NV (already released)
+          - Native body: sets title=true, amount=false
+          - POST hook: re-acquires NV (hides all 8)
+        After open_right_done:
+          - 8 native leaves masked, owner=8
+          - Owned text still shows "Escape"
+        Preserve parent/sentinel/alpha throughout.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+            local native_obj = r.native_obj
+            local OM = managers.objectives
+
+            assert(O._mounted == true, "O must be mounted")
+            local vr_base = O:_verify_render()
+            assert(vr_base == true, "baseline verifier must be true")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "baseline leaf " .. i .. " must be false")
+            end
+
+            local owner_count_base = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_count_base = owner_count_base + 1
+                end
+            end
+            assert(owner_count_base == 8, "baseline owner must be 8")
+
+            assert(O._slot_prims[1].text:text() == "Collect bags",
+                "baseline owned title must show collect")
+
+            OM._objectives["escape"] = {
+                id = "escape", text = "Escape the area", amount = nil,
+                current_amount = nil, sub_objectives = {},
+            }
+            OM:activate_objective("escape", nil, {delay_presentation = true})
+
+            assert(#O._active == 2, "O._active must have 2 entries")
+            assert(O._active[2].id == "escape", "second active must be escape")
+            assert(O._active[2].pending == true, "escape must be pending")
+
+            assert(O._slot_prims[1].text:text() == "Collect bags",
+                "owned title must still show collect (escape pending)")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must still be masked (no HUD notify yet)")
+            end
+
+            OM:update(2.0, 2.0)
+
+            assert(OM._delayed_presentation == nil, "delayed_presentation must be cleared")
+            assert(O._active[2].pending == false, "escape must not be pending after update")
+            assert(O._slot_prims[1].text:text() == "Escape the area",
+                "owned title must show escape after update")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must be masked on callback return, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_count_immediate = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_count_immediate = owner_count_immediate + 1
+                end
+            end
+            assert(owner_count_immediate == 8, "owner must be 8 on callback return")
+
+            local vr_immediate = O:_verify_render()
+            assert(vr_immediate == true, "verifier must be true on callback return")
+
+            native_obj:open_right_done(false)
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must be masked after open_right_done, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_count_after = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_count_after = owner_count_after + 1
+                end
+            end
+            assert(owner_count_after == 8, "owner must be 8 after open_right_done")
+
+            assert(O._slot_prims[1].text:text() == "Escape the area",
+                "owned title must still show escape after open_right_done")
+
+            local vr_after = O:_verify_render()
+            assert(vr_after == true, "verifier must be true after open_right_done")
+
+            assert(objectives_panel:visible() == true, "objectives_panel must remain visible")
+            assert(bg_box:visible() == true, "bg_box must remain visible")
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+        ''')
+
+    def test_desired_no_flash_during_native_completion(self):
+        """Desired contract regression: no native flash during completion coroutine.
+
+        Baseline via _lua_native_ready: 8 masked, owner=8, verifier true.
+        Complete "collect" 3 times via real OM:complete_objective. After 3rd,
+        O._active empty, completion pre-hook sets pending (owner=8, NOT released),
+        native complete_objective schedules _animate_complete_objective on
+        objectives_panel.
+
+        Create coroutine from objectives_panel._scheduled_fn with _scheduled_args.
+        Resume once initially (first resume yields and ownership remains8
+        until ORIGINAL finishes),
+        then 10 times with dt=0.016 (total ~0.176s, well within 0.5s blink window).
+        Assert coroutine is "suspended" (not dead).
+
+        DESIRED: objective_text:visible()==false (no flash), all 8 leaves
+        visible==false, even though alpha may be 1 from blink.
+
+        CURRENT RED: release at final OM removal (not first-resume PostHook)
+        sets all 8 to visible=true; the assertion on
+        objective_text:visible()==false fails because leaves are restored to
+        original visible=true before the coroutine finishes.
+
+        Preserve parents/sentinel/alpha throughout. No manual O/NV repair.
+        This is a desired-contract regression -- not a characterization.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+
+            assert(O._mounted == true, "O must be mounted")
+            local vr_base = O:_verify_render()
+            assert(vr_base == true, "baseline verifier must be true")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "baseline leaf " .. i .. " must be false")
+            end
+
+            local owner_count_base = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_count_base = owner_count_base + 1
+                end
+            end
+            assert(owner_count_base == 8, "baseline owner must be 8")
+
+            local OM = managers.objectives
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+
+            assert(#O._active == 0, "O._active must be empty after 3 completes")
+
+            assert(objectives_panel._scheduled_fn ~= nil,
+                "native completion coroutine must be scheduled on objectives_panel")
+
+            local fn = objectives_panel._scheduled_fn
+            local args = objectives_panel._scheduled_args or {}
+            local co = coroutine.create(fn)
+            local ok_r, err_r = coroutine.resume(co, objectives_panel, unpack(args))
+            assert(ok_r, "first resume failed: " .. tostring(err_r))
+
+            for i = 1, 10 do
+                if i == 5 then
+                    RT:update(managers.hud, 2.0, 0.016)
+                    local owner_mid = 0
+                    for _, e in ipairs(nv._entries) do
+                        if e.owner == O and e.property == "visible" then
+                            owner_mid = owner_mid + 1
+                        end
+                    end
+                    assert(owner_mid == 8,
+                        "DESIRED: owner must be 8 after mid-blink RT:update, got " .. owner_mid)
+                    for j, l in ipairs(leaves) do
+                        assert(l:visible() == false,
+                            "DESIRED: leaf " .. j .. " must remain masked after mid-blink RT:update, got " .. tostring(l:visible()))
+                    end
+                    assert(objective_text:alpha() == 1,
+                        "DESIRED: title alpha must be 1 after mid-blink RT:update, got " .. tostring(objective_text:alpha()))
+                    assert(amount_text:alpha() == 1,
+                        "DESIRED: amount alpha must be 1 after mid-blink RT:update, got " .. tostring(amount_text:alpha()))
+                end
+                assert(coroutine.status(co) == "suspended",
+                    "coroutine should be suspended at step " .. i .. ", got " .. coroutine.status(co))
+                local ok2, err2 = coroutine.resume(co, 0.016)
+                assert(ok2, "resume failed at step " .. i .. ": " .. tostring(err2))
+            end
+
+            assert(coroutine.status(co) == "suspended",
+                "coroutine should still be suspended after 11 resumes, got " .. coroutine.status(co))
+
+            assert(objective_text:alpha() == 1,
+                "title alpha must be 1 at observed midpoint, got " .. tostring(objective_text:alpha()))
+            assert(amount_text:alpha() == 1,
+                "amount alpha must be 1 at observed midpoint, got " .. tostring(amount_text:alpha()))
+
+            assert(objective_text:visible() == false,
+                "DESIRED: title must remain masked false during blink, got " .. tostring(objective_text:visible()))
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "DESIRED: leaf " .. i .. " must remain masked during blink, got " .. tostring(leaf:visible()))
+            end
+
+            assert(objectives_panel:visible() == true, "objectives_panel must remain visible")
+            assert(bg_box:visible() == true, "bg_box must remain visible")
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+        ''')
+
+    def test_disable_before_native_completion_start(self):
+        """Disable before native completion coroutine starts.
+
+        Baseline via _lua_native_ready. Complete collect 3 times via real OM ->
+        completion pre-hook sets pending (owner=8), native coroutine scheduled on
+        objectives_panel. BEFORE running any coroutine step, disable O via
+        settings+RT.refresh. Owned panel gone, pending cleared, NV releases
+        (owner=0), native leaves restored to originals.
+
+        Run native completion coroutine to completion via _run_coroutine
+        (blinks, sets title/amount visible=false alpha=1, schedules close_right).
+        Run close_right via _run_coroutine (bg_box w=0, text="", panel false).
+
+        Assert: title/amount visible==false after native finish (native set them,
+        not stale NV restore). No manual O/NV repair. Parents/sentinel untouched.
+        NV owner=0 throughout.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+
+            assert(O._mounted == true, "O must be mounted")
+
+            local OM = managers.objectives
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+
+            assert(#O._active == 0, "O._active must be empty after 3 completes")
+            assert(objectives_panel._scheduled_fn ~= nil,
+                "native completion coroutine must be scheduled")
+
+            kyohud.settings.enable_objectives = false
+            RT:refresh_settings(managers.hud)
+
+            local owned_gone = O._root_panel == nil or not O._root_panel._alive
+            assert(owned_gone == true, "owned panel must be gone after disable")
+
+            assert(objective_text:visible() == true,
+                "title must restore native true immediately on disable, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == true,
+                "amount must restore native true immediately on disable, got " .. tostring(amount_text:visible()))
+
+            _run_coroutine(objectives_panel, 200)
+
+            assert(objective_text:visible() == false,
+                "title must be false after native completion, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must be false after native completion, got " .. tostring(amount_text:visible()))
+            assert(objective_text:alpha() == 1,
+                "title alpha must be 1 after completion, got " .. tostring(objective_text:alpha()))
+            assert(amount_text:alpha() == 1,
+                "amount alpha must be 1 after completion, got " .. tostring(amount_text:alpha()))
+
+            assert(bg_box._scheduled_fn ~= nil,
+                "close_right must be scheduled after completion coroutine")
+            _run_coroutine(bg_box, 200)
+
+            assert(bg_box:w() == 0,
+                "bg_box w must be 0 after close_right, got " .. tostring(bg_box:w()))
+            assert(objective_text:text() == "",
+                "title text must be empty after close_right, got " .. tostring(objective_text:text()))
+            assert(objectives_panel:visible() == false,
+                "objectives_panel must be false after close_right")
+
+            assert(objective_text:visible() == false,
+                "title must remain false after full native finish, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must remain false after full native finish, got " .. tostring(amount_text:visible()))
+
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+
+            local owner_final = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_final = owner_final + 1 end
+            end
+            assert(owner_final == 0,
+                "NV owner must be 0 after native finish, got " .. owner_final)
+        ''')
+
+    def test_disable_during_partial_native_completion(self):
+        """Disable during partial native completion coroutine.
+
+        Baseline via _lua_native_ready. Complete collect 3 times -> completion
+        pre-hook sets pending (owner=8), native coroutine scheduled. Create
+        coroutine from objectives_panel. Resume initially then 4 more times with
+        dt=0.016 (partial blink, ~0.08s of 0.5s total). Assert suspended.
+
+        Disable O via settings+RT.refresh. Owned panel gone.
+
+        Resume remaining coroutine steps until dead (native finishes blink,
+        sets title/amount visible=false, schedules close_right).
+        Run close_right via _run_coroutine to completion.
+
+        Assert: title/amount visible==false after native finish. No stale true
+        restoration. Parents/sentinel untouched. NV owner=0.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+
+            assert(O._mounted == true, "O must be mounted")
+
+            local OM = managers.objectives
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+
+            assert(#O._active == 0, "O._active must be empty after 3 completes")
+            assert(objectives_panel._scheduled_fn ~= nil,
+                "native completion coroutine must be scheduled")
+
+            local fn = objectives_panel._scheduled_fn
+            local args = objectives_panel._scheduled_args or {}
+            local co = coroutine.create(fn)
+            local ok_r, err_r = coroutine.resume(co, objectives_panel, unpack(args))
+            assert(ok_r, "first resume failed: " .. tostring(err_r))
+
+            for i = 1, 4 do
+                assert(coroutine.status(co) == "suspended",
+                    "coroutine should be suspended at partial step " .. i)
+                local ok2, err2 = coroutine.resume(co, 0.016)
+                assert(ok2, "resume failed at partial step " .. i .. ": " .. tostring(err2))
+            end
+            assert(coroutine.status(co) == "suspended",
+                "coroutine should be suspended after 5 resumes")
+
+            assert(objective_text:visible() == false,
+                "title must remain masked false during partial blink, got " .. tostring(objective_text:visible()))
+            assert(objective_text:alpha() == 1,
+                "title alpha must be 1 at observed midpoint, got " .. tostring(objective_text:alpha()))
+
+            kyohud.settings.enable_objectives = false
+            RT:refresh_settings(managers.hud)
+
+            local owned_gone = O._root_panel == nil or not O._root_panel._alive
+            assert(owned_gone == true, "owned panel must be gone after disable")
+
+            assert(objective_text:visible() == true,
+                "title must restore native true immediately on disable, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == true,
+                "amount must restore native true immediately on disable, got " .. tostring(amount_text:visible()))
+
+            while coroutine.status(co) ~= "dead" do
+                local ok2, err2 = coroutine.resume(co, 0.016)
+                assert(ok2, "resume failed during drain: " .. tostring(err2))
+            end
+
+            assert(objective_text:visible() == false,
+                "title must be false after native completion, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must be false after native completion, got " .. tostring(amount_text:visible()))
+            assert(objective_text:alpha() == 1,
+                "title alpha must be 1 after completion, got " .. tostring(objective_text:alpha()))
+            assert(amount_text:alpha() == 1,
+                "amount alpha must be 1 after completion, got " .. tostring(amount_text:alpha()))
+
+            assert(bg_box._scheduled_fn ~= nil,
+                "close_right must be scheduled after completion coroutine")
+            _run_coroutine(bg_box, 200)
+
+            assert(bg_box:w() == 0,
+                "bg_box w must be 0 after close_right, got " .. tostring(bg_box:w()))
+            assert(objective_text:text() == "",
+                "title text must be empty after close_right")
+            assert(objectives_panel:visible() == false,
+                "objectives_panel must be false after close_right")
+
+            assert(objective_text:visible() == false,
+                "title must remain false after full native finish, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must remain false after full native finish, got " .. tostring(amount_text:visible()))
+
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+
+            local owner_final = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_final = owner_final + 1 end
+            end
+            assert(owner_final == 0,
+                "NV owner must be 0 after native finish, got " .. owner_final)
+        ''')
+
+    def test_disable_after_native_completion(self):
+        """Disable after native completion fully finished.
+
+        Baseline via _lua_native_ready. Complete collect 3 times -> completion
+        pre-hook sets pending (owner=8), native coroutine scheduled. Run coroutine
+        to completion via _run_coroutine (PostHook fires after native blink
+        finishes and visible=false written: release owner=0; blink finishes,
+        sets title/amount visible=false, schedules
+        close_right). Run close_right via _run_coroutine (bg_box w=0, text="",
+        panel false).
+
+        THEN disable O via settings+RT.refresh. Owned panel gone.
+
+        Assert: title/amount visible==false after disable (native set them false,
+        no stale true restoration). Parents/sentinel untouched. NV owner=0.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+
+            assert(O._mounted == true, "O must be mounted")
+
+            local OM = managers.objectives
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+
+            assert(#O._active == 0, "O._active must be empty after 3 completes")
+            assert(objectives_panel._scheduled_fn ~= nil,
+                "native completion coroutine must be scheduled")
+
+            _run_coroutine(objectives_panel, 200)
+
+            assert(objective_text:visible() == false,
+                "title must be false after native completion, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must be false after native completion, got " .. tostring(amount_text:visible()))
+
+            assert(bg_box._scheduled_fn ~= nil,
+                "close_right must be scheduled")
+            _run_coroutine(bg_box, 200)
+
+            assert(bg_box:w() == 0,
+                "bg_box w must be 0 after close_right, got " .. tostring(bg_box:w()))
+            assert(objective_text:text() == "",
+                "title text must be empty after close_right")
+            assert(objectives_panel:visible() == false,
+                "objectives_panel must be false after close_right")
+
+            assert(objective_text:visible() == false,
+                "title must be false before disable, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must be false before disable, got " .. tostring(amount_text:visible()))
+
+            kyohud.settings.enable_objectives = false
+            RT:refresh_settings(managers.hud)
+
+            local owned_gone = O._root_panel == nil or not O._root_panel._alive
+            assert(owned_gone == true, "owned panel must be gone after disable")
+
+            assert(objective_text:visible() == false,
+                "title must remain false after disable, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must remain false after disable, got " .. tostring(amount_text:visible()))
+
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+            assert(objectives_panel:visible() == false,
+                "objectives_panel must remain false after disable")
+
+            local owner_final = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_final = owner_final + 1 end
+            end
+            assert(owner_final == 0,
+                "NV owner must be 0 after disable, got " .. owner_final)
+        ''')
+
+    def test_disable_after_blink_before_close(self):
+        """Disable after blink completed but before close_right runs.
+
+        Baseline via _lua_native_ready. Complete collect 3 times via real OM.
+        PreHook on complete_objective bound pending; _sync_native_visibility
+        retains ownership (no active_id, pending valid, fallback). Native
+        _animate_complete_objective coroutine scheduled on objectives_panel.
+
+        Run blink coroutine to completion via _run_coroutine (title/amount
+        visible=false alpha=1, close_right scheduled but NOT run). PostHook
+        on _animate_complete_objective reconciled title/amount old_value=false,
+        retained pending and ownership (release deferred to close_right).
+
+        RT:update: title/amount remain false, owner=8 (pending retained).
+        Disable O via settings+RT.refresh: owned panel gone, pending cleared,
+        NV releases reconciled values (title/amount false, other 6 true).
+        Assert: title/amount remain false after disable, owner=0. NV owner=0.
+        Parents/sentinel untouched.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+
+            assert(O._mounted == true, "O must be mounted")
+
+            local OM = managers.objectives
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+
+            assert(#O._active == 0, "O._active must be empty after 3 completes")
+            assert(objectives_panel._scheduled_fn ~= nil,
+                "native completion coroutine must be scheduled")
+
+            _run_coroutine(objectives_panel, 200)
+
+            assert(objective_text:visible() == false,
+                "title must be false after blink, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must be false after blink, got " .. tostring(amount_text:visible()))
+            assert(objective_text:alpha() == 1,
+                "title alpha must be 1 after blink, got " .. tostring(objective_text:alpha()))
+            assert(amount_text:alpha() == 1,
+                "amount alpha must be 1 after blink, got " .. tostring(amount_text:alpha()))
+
+            assert(bg_box._scheduled_fn ~= nil,
+                "close_right must be scheduled but not run")
+
+            local owner_after_blink = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_blink = owner_after_blink + 1 end
+            end
+            assert(owner_after_blink == 8,
+                "NV owner must be 8 after blink (reconciled, release deferred), got " .. owner_after_blink)
+
+            RT:update(managers.hud, 5.0, 0.016)
+
+            assert(objective_text:visible() == false,
+                "title must remain false immediately on RT:update, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must remain false immediately on RT:update, got " .. tostring(amount_text:visible()))
+
+            local owner_after_update = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_update = owner_after_update + 1 end
+            end
+            assert(owner_after_update == 8,
+                "NV owner must be 8 after RT:update (pending retained), got " .. owner_after_update)
+
+            kyohud.settings.enable_objectives = false
+            RT:refresh_settings(managers.hud)
+
+            local owned_gone = O._root_panel == nil or not O._root_panel._alive
+            assert(owned_gone == true, "owned panel must be gone after disable")
+
+            assert(objective_text:visible() == false,
+                "title must remain false after disable, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must remain false after disable, got " .. tostring(amount_text:visible()))
+
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+
+            local owner_final = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_final = owner_final + 1 end
+            end
+            assert(owner_final == 0,
+                "NV owner must be 0 after disable, got " .. owner_final)
+        ''')
+
+    def test_render_failure_during_blink_release_no_stale_restore(self):
+        """Regression: render failure during blink -> release -> no stale restore.
+
+        Baseline via _lua_native_ready: owner=8, 8 masked, verifier true.
+        Complete collect 3 times via real OM -> completion pre-hook sets pending
+        (owner=8). Native coroutine scheduled on objectives_panel.
+
+        Create coroutine from objectives_panel._scheduled_fn. First resume:
+        coroutine yields (suspended), PostHook has NOT fired yet because the
+        original coroutine has not finished. Assert: suspended, owner=8, all 8
+        leaves hidden false.
+
+        Corrupt OWNED primitive O._slot_prims[1].text.text_rect to return huge
+        extents (NOT native objective_text.text_rect). RT:update: _verify_render
+        false -> release triggers -> owner=0, all 8 native leaves restored to
+        original true.
+
+        Restore owned primitive text_rect. Drain the ACTUAL same coroutine
+        until dead. Coroutine body sets title/amount visible=false alpha=1 via
+        direct native calls (no NV involved since owner=0).
+
+        Assert: title=false, amount=false (native set them, not stale restore).
+        Other 6 leaves true (restored by release, not touched by coroutine).
+        NV owner=0. No re-acquisition. Parents/sentinel untouched.
+        No manual O/NV repair. Do NOT assert release before render failure.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+
+            assert(O._mounted == true, "O must be mounted")
+            local vr_base = O:_verify_render()
+            assert(vr_base == true, "baseline verifier must be true")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "baseline leaf " .. i .. " must be false")
+            end
+
+            local owner_base = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_base = owner_base + 1
+                end
+            end
+            assert(owner_base == 8, "baseline owner must be 8")
+
+            local OM = managers.objectives
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+
+            assert(#O._active == 0, "O._active must be empty after 3 completes")
+            assert(objectives_panel._scheduled_fn ~= nil,
+                "native completion coroutine must be scheduled")
+
+            local owner_after_complete = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_complete = owner_after_complete + 1 end
+            end
+            assert(owner_after_complete == 8,
+                "owner must be 8 after 3 completes (pending set, not released), got " .. owner_after_complete)
+
+            local fn = objectives_panel._scheduled_fn
+            local args = objectives_panel._scheduled_args or {}
+            local co = coroutine.create(fn)
+            local ok_r, err_r = coroutine.resume(co, objectives_panel, unpack(args))
+            assert(ok_r, "first resume failed: " .. tostring(err_r))
+
+            assert(coroutine.status(co) == "suspended",
+                "coroutine must be suspended after first resume, got " .. coroutine.status(co))
+
+            local owner_after_first_resume = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_first_resume = owner_after_first_resume + 1 end
+            end
+            assert(owner_after_first_resume == 8,
+                "owner must remain 8 after first resume (PostHook not yet fired), got " .. owner_after_first_resume)
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must remain hidden false after first resume, got " .. tostring(leaf:visible()))
+            end
+
+            local owned_title = O._slot_prims[1] and O._slot_prims[1].text
+            assert(owned_title, "owned title primitive must exist")
+            local orig_text_rect = owned_title.text_rect
+            function owned_title:text_rect() return 0, 0, 99999, 99999 end
+
+            RT:update(managers.hud, 2.0, 0.016)
+
+            local vr_fail = O:_verify_render()
+            assert(vr_fail == false,
+                "verifier must be false with corrupted text_rect, got " .. tostring(vr_fail))
+
+            local owner_after_fail = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_fail = owner_after_fail + 1 end
+            end
+            assert(owner_after_fail == 0,
+                "owner must be 0 after failed RT:update (release triggered), got " .. owner_after_fail)
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == true,
+                    "leaf " .. i .. " must be restored true after release, got " .. tostring(leaf:visible()))
+            end
+
+            owned_title.text_rect = orig_text_rect
+
+            while coroutine.status(co) ~= "dead" do
+                local ok2, err2 = coroutine.resume(co, 0.016)
+                assert(ok2, "resume failed during drain: " .. tostring(err2))
+            end
+
+            assert(objective_text:visible() == false,
+                "title must be false after coroutine finish, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must be false after coroutine finish, got " .. tostring(amount_text:visible()))
+            assert(objective_text:alpha() == 1,
+                "title alpha must be 1 after coroutine finish, got " .. tostring(objective_text:alpha()))
+            assert(amount_text:alpha() == 1,
+                "amount alpha must be 1 after coroutine finish, got " .. tostring(amount_text:alpha()))
+
+            for i, leaf in ipairs(leaves) do
+                if leaf ~= objective_text and leaf ~= amount_text then
+                    assert(leaf:visible() == true,
+                        "non-title/amount leaf " .. i .. " must stay true, got " .. tostring(leaf:visible()))
+                end
+            end
+
+            local owner_final = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_final = owner_final + 1 end
+            end
+            assert(owner_final == 0,
+                "NV owner must be 0 after coroutine finish, got " .. owner_final)
+
+            assert(objectives_panel:visible() == true, "objectives_panel must remain visible")
+            assert(bg_box:visible() == true, "bg_box must remain visible")
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+        ''')
+
+    def test_native_frame_remains_hidden_through_close(self):
+        """DESIRED contract: native frame stays hidden through close sequence.
+
+        Baseline via _lua_native_ready: owner=8, 8 masked, verifier true.
+        Complete collect 3 times via real OM:completion pre-hook sets pending
+        (owner=8). Native _animate_complete_objective coroutine scheduled on
+        objectives_panel.
+
+        Run blink coroutine to completion via _run_coroutine (title/amount
+        visible=false alpha=1, close_right scheduled). PostHook on
+        _animate_complete_objective reconciles title/amount old_value=false,
+        retains pending and ownership (release deferred to close_right).
+
+        After blink: owner=8, all 8 leaves still masked false, objectives_panel
+        visible true, bg_box w>0, close_right coroutine scheduled.
+
+        Create coroutine from bg_box._scheduled_fn (close_right). Resume
+        initially + one dt=0.016: still suspended, bg_box w>0, all leaves
+        still masked false, owner=8.
+
+        RT:update: all leaves still masked, owner=8.
+
+        Drain same close coroutine until dead: done_cb fires -> panel=false,
+        text="", bg_box w=0. PostHook on HUDBGBox_animate_close_right fires
+        after native coroutine returns (w=0, done_cb called): clears pending,
+        releases NV.
+
+        After close: owner=0 (event boundary), original leaf visibilities
+        restored EXCEPT title/amount native false (reconciled, not stale
+        restore). Parent/alpha/sentinel untouched throughout.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+
+            assert(O._mounted == true, "O must be mounted")
+            local vr_base = O:_verify_render()
+            assert(vr_base == true, "baseline verifier must be true")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "baseline leaf " .. i .. " must be false")
+            end
+
+            local owner_base = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_base = owner_base + 1
+                end
+            end
+            assert(owner_base == 8, "baseline owner must be 8")
+
+            local OM = managers.objectives
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+
+            assert(#O._active == 0, "O._active must be empty after 3 completes")
+            assert(objectives_panel._scheduled_fn ~= nil,
+                "native completion coroutine must be scheduled")
+
+            _run_coroutine(objectives_panel, 200)
+
+            assert(objective_text:visible() == false,
+                "title must be false after blink, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must be false after blink, got " .. tostring(amount_text:visible()))
+            assert(objective_text:alpha() == 1,
+                "title alpha must be 1 after blink, got " .. tostring(objective_text:alpha()))
+            assert(amount_text:alpha() == 1,
+                "amount alpha must be 1 after blink, got " .. tostring(amount_text:alpha()))
+
+            assert(bg_box._scheduled_fn ~= nil,
+                "close_right must be scheduled after blink")
+
+            local bg_box_w_before = bg_box:w()
+            assert(bg_box_w_before > 0,
+                "bg_box w must be > 0 before close, got " .. tostring(bg_box_w_before))
+
+            assert(objectives_panel:visible() == true,
+                "objectives_panel must remain visible after blink")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "DESIRED: leaf " .. i .. " must remain masked false after blink, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_after_blink = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_blink = owner_after_blink + 1 end
+            end
+            assert(owner_after_blink == 8,
+                "DESIRED: NV owner must be 8 after blink (not released), got " .. owner_after_blink)
+
+            local fn = bg_box._scheduled_fn
+            local args = bg_box._scheduled_args or {}
+            local co = coroutine.create(fn)
+            local ok_r, err_r = coroutine.resume(co, bg_box, unpack(args))
+            assert(ok_r, "first resume of close_right failed: " .. tostring(err_r))
+
+            assert(coroutine.status(co) == "suspended",
+                "close_right must be suspended after first resume, got " .. coroutine.status(co))
+
+            local ok2, err2 = coroutine.resume(co, 0.016)
+            assert(ok2, "second resume of close_right failed: " .. tostring(err2))
+
+            assert(coroutine.status(co) == "suspended",
+                "close_right must still be suspended after 2 resumes, got " .. coroutine.status(co))
+
+            local bg_box_w_after_2 = bg_box:w()
+            assert(bg_box_w_after_2 > 0,
+                "DESIRED: bg_box w must be > 0 after 2 resumes, got " .. tostring(bg_box_w_after_2))
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "DESIRED: leaf " .. i .. " must remain masked during close, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_during_close = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_during_close = owner_during_close + 1 end
+            end
+            assert(owner_during_close == 8,
+                "DESIRED: NV owner must be 8 during close, got " .. owner_during_close)
+
+            RT:update(managers.hud, 2.0, 0.016)
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "DESIRED: leaf " .. i .. " must remain masked after RT:update, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_after_update = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_update = owner_after_update + 1 end
+            end
+            assert(owner_after_update == 8,
+                "DESIRED: NV owner must be 8 after RT:update, got " .. owner_after_update)
+
+            while coroutine.status(co) ~= "dead" do
+                local ok3, err3 = coroutine.resume(co, 0.016)
+                assert(ok3, "resume failed during drain: " .. tostring(err3))
+            end
+
+            assert(bg_box:w() == 0,
+                "bg_box w must be 0 after close_right, got " .. tostring(bg_box:w()))
+            assert(objective_text:text() == "",
+                "title text must be empty after close_right, got " .. tostring(objective_text:text()))
+            assert(objectives_panel:visible() == false,
+                "objectives_panel must be false after close_right")
+
+            local owner_after_close = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_close = owner_after_close + 1 end
+            end
+            assert(owner_after_close == 0,
+                "DESIRED: NV owner must be 0 after close (event boundary), got " .. owner_after_close)
+
+            assert(objective_text:visible() == false,
+                "title must remain false after close (native set), got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must remain false after close (native set), got " .. tostring(amount_text:visible()))
+
+            for i, leaf in ipairs(leaves) do
+                if leaf ~= objective_text and leaf ~= amount_text then
+                    assert(leaf:visible() == true,
+                        "DESIRED: leaf " .. i .. " must be restored true after close, got " .. tostring(leaf:visible()))
+                end
+            end
+
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+            assert(objectives_panel:alpha() == 1, "objectives_panel alpha must remain 1")
+            assert(bg_box:alpha() == 1, "bg_box alpha must remain 1")
+        ''')
+
+    def test_disable_during_partial_close_unrelated_box_no_release(self):
+        """Disable during partial close with unrelated close_right box.
+
+        Baseline via _lua_native_ready: owner=8, 8 masked, verifier true.
+        Complete collect 3 times via real OM: pending set, blink scheduled.
+        Run blink coroutine to completion: PostHook reconciles title/amount
+        old_value=false, retains pending and ownership (owner=8).
+
+        Create coroutine from bg_box._scheduled_fn (close_right). Resume
+        initially + one dt=0.016: still suspended, bg_box w>0, all leaves
+        still masked false, owner=8 (no flash through partial close).
+
+        Create unrelated box, schedule HUDBGBox_animate_close_right on it,
+        run to completion via _run_coroutine. PostHook fires but panel check
+        fails (unrelated box != pending bg_box). Assert ownership NOT released
+        (owner still 8), all leaves still masked false.
+
+        Disable O via settings+RT.refresh. Owned panel gone, pending cleared,
+        NV releases reconciled values (title/amount false, other 6 true).
+        Assert: title/amount false after disable, owner=0. Parents/sentinel
+        untouched throughout.
+        """
+        lua, ok = _lua_native_ready()
+        self.assertTrue(ok, "objectives production chunk missing")
+
+        lua.execute('''
+            local r = _test_refs
+            local O = r.O
+            local nv = r.nv
+            local RT = r.RT
+            local leaves = r.leaves
+            local objective_text = r.objective_text
+            local amount_text = r.amount_text
+            local objectives_panel = r.objectives_panel
+            local bg_box = r.bg_box
+            local sentinel = r.sentinel
+
+            assert(O._mounted == true, "O must be mounted")
+            local vr_base = O:_verify_render()
+            assert(vr_base == true, "baseline verifier must be true")
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "baseline leaf " .. i .. " must be false")
+            end
+
+            local owner_base = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O and e.property == "visible" then
+                    owner_base = owner_base + 1
+                end
+            end
+            assert(owner_base == 8, "baseline owner must be 8")
+
+            local OM = managers.objectives
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+            OM:complete_objective("collect")
+
+            assert(#O._active == 0, "O._active must be empty after 3 completes")
+            assert(objectives_panel._scheduled_fn ~= nil,
+                "native completion coroutine must be scheduled")
+
+            _run_coroutine(objectives_panel, 200)
+
+            assert(objective_text:visible() == false,
+                "title must be false after blink, got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must be false after blink, got " .. tostring(amount_text:visible()))
+
+            assert(bg_box._scheduled_fn ~= nil,
+                "close_right must be scheduled after blink")
+
+            local owner_after_blink = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_blink = owner_after_blink + 1 end
+            end
+            assert(owner_after_blink == 8,
+                "NV owner must be 8 after blink (reconciled, release deferred), got " .. owner_after_blink)
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must remain masked false after blink, got " .. tostring(leaf:visible()))
+            end
+
+            local fn = bg_box._scheduled_fn
+            local args = bg_box._scheduled_args or {}
+            local co = coroutine.create(fn)
+            local ok_r, err_r = coroutine.resume(co, bg_box, unpack(args))
+            assert(ok_r, "first resume of close_right failed: " .. tostring(err_r))
+
+            assert(coroutine.status(co) == "suspended",
+                "close_right must be suspended after first resume, got " .. coroutine.status(co))
+
+            local ok2, err2 = coroutine.resume(co, 0.016)
+            assert(ok2, "second resume of close_right failed: " .. tostring(err2))
+
+            assert(coroutine.status(co) == "suspended",
+                "close_right must still be suspended after 2 resumes, got " .. coroutine.status(co))
+
+            local bg_box_w_after_2 = bg_box:w()
+            assert(bg_box_w_after_2 > 0,
+                "bg_box w must be > 0 after 2 resumes, got " .. tostring(bg_box_w_after_2))
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must remain masked during partial close, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_during_close = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_during_close = owner_during_close + 1 end
+            end
+            assert(owner_during_close == 8,
+                "NV owner must be 8 during partial close, got " .. owner_during_close)
+
+            local unrelated_box = _make_panel("unrelated_close_box")
+            unrelated_box._w = 100
+            unrelated_box._h = 38
+            unrelated_box._alpha = 1
+            unrelated_box._scheduled_fn = HUDBGBox_animate_close_right
+            unrelated_box._scheduled_args = {function() end}
+            _run_coroutine(unrelated_box, 200)
+
+            assert(unrelated_box:w() == 0,
+                "unrelated box w must be 0 after its close_right, got " .. tostring(unrelated_box:w()))
+
+            for i, leaf in ipairs(leaves) do
+                assert(leaf:visible() == false,
+                    "leaf " .. i .. " must remain masked after unrelated close_right, got " .. tostring(leaf:visible()))
+            end
+
+            local owner_after_unrelated = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_after_unrelated = owner_after_unrelated + 1 end
+            end
+            assert(owner_after_unrelated == 8,
+                "NV owner must remain 8 after unrelated close_right (panel check failed), got " .. owner_after_unrelated)
+
+            assert(objectives_panel:visible() == true, "objectives_panel must remain visible")
+            assert(sentinel:visible() == true, "sentinel must remain visible")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1")
+
+            kyohud.settings.enable_objectives = false
+            RT:refresh_settings(managers.hud)
+
+            local owned_gone = O._root_panel == nil or not O._root_panel._alive
+            assert(owned_gone == true, "owned panel must be gone after disable")
+
+            assert(objective_text:visible() == false,
+                "title must remain false after disable (reconciled), got " .. tostring(objective_text:visible()))
+            assert(amount_text:visible() == false,
+                "amount must remain false after disable (reconciled), got " .. tostring(amount_text:visible()))
+
+            for i, leaf in ipairs(leaves) do
+                if leaf ~= objective_text and leaf ~= amount_text then
+                    assert(leaf:visible() == true,
+                        "leaf " .. i .. " must be restored true after disable, got " .. tostring(leaf:visible()))
+                end
+            end
+
+            assert(sentinel:visible() == true, "sentinel must remain visible after disable")
+            assert(sentinel:alpha() == 1, "sentinel alpha must remain 1 after disable")
+
+            local owner_final = 0
+            for _, e in ipairs(nv._entries) do
+                if e.owner == O then owner_final = owner_final + 1 end
+            end
+            assert(owner_final == 0,
+                "NV owner must be 0 after disable, got " .. owner_final)
         ''')
 
 

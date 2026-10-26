@@ -84,6 +84,7 @@ KH._defaults = {
     enable_mission = false,
     enable_objectives = false,
     objectives_visible_limit = 1,
+    enable_assault = false,
 }
 
 local HUD_DEFAULT_LAYOUTS = {
@@ -344,6 +345,14 @@ end
 
 MenuCallbackHandler.KY_ToggleObjectives = function(self, item)
     KH.settings.enable_objectives = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
+MenuCallbackHandler.KY_ToggleAssault = function(self, item)
+    KH.settings.enable_assault = (item:value() == "on")
     KH.Save()
     if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
         kyohud.hud.runtime:refresh_settings(managers.hud)

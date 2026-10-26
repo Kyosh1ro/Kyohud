@@ -235,6 +235,16 @@
       "enabled_by": "enable_objectives"
     },
     {
+      "type": "toggle",
+      "id": "ky_enable_assault",
+      "title": "ky_opt_enable_assault",
+      "description": "ky_opt_enable_assault_desc",
+      "callback": "KY_ToggleAssault",
+      "value": "enable_assault",
+      "default_value": false,
+      "enabled_by": "enable_hud_foundation"
+    },
+    {
       "type": "divider",
       "size": 15
     },

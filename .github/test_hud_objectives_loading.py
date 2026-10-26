@@ -5,7 +5,7 @@ entries (lib/managers/hud/hudobjectives, lib/managers/objectivesmanager,
 lib/managers/hudmanagerpd2). Per-context loading iterates actual manifest
 hooks matching each context with lua/hud/ prefix (no hardcoded HUD_SUBGRAPH).
 
-Exercises: EARLY hudobjectives context (runtime nil, 3 HUDObjectives hooks),
+Exercises: EARLY hudobjectives context (runtime nil, 5 HUDObjectives hooks),
 OM context (7 OM hooks), HUD context (runtime loaded, 2 HUD hooks), repeated
 context idempotence, unknown context no registrations, shared identity,
 positive lifecycle (real init_finalize + OM activation -> owned title),
@@ -277,6 +277,9 @@ class ObjectivesManifestLoadingTests(unittest.TestCase):
                 {"pre", "activate_objective", "KyohUD_HUDObj_ActivateObjective_Pre"},
                 {"pre", "open_right_done", "KyohUD_HUDObj_OpenRightDone_Pre"},
                 {"post", "open_right_done", "KyohUD_HUDObj_OpenRightDone_Post"},
+                {"pre", "complete_objective", "KyohUD_HUDObj_CompleteObjective_Pre"},
+                {"post", "_animate_complete_objective", "KyohUD_HUDObj_AnimateComplete_Post"},
+                {"post", "HUDBGBox_animate_close_right", "KyohUD_HUDObj_CloseRight_Post"},
                 {"post", "activate_objective", "KyohUD_OM_ActivateObjective"},
                 {"post", "activate_objective_countdown", "KyohUD_OM_ActivateObjectiveCountdown"},
                 {"post", "remove_objective", "KyohUD_OM_RemoveObjective"},
@@ -318,8 +321,8 @@ class ObjectivesManifestLoadingTests(unittest.TestCase):
         self.assertEqual(int(lua.globals()._post_unknown_count),
             int(lua.globals()._pre_unknown_count),
             "unknown context must not register any hooks")
-        self.assertEqual(int(lua.globals()._hudobj_count), 3,
-            "exactly 3 early HUDObjectives registrations, got "
+        self.assertEqual(int(lua.globals()._hudobj_count), 6,
+            "exactly 6 early HUDObjectives registrations, got "
             + str(int(lua.globals()._hudobj_count)))
         self.assertEqual(int(lua.globals()._om_count), 7,
             "exactly 7 OM hooks, got " + str(int(lua.globals()._om_count)))
@@ -327,10 +330,13 @@ class ObjectivesManifestLoadingTests(unittest.TestCase):
             "exactly 2 HUD objective callbacks, got "
             + str(int(lua.globals()._hud_obj_count)))
 
-        hudobj_ids_list = [str(lua.globals()["_hudobj_ids"][i]) for i in range(1, 4)]
+        hudobj_ids_list = [str(lua.globals()["_hudobj_ids"][i]) for i in range(1, 7)]
         self.assertIn("KyohUD_HUDObj_ActivateObjective_Pre", hudobj_ids_list)
         self.assertIn("KyohUD_HUDObj_OpenRightDone_Pre", hudobj_ids_list)
         self.assertIn("KyohUD_HUDObj_OpenRightDone_Post", hudobj_ids_list)
+        self.assertIn("KyohUD_HUDObj_CompleteObjective_Pre", hudobj_ids_list)
+        self.assertIn("KyohUD_HUDObj_AnimateComplete_Post", hudobj_ids_list)
+        self.assertIn("KyohUD_HUDObj_CloseRight_Post", hudobj_ids_list)
 
         lua.execute(r'''
             kyohud.settings.enable_hud_foundation = true

@@ -623,13 +623,13 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(_text == "Updated", "first text must be Updated, got " .. tostring(_text))
         ''')
 
-    def test_select_visible_returns_last_n(self):
-        """select_visible() returns last N active objectives in order.
+    def test_select_visible_returns_single_current(self):
+        """select_visible() returns only the latest current objective regardless of limit.
 
         Activate 4 objectives a,b,c,d. Verify:
-        - select_visible() returns [d] (default 1)
-        - select_visible(2) returns [c, d]
-        - select_visible(3) returns [b, c, d]
+        - select_visible() returns [d] (default)
+        - select_visible(2) returns [d] (still only latest)
+        - select_visible(3) returns [d] (still only latest)
         - O._active still has length 4 (no mutation)
         """
         lua, ok = _lua()
@@ -667,16 +667,13 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
             local sel2 = O:select_visible(2)
             assert(type(sel2) == "table", "select_visible(2) must return table")
-            assert(#sel2 == 2, "select_visible(2) must return 2 entries, got " .. #sel2)
-            assert(sel2[1].id == "c", "select_visible(2)[1] must be c, got " .. tostring(sel2[1].id))
-            assert(sel2[2].id == "d", "select_visible(2)[2] must be d, got " .. tostring(sel2[2].id))
+            assert(#sel2 == 1, "select_visible(2) must return 1 entry, got " .. #sel2)
+            assert(sel2[1].id == "d", "select_visible(2)[1] must be d, got " .. tostring(sel2[1].id))
 
             local sel3 = O:select_visible(3)
             assert(type(sel3) == "table", "select_visible(3) must return table")
-            assert(#sel3 == 3, "select_visible(3) must return 3 entries, got " .. #sel3)
-            assert(sel3[1].id == "b", "select_visible(3)[1] must be b, got " .. tostring(sel3[1].id))
-            assert(sel3[2].id == "c", "select_visible(3)[2] must be c, got " .. tostring(sel3[2].id))
-            assert(sel3[3].id == "d", "select_visible(3)[3] must be d, got " .. tostring(sel3[3].id))
+            assert(#sel3 == 1, "select_visible(3) must return 1 entry, got " .. #sel3)
+            assert(sel3[1].id == "d", "select_visible(3)[1] must be d, got " .. tostring(sel3[1].id))
 
             assert(#O._active == 4, "O._active must still have 4 entries after select_visible calls")
         ''')
@@ -1830,7 +1827,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             local original_set_visible = amount_prim.set_visible
             function amount_prim:set_visible(v) end
 
-            OM:complete_objective("collect", nil)
+            OM:remove_objective("collect", nil)
 
             local after_verify = O:_verify_render()
             assert(after_verify == false,
