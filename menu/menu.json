@@ -245,6 +245,16 @@
       "enabled_by": "enable_hud_foundation"
     },
     {
+      "type": "toggle",
+      "id": "ky_enable_alerts",
+      "title": "ky_opt_enable_alerts",
+      "description": "ky_opt_enable_alerts_desc",
+      "callback": "KY_ToggleAlerts",
+      "value": "enable_alerts",
+      "default_value": false,
+      "enabled_by": "enable_hud_foundation"
+    },
+    {
       "type": "divider",
       "size": 15
     },

@@ -1157,9 +1157,27 @@ function A:_should_fallback_native()
     if ok_pnr and pnr == true then return true end
     local ok_cas, cas = pcall(function() return corner._casing end)
     if ok_cas and cas == true then return true end
+    local AL = kyohud and kyohud.hud and kyohud.hud.alerts
+    if type(AL) == "table" and type(AL.blocks_assault) == "function" then
+        local ok_ba, ba = pcall(AL.blocks_assault, AL, self._manager)
+        if ok_ba then
+            if ba == true then return true end
+        else
+            return true
+        end
+    else
+        local ok_hp2, hp2 = pcall(function() return corner._hud_panel end)
+        if ok_hp2 and hp2 and a_panel_alive(hp2) then
+            local ok_cp, cp = pcall(function() return hp2:child("casing_panel") end)
+            if ok_cp and cp and a_panel_alive(cp) then
+                local ok_cv, cv = pcall(function() return cp:visible() end)
+                if ok_cv and cv == true then return true end
+            end
+        end
+    end
     local ok_hp, hp = pcall(function() return corner._hud_panel end)
     if ok_hp and hp and a_panel_alive(hp) then
-        local check_panels = { "point_of_no_return_panel", "casing_panel", "buffs_panel" }
+        local check_panels = { "point_of_no_return_panel", "buffs_panel" }
         for _, name in ipairs(check_panels) do
             local ok_p, pnl = pcall(function() return hp:child(name) end)
             if not ok_p then return true end

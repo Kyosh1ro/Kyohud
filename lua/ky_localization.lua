@@ -62,6 +62,11 @@ local function add_fallbacks(loc)
 
         ky_opt_enable_assault       = "Enable Assault HUD (Dev)",
         ky_opt_enable_assault_desc  = "Show police assault status panel. Requires HUD Foundation. Experimental; no native alert coverage. Default off.",
+        ky_opt_enable_alerts        = "Enable Alerts (Dev)",
+        ky_opt_enable_alerts_desc   = "Show Point of No Return and casing alerts. Requires HUD Foundation. Covers normal and civilian casing and standard Point of No Return only. Independent of Assault. Default off; unsupported states remain native.",
+        ky_hud_pnr_title            = "POINT OF NO RETURN",
+        ky_hud_pnr_inside           = "INSIDE ZONE",
+        ky_hud_pnr_outside          = "OUTSIDE ZONE",
         ky_hud_assault_status       = "POLICE ASSAULT IN PROGRESS",
         ky_hud_assault_endless      = "ENDLESS",
         ky_hud_hostages_label       = "HOSTAGES",

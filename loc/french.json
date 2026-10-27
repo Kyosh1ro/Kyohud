@@ -47,6 +47,11 @@
 
   "ky_opt_enable_assault": "Activer le HUD d'assaut (Dev)",
   "ky_opt_enable_assault_desc": "Affiche le panneau d'état de l'assaut policier. Nécessite la base HUD. Expérimental ; aucune couverture d'alertes natives. Désactivé par défaut.",
+  "ky_opt_enable_alerts": "Activer les alertes (Dev)",
+  "ky_opt_enable_alerts_desc": "Affiche les alertes de point de non-retour et de repérage. Nécessite la base HUD. Couvre le repérage normal et civil ainsi que le point de non-retour standard uniquement. Indépendant de l'Assaut. Désactivé par défaut ; les états non pris en charge restent natifs.",
+  "ky_hud_pnr_title": "POINT DE NON-RETOUR",
+  "ky_hud_pnr_inside": "DANS LA ZONE",
+  "ky_hud_pnr_outside": "HORS ZONE",
   "ky_hud_assault_status": "ASSAUT POLICIER EN COURS",
   "ky_hud_assault_endless": "SANS FIN",
   "ky_hud_hostages_label": "OTAGES",
