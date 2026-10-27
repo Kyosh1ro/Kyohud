@@ -125,6 +125,7 @@ function RT:mount(manager)
             self:_coordinate_objectives("mount")
             self:_coordinate_alerts("mount")
             self:_coordinate_assault("mount")
+            self:_coordinate_player("mount")
             return
         end
         return
@@ -154,6 +155,7 @@ function RT:mount(manager)
     self:_coordinate_objectives("mount")
     self:_coordinate_alerts("mount")
     self:_coordinate_assault("mount")
+    self:_coordinate_player("mount")
 end
 
 function RT:_coordinate_mission(method_name, ...)
@@ -181,6 +183,13 @@ function RT:_coordinate_assault(method_name, ...)
     local assault = kyohud.hud.assault
     if assault and type(assault[method_name]) == "function" and self._manager then
         assault[method_name](assault, self._manager, ...)
+    end
+end
+
+function RT:_coordinate_player(method_name, ...)
+    local player = kyohud.hud.player
+    if player and type(player[method_name]) == "function" and self._manager then
+        player[method_name](player, self._manager, ...)
     end
 end
 
@@ -219,6 +228,7 @@ function RT:unmount()
     self:_coordinate_objectives("unmount")
     self:_coordinate_alerts("unmount")
     self:_coordinate_assault("unmount")
+    self:_coordinate_player("unmount")
     if not self._mounted and not self._root_panel then return true end
     if self._root_panel then
         local removed = self:_try_remove_root()
@@ -238,6 +248,7 @@ function RT:rebuild(manager)
     self:_coordinate_objectives("unmount")
     self:_coordinate_alerts("unmount")
     self:_coordinate_assault("unmount")
+    self:_coordinate_player("unmount")
     if self._root_panel then
         local removed = self:_try_remove_root()
         if not removed then
@@ -245,6 +256,7 @@ function RT:rebuild(manager)
             self:_coordinate_objectives("mount", manager)
             self:_coordinate_alerts("mount", manager)
             self:_coordinate_assault("mount", manager)
+            self:_coordinate_player("mount", manager)
             return
         end
     end
@@ -254,6 +266,7 @@ function RT:rebuild(manager)
     self:_coordinate_objectives("rebuild", manager)
     self:_coordinate_alerts("rebuild", manager)
     self:_coordinate_assault("rebuild", manager)
+    self:_coordinate_player("rebuild", manager)
 end
 
 function RT:refresh_settings(manager)
@@ -267,6 +280,7 @@ function RT:refresh_settings(manager)
         self:_coordinate_objectives("refresh_settings")
         self:_coordinate_alerts("refresh_settings")
         self:_coordinate_assault("refresh_settings")
+        self:_coordinate_player("refresh_settings")
     else
         if self._mounted or self._root_panel then
             self:unmount()
@@ -277,9 +291,11 @@ end
 function RT:on_heist_start(manager)
     local mgr = manager or self._manager
     if not mgr then return end
+    self._manager = mgr
     if self._mounted_manager_id == mgr then return end
     self._heist_generation = self._heist_generation + 1
     self._mounted_manager_id = mgr
+    self:_coordinate_player("on_heist_start")
 end
 
 function RT:destroy(manager)
@@ -290,6 +306,7 @@ function RT:destroy(manager)
     self:_coordinate_objectives("destroy", manager)
     self:_coordinate_alerts("destroy", manager)
     self:_coordinate_assault("destroy", manager)
+    self:_coordinate_player("destroy", manager)
     self:unmount()
     self._mounted_manager_id = nil
 end
@@ -300,6 +317,7 @@ function RT:update(manager, t, dt)
     if kyohud.settings.enable_hud_foundation == true then
         self:_coordinate_alerts("update", t, dt)
         self:_coordinate_assault("update", t, dt)
+        self:_coordinate_player("update", t, dt)
     end
 
     if kyohud.settings.enable_hud_foundation == true and kyohud.settings.enable_objectives == true then
@@ -357,19 +375,15 @@ end
 if RequiredScript == REQUIRED_CONTEXT then
     local function cb_mount(self)
         local mission = kyohud.hud.mission
-        if mission then
-            mission:on_heist_start(self)
-        end
+        if mission then mission:on_heist_start(self) end
         local objectives = kyohud.hud.objectives
-        if objectives then
-            objectives:on_heist_start(self)
-        end
+        if objectives then objectives:on_heist_start(self) end
         local alerts = kyohud.hud.alerts
-        if alerts and type(alerts.on_heist_start) == "function" then
+        if type(alerts) == "table" and type(alerts.on_heist_start) == "function" then
             alerts:on_heist_start(self)
         end
         local assault = kyohud.hud.assault
-        if assault then
+        if type(assault) == "table" then
             assault:on_heist_start(self)
         end
         kyohud.hud.runtime:on_heist_start(self)

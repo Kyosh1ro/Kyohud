@@ -60,6 +60,9 @@
     { "hook_id": "lib/managers/objectivesmanager",   "script_path": "lua/hud/objectives.lua" },
     { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/objectives.lua" },
     { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/alerts.lua" },
-    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/assault.lua" }
+    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/assault.lua" },
+    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/actors.lua" },
+    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/components/gauge.lua" },
+    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/player.lua" }
   ]
 }

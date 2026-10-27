@@ -80,6 +80,8 @@ KH._defaults = {
     melee_damage_increase = true,
     passive_health_regen = true,
     enable_hud_foundation = false,
+    enable_player = false,
+    player_value_mode = 1,
     hud_scale = 1,
     enable_mission = false,
     enable_objectives = false,
@@ -237,11 +239,21 @@ function KH.Load()
             end
             KH.settings.objectives_visible_limit = normalized_limit
 
+            local saved_mode = KH.settings.player_value_mode
+            local normalized_mode = 1
+            if type(saved_mode) == "number" and saved_mode == saved_mode
+                    and saved_mode ~= math.huge and saved_mode ~= -math.huge
+                    and (saved_mode == 1 or saved_mode == 2) then
+                normalized_mode = saved_mode
+            end
+            KH.settings.player_value_mode = normalized_mode
+
             if loaded_legacy_settings or data.buff_duration ~= nil
                     or data.buff_categories ~= nil or data.buff_toggles ~= nil
                     or saved_radius ~= normalized_radius
                     or saved_scale ~= normalized_scale
-                    or saved_limit ~= normalized_limit then
+                    or saved_limit ~= normalized_limit
+                    or saved_mode ~= normalized_mode then
                 KH.Save()
             end
         end
@@ -327,6 +339,26 @@ MenuCallbackHandler.KY_BackCallback   = function() end
 
 MenuCallbackHandler.KY_ToggleHudFoundation = function(self, item)
     KH.settings.enable_hud_foundation = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
+MenuCallbackHandler.KY_TogglePlayer = function(self, item)
+    KH.settings.enable_player = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
+MenuCallbackHandler.KY_SetPlayerValueMode = function(self, item)
+    local v = tonumber(item:value())
+    if v ~= 1 and v ~= 2 then
+        v = KH._defaults.player_value_mode
+    end
+    KH.settings.player_value_mode = v
     KH.Save()
     if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
         kyohud.hud.runtime:refresh_settings(managers.hud)

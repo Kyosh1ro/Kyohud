@@ -255,6 +255,31 @@
       "enabled_by": "enable_hud_foundation"
     },
     {
+      "type": "toggle",
+      "id": "ky_enable_player",
+      "title": "ky_opt_enable_player",
+      "description": "ky_opt_enable_player_desc",
+      "callback": "KY_TogglePlayer",
+      "value": "enable_player",
+      "default_value": false,
+      "enabled_by": "enable_hud_foundation"
+    },
+    {
+      "type": "multiple_choice",
+      "id": "ky_player_value_mode",
+      "title": "ky_opt_player_value_mode",
+      "description": "ky_opt_player_value_mode_desc",
+      "callback": "KY_SetPlayerValueMode",
+      "items": [
+        "ky_opt_player_value_percentage",
+        "ky_opt_player_value_real"
+      ],
+      "item_values": [1, 2],
+      "value": "player_value_mode",
+      "default_value": 1,
+      "localized_items": true
+    },
+    {
       "type": "divider",
       "size": 15
     },
