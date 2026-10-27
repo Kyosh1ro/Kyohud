@@ -468,7 +468,6 @@ local function o_color_matches_ref(c, ref)
     if math.abs(cr - rr) > 0.01 then return false end
     if math.abs(cg - rg) > 0.01 then return false end
     if math.abs(cb - rb) > 0.01 then return false end
-    if math.abs(ca - ra) > 0.01 then return false end
     return true
 end
 
@@ -1005,15 +1004,16 @@ function O:animate(t, dt)
             end
         end
     end
+    if needs_sync and not self._sync_in_progress then
+        self._sync_in_progress = true
+        self:_update_layout()
+        self:_sync_primitives()
+        self._sync_in_progress = false
+    end
     if any_active then
         if not self:_verify_render() then
             self:_release_native()
         end
-    end
-    if needs_sync and not self._sync_in_progress then
-        self._sync_in_progress = true
-        self:_sync_primitives()
-        self._sync_in_progress = false
     end
 end
 
@@ -1318,6 +1318,9 @@ function O:_render_coordinated_slide_new_current(completion_slot_idx, c, eased_e
     local display_text = source_text
     if extra.text and mount_panel_alive(extra.text) then
         display_text = select(1, self:_compute_fitted_display(extra.text, source_text, text_w, row_h))
+        extra._fit_source = source_text
+        extra._fit_sig = o_layout_fit_sig(ly)
+        extra._fit_display = display_text
     end
     local amount_text = mount_format_amount(entry) or ""
     if extra.text and mount_panel_alive(extra.text) then
@@ -2139,6 +2142,9 @@ function O:_verify_render()
                     local ok_et, et = pcall(function() return extra.text:text() end)
                     if not ok_et or type(et) ~= "string" then return false end
                     local expected_extra_text = completion.successor_pending_entry and (completion.successor_pending_entry.text or "") or ""
+                    if extra._fit_source == expected_extra_text and extra._fit_sig == o_layout_fit_sig(geom) then
+                        expected_extra_text = extra._fit_display or expected_extra_text
+                    end
                     if et ~= expected_extra_text then return false end
                     local ok_efs, efs = pcall(function() return extra.text:font_size() end)
                     if not ok_efs or not (mount_is_finite(efs) and efs > 0) then return false end
