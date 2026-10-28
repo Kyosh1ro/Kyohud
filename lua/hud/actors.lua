@@ -125,6 +125,7 @@ local function clear_slot_metrics(i)
         _reg[i].downs = nil
         _reg[i].condition_icon = nil
         _reg[i].condition_text = nil
+        _reg[i]._condition_inferred = nil
     end
 end
 
@@ -241,10 +242,24 @@ local function on_revives(self, i, amount)
     entry.downs = math.max(amount - 1, 0)
 end
 
+local function read_native_condition(panel)
+    if type(panel) ~= "table" then return nil end
+    local ok, visible = pcall(function()
+        local icon = panel._condition_icon
+        if not icon or not alive(icon) or type(icon.visible) ~= "function" then
+            return nil
+        end
+        return icon:visible()
+    end)
+    if ok then return visible end
+    return nil
+end
+
 local function on_condition(self, i, icon, text)
     reconcile(self, i)
     reconcile_unit_at_slot(i)
     local entry = ensure_entry(i)
+    entry._condition_inferred = nil
     local ti = type(icon)
     if icon == nil or ti == "string" or ti == "number" or ti == "boolean" then
         entry.condition_icon = icon
@@ -269,6 +284,20 @@ function ACT:refresh(manager)
     if not unit then return end
 
     local entry = ensure_entry(slot)
+
+    local panel = get_panel(manager, slot)
+    local native_visible = read_native_condition(panel)
+
+    if entry._condition_inferred == true then
+        entry.condition_icon = nil
+        entry.condition_text = nil
+    end
+
+    if entry.condition_icon == nil and entry.condition_text == nil and native_visible == false then
+        entry.condition_icon = "mugshot_normal"
+        entry.condition_text = ""
+        entry._condition_inferred = true
+    end
 
     local cd = safe_get(function() return unit:character_damage() end)
     if type(cd) ~= "table" then
