@@ -36,7 +36,7 @@
   "ky_opt_enable_hud_foundation": "Enable HUD Foundation (Dev)",
   "ky_opt_enable_hud_foundation_desc": "Prerequisite for optional HUD modules such as Mission. Default off.",
   "ky_opt_hud_scale": "HUD Scale",
-  "ky_opt_hud_scale_desc": "Scale factor for HUD elements (0.5-2.0). Default: 1.0",
+  "ky_opt_hud_scale_desc": "Scale factor for HUD elements (0.85-1.10). Default: 1.0",
 
   "ky_opt_enable_mission": "Enable Mission HUD",
   "ky_opt_enable_mission_desc": "Show heist timer, current level title and secured bag count in a compact row. Requires HUD Foundation.",

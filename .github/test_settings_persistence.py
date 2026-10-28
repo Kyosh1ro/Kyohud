@@ -550,14 +550,14 @@ class FoundationSettingsTests(unittest.TestCase):
     def test_malformed_hud_scale_normalized(self):
         lua = self._load_with_decoded({"hud_scale": 5.0})
         val = lua.eval("kyohud.settings.hud_scale")
-        self.assertLessEqual(float(val), 2.0,
-            "hud_scale > 2.0 must be clamped to 2.0")
+        self.assertLessEqual(float(val), 1.10,
+            "hud_scale > 1.10 must be clamped to 1.10")
 
     def test_negative_hud_scale_normalized(self):
         lua = self._load_with_decoded({"hud_scale": -1})
         val = lua.eval("kyohud.settings.hud_scale")
-        self.assertGreaterEqual(float(val), 0.5,
-            "negative hud_scale must be clamped to 0.5")
+        self.assertGreaterEqual(float(val), 0.85,
+            "negative hud_scale must be clamped to 0.85")
 
 
 class FoundationCallbackTests(unittest.TestCase):
@@ -635,7 +635,7 @@ class FoundationCallbackTests(unittest.TestCase):
             kyohud.RefreshHUD = function() error("RefreshHUD must not be called by scale change") end
             local cb_scale = MenuCallbackHandler.KY_SetHudScale
             assert(type(cb_scale) == "function")
-            cb_scale(nil, {value = function() return "1.5" end})
+            cb_scale(nil, {value = function() return "1.05" end})
             _scale = rt._layout and rt._layout.scale
             _root_after = rt._root_panel
             _same_root = (_root_before == _root_after)
@@ -643,12 +643,12 @@ class FoundationCallbackTests(unittest.TestCase):
             _anchor_w = ar.w
         ''')
         g = lua.globals()
-        self.assertAlmostEqual(float(g._scale), 1.5, places=2,
-            msg="layout scale must be 1.5 after KY_SetHudScale")
+        self.assertAlmostEqual(float(g._scale), 1.05, places=2,
+            msg="layout scale must be 1.05 after KY_SetHudScale")
         self.assertTrue(bool(g._same_root),
             "root identity must be stable across scale change")
-        self.assertAlmostEqual(float(g._anchor_w), 200.0, places=1,
-            msg="anchor_rect width must be 200 for ref_w=200 at 1280x720 with scale 1.5")
+        self.assertAlmostEqual(float(g._anchor_w), 140.0, places=1,
+            msg="anchor_rect width must be 140 for ref_w=200 at 1280x720 with scale 1.05")
 
     def test_foundation_toggle_off_saves_and_reloads_false(self):
         lua = self._load_with_runtime()

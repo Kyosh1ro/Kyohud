@@ -1863,11 +1863,11 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
         Enable foundation/objectives, mount RT/O, seed active objective amount=1,
         at 1920x1080 scale=1.0. Assert _verify_render true and amount font_size 20.
-        Replace amount primitive set_font_size with no-op. Change hud_scale to 1.5,
-        RT:refresh_settings triggers _update_layout which attempts set_font_size(30)
+        Replace amount primitive set_font_size with no-op. Change hud_scale to 1.10,
+        RT:refresh_settings triggers _update_layout which attempts set_font_size(22)
         but no-op keeps it at 20. Assert amount font_size still 20, _verify_render
         false. Restore original setter, RT:update(managers.hud, 1.0, 0.05) with no
-        O manual repair. Assert same primitive/root, amount font_size 30 and
+        O manual repair. Assert same primitive/root, amount font_size 22 and
         _verify_render true.
         """
         lua, ok = _lua()
@@ -1913,7 +1913,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             local original_set_font_size = amount_prim.set_font_size
             function amount_prim:set_font_size(s) end
 
-            kyohud.settings.hud_scale = 1.5
+            kyohud.settings.hud_scale = 1.10
             RT:refresh_settings(managers.hud)
 
             local stale_fs = amount_prim:font_size()
@@ -1938,8 +1938,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                 "amount primitive must remain same instance after RT:update")
 
             local recovered_fs = amount_prim:font_size()
-            assert(recovered_fs == 30,
-                "recovered amount font_size must be 30, got " .. tostring(recovered_fs))
+            assert(recovered_fs == 22,
+                "recovered amount font_size must be 22, got " .. tostring(recovered_fs))
 
             local after_recovery = O:_verify_render()
             assert(after_recovery == true,

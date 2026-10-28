@@ -36,7 +36,7 @@
   "ky_opt_enable_hud_foundation": "Activer la base HUD (Dev)",
   "ky_opt_enable_hud_foundation_desc": "Prérequis pour les modules HUD optionnels comme Mission. Désactivé par défaut.",
   "ky_opt_hud_scale": "Échelle du HUD",
-  "ky_opt_hud_scale_desc": "Facteur d'échelle des éléments du HUD (0,5-2,0). Par défaut : 1,0",
+  "ky_opt_hud_scale_desc": "Facteur d'échelle des éléments du HUD (0,85-1,10). Par défaut : 1,0",
 
   "ky_opt_enable_mission": "Activer le HUD de mission",
   "ky_opt_enable_mission_desc": "Affiche le temps du braquage, le nom du niveau actuel et les sacs sécurisés sur une ligne compacte. Nécessite la base HUD.",

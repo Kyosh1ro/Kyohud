@@ -84,8 +84,8 @@ class HudLayoutResolveTests(unittest.TestCase):
 
     def test_user_scale_clamped(self):
         cases = [
-            (0.1, 0.5),
-            (10.0, 2.0),
+            (0.1, 0.85),
+            (10.0, 1.10),
         ]
         for inp, expected in cases:
             with self.subTest(inp=inp):
@@ -93,8 +93,8 @@ class HudLayoutResolveTests(unittest.TestCase):
                 self.assertAlmostEqual(float(self.lua.globals()._s), expected, places=5)
 
     def test_numeric_string_scale_coerced(self):
-        self.lua.execute('_s = kyohud.hud.layout.resolve(1920, 1080, "1.5").scale')
-        self.assertAlmostEqual(float(self.lua.globals()._s), 1.5, places=5)
+        self.lua.execute('_s = kyohud.hud.layout.resolve(1920, 1080, "1.05").scale')
+        self.assertAlmostEqual(float(self.lua.globals()._s), 1.05, places=5)
 
     def test_invalid_dims(self):
         cases = [
@@ -231,8 +231,8 @@ class HudLayoutAnchorRectTests(unittest.TestCase):
     def test_anchor_dimensions_scaled(self):
         cases = [
             ("3840,2160,1.0", 200, 100, 200 * 2.0, 100 * 2.0),
-            ("1920,1080,1.5", 200, 100, 200 * 1.0 * 1.5, 100 * 1.0 * 1.5),
-            ("3840,2160,1.5", 200, 100, 200 * 2.0 * 1.5, 100 * 2.0 * 1.5),
+            ("1920,1080,1.05", 200, 100, 200 * 1.0 * 1.05, 100 * 1.0 * 1.05),
+            ("3840,2160,1.05", 200, 100, 200 * 2.0 * 1.05, 100 * 2.0 * 1.05),
         ]
         for args, rw, rh, ew, eh in cases:
             with self.subTest(args=args):

@@ -197,8 +197,8 @@
       "callback": "KY_SetHudScale",
       "value": "hud_scale",
       "default_value": 1,
-      "min": 0.5,
-      "max": 2,
+      "min": 0.85,
+      "max": 1.1,
       "step": 0.05,
       "display_precision": 2
     },

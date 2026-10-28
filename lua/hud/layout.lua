@@ -11,8 +11,8 @@ local L = {}
 local REF_W = 1920
 local REF_H = 1080
 local MARGIN_FRAC = 0.02
-local SCALE_MIN = 0.5
-local SCALE_MAX = 2.0
+local SCALE_MIN = 0.85
+local SCALE_MAX = 1.10
 
 local function finite(v)
     if type(v) ~= "number" then return false end
@@ -33,6 +33,7 @@ local function clamp_scale(s)
     end
     if type(s) ~= "number" then return 1.0 end
     if s ~= s then return 1.0 end
+    if s == math.huge then return 1.0 end
     if s <= 0 then return 1.0 end
     if s < SCALE_MIN then return SCALE_MIN end
     if s > SCALE_MAX then return SCALE_MAX end

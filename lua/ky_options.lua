@@ -225,7 +225,7 @@ function KH.Load()
                     or saved_scale == math.huge or saved_scale == -math.huge then
                 normalized_scale = KH._defaults.hud_scale
             else
-                normalized_scale = math.max(0.5, math.min(2.0, saved_scale))
+                normalized_scale = math.max(0.85, math.min(1.10, saved_scale))
             end
             KH.settings.hud_scale = normalized_scale
 
@@ -403,7 +403,7 @@ end
 MenuCallbackHandler.KY_SetHudScale = function(self, item)
     local v = tonumber(item:value()) or KH._defaults.hud_scale
     if type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge then
-        v = math.max(0.5, math.min(2.0, v))
+        v = math.max(0.85, math.min(1.10, v))
     else
         v = KH._defaults.hud_scale
     end
