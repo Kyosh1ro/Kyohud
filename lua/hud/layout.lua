@@ -11,8 +11,8 @@ local L = {}
 local REF_W = 1920
 local REF_H = 1080
 local MARGIN_FRAC = 0.02
-local SCALE_MIN = 0.85
-local SCALE_MAX = 1.10
+local SCALE_MIN = 0.95
+local SCALE_MAX = 1.05
 
 local function finite(v)
     if type(v) ~= "number" then return false end

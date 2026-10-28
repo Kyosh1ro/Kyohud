@@ -84,8 +84,8 @@ class HudLayoutResolveTests(unittest.TestCase):
 
     def test_user_scale_clamped(self):
         cases = [
-            (0.1, 0.85),
-            (10.0, 1.10),
+            (0.1, 0.95),
+            (10.0, 1.05),
         ]
         for inp, expected in cases:
             with self.subTest(inp=inp):

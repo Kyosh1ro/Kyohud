@@ -197,8 +197,8 @@
       "callback": "KY_SetHudScale",
       "value": "hud_scale",
       "default_value": 1,
-      "min": 0.85,
-      "max": 1.1,
+      "min": 0.95,
+      "max": 1.05,
       "step": 0.05,
       "display_precision": 2
     },
@@ -261,6 +261,16 @@
       "description": "ky_opt_enable_player_desc",
       "callback": "KY_TogglePlayer",
       "value": "enable_player",
+      "default_value": false,
+      "enabled_by": "enable_hud_foundation"
+    },
+    {
+      "type": "toggle",
+      "id": "ky_enable_weapons",
+      "title": "ky_opt_enable_weapons",
+      "description": "ky_opt_enable_weapons_desc",
+      "callback": "KY_ToggleWeapons",
+      "value": "enable_weapons",
       "default_value": false,
       "enabled_by": "enable_hud_foundation"
     },

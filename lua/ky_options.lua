@@ -81,6 +81,7 @@ KH._defaults = {
     passive_health_regen = true,
     enable_hud_foundation = false,
     enable_player = false,
+    enable_weapons = false,
     player_value_mode = 1,
     hud_scale = 1,
     enable_mission = false,
@@ -225,7 +226,7 @@ function KH.Load()
                     or saved_scale == math.huge or saved_scale == -math.huge then
                 normalized_scale = KH._defaults.hud_scale
             else
-                normalized_scale = math.max(0.85, math.min(1.10, saved_scale))
+                normalized_scale = math.max(0.95, math.min(1.05, saved_scale))
             end
             KH.settings.hud_scale = normalized_scale
 
@@ -353,6 +354,14 @@ MenuCallbackHandler.KY_TogglePlayer = function(self, item)
     end
 end
 
+MenuCallbackHandler.KY_ToggleWeapons = function(self, item)
+    KH.settings.enable_weapons = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
 MenuCallbackHandler.KY_SetPlayerValueMode = function(self, item)
     local v = tonumber(item:value())
     if v ~= 1 and v ~= 2 then
@@ -403,7 +412,7 @@ end
 MenuCallbackHandler.KY_SetHudScale = function(self, item)
     local v = tonumber(item:value()) or KH._defaults.hud_scale
     if type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge then
-        v = math.max(0.85, math.min(1.10, v))
+        v = math.max(0.95, math.min(1.05, v))
     else
         v = KH._defaults.hud_scale
     end

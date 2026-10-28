@@ -1,4 +1,4 @@
-"""HUD user scale range 0.85-1.10 (default 1.0) regression tests.
+"""HUD user scale range 0.95-1.05 (default 1.0) regression tests.
 
 Covers slider metadata, saved-value clamping, invalid-type fallback,
 callback behavior, layout effective scale, and localization descriptions.
@@ -19,8 +19,8 @@ LAYOUT_PATH = ROOT / "lua" / "hud" / "layout.lua"
 LOCALIZATION_CHUNK = (ROOT / "lua" / "ky_localization.lua").read_text(encoding="utf-8-sig")
 MENU_PATH = ROOT / "menu" / "menu.json"
 
-SCALE_MIN = 0.85
-SCALE_MAX = 1.10
+SCALE_MIN = 0.95
+SCALE_MAX = 1.05
 SCALE_DEFAULT = 1.0
 
 sys.path.insert(0, str(ROOT / ".github"))
@@ -124,7 +124,7 @@ class SavedScaleClampTests(unittest.TestCase, _OptionsMixin):
         self.assertAlmostEqual(val, SCALE_MAX, places=5)
 
     def test_in_range_values_unchanged(self):
-        for v in (SCALE_MIN, 0.90, SCALE_DEFAULT, 1.05, SCALE_MAX):
+        for v in (SCALE_MIN, 0.975, SCALE_DEFAULT, 1.025, SCALE_MAX):
             with self.subTest(v=v):
                 lua = self._load_with_decoded({"hud_scale": v})
                 val = float(lua.eval("kyohud.settings.hud_scale"))
@@ -178,7 +178,8 @@ class SavedScaleClampTests(unittest.TestCase, _OptionsMixin):
             ''')
             return lua
 
-        for written, expected in ((0.50, SCALE_MIN), (2.0, SCALE_MAX)):
+        for written, expected in ((0.50, SCALE_MIN), (0.85, SCALE_MIN), (0.94, SCALE_MIN),
+                                  (1.06, SCALE_MAX), (1.10, SCALE_MAX), (2.0, SCALE_MAX)):
             with self.subTest(written=written):
                 settings_path.write_text(
                     py_json.dumps({"hud_scale": written, "language": 1}),
@@ -510,8 +511,8 @@ class LayoutScaleTests(unittest.TestCase):
 
 
 class ScaleLocalizationTests(unittest.TestCase):
-    EXPECTED_EN_DESC = "Scale factor for HUD elements (0.85-1.10). Default: 1.0"
-    EXPECTED_FR_DESC = "Facteur d'\u00e9chelle des \u00e9l\u00e9ments du HUD (0,85-1,10). Par d\u00e9faut : 1,0"
+    EXPECTED_EN_DESC = "Scale factor for HUD elements (0.95-1.05). Default: 1.0"
+    EXPECTED_FR_DESC = "Facteur d'\u00e9chelle des \u00e9l\u00e9ments du HUD (0,95-1,05). Par d\u00e9faut : 1,0"
 
     def setUp(self):
         self.en = json.loads((ROOT / "loc" / "english.json").read_text(encoding="utf-8-sig"))
@@ -530,7 +531,7 @@ class ScaleLocalizationTests(unittest.TestCase):
         self.assertEqual(self.fr["ky_opt_hud_scale"], "\u00c9chelle du HUD")
 
     def test_fallback_desc_matches_new_range(self):
-        self.assertIn("(0.85-1.10)", LOCALIZATION_CHUNK)
+        self.assertIn("(0.95-1.05)", LOCALIZATION_CHUNK)
         self.assertIn("Default: 1.0", LOCALIZATION_CHUNK)
         self.assertNotIn("0.5-2.0", LOCALIZATION_CHUNK)
 

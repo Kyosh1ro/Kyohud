@@ -34,6 +34,7 @@
     { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/ky_killfeed_render.lua" },
     { "hook_id": "lib/managers/playermanager",       "script_path": "lua/ky_killfeed.lua" },
     { "hook_id": "lib/units/beings/player/playerinventory", "script_path": "lua/ky_playerinventory.lua" },
+    { "hook_id": "lib/units/beings/player/playerinventory", "script_path": "lua/hud/weapons.lua" },
     { "hook_id": "lib/units/beings/player/playerdamage", "script_path": "lua/ky_playerdamage.lua" },
     { "hook_id": "lib/units/beings/player/playermovement", "script_path": "lua/ky_playermovement.lua" },
     { "hook_id": "lib/units/weapons/raycastweaponbase", "script_path": "lua/ky_raycastweaponbase.lua" },
@@ -63,6 +64,8 @@
     { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/assault.lua" },
     { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/actors.lua" },
     { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/components/gauge.lua" },
-    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/player.lua" }
+    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/player.lua" },
+    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/components/weapon.lua" },
+    { "hook_id": "lib/managers/hudmanagerpd2",       "script_path": "lua/hud/weapons.lua" }
   ]
 }
