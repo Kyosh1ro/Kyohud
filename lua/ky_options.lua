@@ -83,6 +83,7 @@ KH._defaults = {
     enable_player = false,
     enable_weapons = false,
     enable_equipment = false,
+    enable_crew = false,
     player_value_mode = 1,
     hud_scale = 1,
     enable_mission = false,
@@ -365,6 +366,14 @@ end
 
 MenuCallbackHandler.KY_ToggleEquipment = function(self, item)
     KH.settings.enable_equipment = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
+MenuCallbackHandler.KY_ToggleCrew = function(self, item)
+    KH.settings.enable_crew = (item:value() == "on")
     KH.Save()
     if managers and managers.hud and kyohud.hud and kyohud.hud.runtime then
         kyohud.hud.runtime:refresh_settings(managers.hud)

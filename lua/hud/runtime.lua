@@ -128,6 +128,7 @@ function RT:mount(manager)
             self:_coordinate_player("mount")
             self:_coordinate_weapons("mount")
             self:_coordinate_equipment("mount")
+            self:_coordinate_crew("mount")
             return
         end
         return
@@ -160,6 +161,14 @@ function RT:mount(manager)
     self:_coordinate_player("mount")
     self:_coordinate_weapons("mount")
     self:_coordinate_equipment("mount")
+    self:_coordinate_crew("mount")
+end
+
+function RT:_coordinate_crew(method_name, ...)
+    local crew = kyohud.hud.crew
+    if crew and type(crew[method_name]) == "function" and self._manager then
+        crew[method_name](crew, self._manager, ...)
+    end
 end
 
 function RT:_coordinate_mission(method_name, ...)
@@ -242,6 +251,7 @@ function RT:_do_refresh()
 end
 
 function RT:unmount()
+    self:_coordinate_crew("unmount")
     self:_coordinate_mission("unmount")
     self:_coordinate_objectives("unmount")
     self:_coordinate_alerts("unmount")
@@ -264,6 +274,7 @@ function RT:unmount()
 end
 
 function RT:rebuild(manager)
+    self:_coordinate_crew("unmount")
     self:_coordinate_mission("unmount")
     self:_coordinate_objectives("unmount")
     self:_coordinate_alerts("unmount")
@@ -281,6 +292,7 @@ function RT:rebuild(manager)
             self:_coordinate_player("mount", manager)
             self:_coordinate_weapons("mount", manager)
             self:_coordinate_equipment("mount", manager)
+            self:_coordinate_crew("mount")
             return
         end
     end
@@ -293,6 +305,7 @@ function RT:rebuild(manager)
     self:_coordinate_player("rebuild", manager)
     self:_coordinate_weapons("rebuild", manager)
     self:_coordinate_equipment("rebuild", manager)
+    self:_coordinate_crew("rebuild")
 end
 
 function RT:refresh_settings(manager)
@@ -309,6 +322,7 @@ function RT:refresh_settings(manager)
         self:_coordinate_player("refresh_settings")
         self:_coordinate_weapons("refresh_settings")
         self:_coordinate_equipment("refresh_settings")
+        self:_coordinate_crew("refresh_settings")
     else
         if self._mounted or self._root_panel then
             self:unmount()
@@ -326,6 +340,7 @@ function RT:on_heist_start(manager)
     self:_coordinate_player("on_heist_start")
     self:_coordinate_weapons("on_heist_start")
     self:_coordinate_equipment("on_heist_start")
+    self:_coordinate_crew("on_heist_start")
 end
 
 function RT:destroy(manager)
@@ -339,6 +354,7 @@ function RT:destroy(manager)
     self:_coordinate_player("destroy", manager)
     self:_coordinate_weapons("destroy", manager)
     self:_coordinate_equipment("destroy", manager)
+    self:_coordinate_crew("destroy")
     self:unmount()
     self._mounted_manager_id = nil
 end
@@ -352,6 +368,7 @@ function RT:update(manager, t, dt)
         self:_coordinate_player("update", t, dt)
         self:_coordinate_weapons("update", t, dt)
         self:_coordinate_equipment("update", t, dt)
+        self:_coordinate_crew("update", t, dt)
     end
 
     if kyohud.settings.enable_hud_foundation == true and kyohud.settings.enable_objectives == true then

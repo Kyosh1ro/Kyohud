@@ -300,6 +300,16 @@
       "localized_items": true
     },
     {
+      "type": "toggle",
+      "id": "ky_enable_crew",
+      "title": "ky_opt_enable_crew",
+      "description": "ky_opt_enable_crew_desc",
+      "callback": "KY_ToggleCrew",
+      "value": "enable_crew",
+      "default_value": false,
+      "enabled_by": "enable_hud_foundation"
+    },
+    {
       "type": "divider",
       "size": 15
     },
