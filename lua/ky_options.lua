@@ -82,6 +82,7 @@ KH._defaults = {
     enable_hud_foundation = false,
     enable_player = false,
     enable_weapons = false,
+    enable_equipment = false,
     player_value_mode = 1,
     hud_scale = 1,
     enable_mission = false,
@@ -358,6 +359,14 @@ MenuCallbackHandler.KY_ToggleWeapons = function(self, item)
     KH.settings.enable_weapons = (item:value() == "on")
     KH.Save()
     if managers and managers.hud and kyohud.hud and kyohud.hud.runtime and kyohud.hud.runtime.refresh_settings then
+        kyohud.hud.runtime:refresh_settings(managers.hud)
+    end
+end
+
+MenuCallbackHandler.KY_ToggleEquipment = function(self, item)
+    KH.settings.enable_equipment = (item:value() == "on")
+    KH.Save()
+    if managers and managers.hud and kyohud.hud and kyohud.hud.runtime then
         kyohud.hud.runtime:refresh_settings(managers.hud)
     end
 end

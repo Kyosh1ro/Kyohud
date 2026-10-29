@@ -275,6 +275,16 @@
       "enabled_by": "enable_hud_foundation"
     },
     {
+      "type": "toggle",
+      "id": "ky_enable_equipment",
+      "title": "ky_opt_enable_equipment",
+      "description": "ky_opt_enable_equipment_desc",
+      "callback": "KY_ToggleEquipment",
+      "value": "enable_equipment",
+      "default_value": false,
+      "enabled_by": "enable_hud_foundation"
+    },
+    {
       "type": "multiple_choice",
       "id": "ky_player_value_mode",
       "title": "ky_opt_player_value_mode",

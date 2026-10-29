@@ -26,7 +26,7 @@ class ModTxtStructureTests(unittest.TestCase):
 
     def test_hud_foundation_scripts_present(self):
         paths = [h["script_path"] for h in self.meta["hooks"]]
-        foundation_paths = {p for p in paths if p.startswith("lua/hud/") and p != "lua/hud/mission.lua" and p != "lua/hud/objectives.lua" and p != "lua/hud/alerts.lua" and p != "lua/hud/assault.lua" and p != "lua/hud/actors.lua" and p != "lua/hud/components/gauge.lua" and p != "lua/hud/player.lua" and p != "lua/hud/components/weapon.lua" and p != "lua/hud/weapons.lua"}
+        foundation_paths = {p for p in paths if p.startswith("lua/hud/") and p != "lua/hud/mission.lua" and p != "lua/hud/objectives.lua" and p != "lua/hud/alerts.lua" and p != "lua/hud/assault.lua" and p != "lua/hud/actors.lua" and p != "lua/hud/components/gauge.lua" and p != "lua/hud/player.lua" and p != "lua/hud/components/weapon.lua" and p != "lua/hud/weapons.lua" and p != "lua/hud/components/equipment.lua" and p != "lua/hud/equipment.lua"}
         expected = {"lua/hud/layout.lua", "lua/hud/native_visibility.lua", "lua/hud/runtime.lua"}
         self.assertEqual(foundation_paths, expected,
             f"foundation must be exactly {expected}, got {foundation_paths}")
@@ -116,6 +116,7 @@ class ManifestIntegrationAcceptanceTests(unittest.TestCase):
         "lua/hud/actors.lua", "lua/hud/components/gauge.lua",
         "lua/hud/player.lua",
         "lua/hud/components/weapon.lua", "lua/hud/weapons.lua",
+        "lua/hud/components/equipment.lua", "lua/hud/equipment.lua",
     ]
 
     def test_actual_manifest_order_and_graphics_isolation(self):
