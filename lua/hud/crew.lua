@@ -79,17 +79,6 @@ local function enabled()
         and not is_vr()
 end
 
--- Temporary transition trace, capped per Lua session; remove after diagnosis.
-function C:_diagnostic(state, detail)
-    if self._diag_state == state then return end
-    self._diag_state = state
-    local count = self._diag_count or 0
-    if count >= 12 or type(log) ~= "function" then return end
-    self._diag_count = count + 1
-    pcall(log, "[KyoHUD][CrewDiag] state=" .. state .. " t=" .. tostring(self._last_time or 0)
-        .. " detail=" .. tostring(detail or "none"))
-end
-
 function C:_compute_layout(parent_w, parent_h)
     if not finite(parent_w) or not finite(parent_h) then return nil end
     if parent_w <= 0 or parent_h <= 0 then return nil end
@@ -112,6 +101,9 @@ function C:_compute_layout(parent_w, parent_h)
     if total_w <= 0 or card_h <= 0 then return nil end
     local x = margin_x
     local y = parent_h - margin_y - reserve - card_h
+    -- Stable upper-left band above midpoint; independent of transient combat/buff animations.
+    -- Preserve horizontal/equipment/bottom constraints.
+    y = math.min(y, parent_h * 0.5 - margin_x - card_h)
     if y < margin_y then y = margin_y end
     if x + total_w > parent_w - margin_x then return nil end
     if y + card_h > parent_h - margin_y then return nil end
@@ -209,7 +201,6 @@ function C:_present_cards(snap, t)
 end
 
 function C:_verify_render()
-    self._verify_detail = nil
     local lc = self._layout_cache
     local ok, valid = pcall(function()
         if not lc or not panel_alive(self._root) or not self._expected_positions then return false end
@@ -224,7 +215,6 @@ function C:_verify_render()
             if self._expected_positions[i] then
                 any = true
                 if not card:verify() then
-                    self._verify_detail = "card=" .. tostring(i) .. " " .. tostring(card._verify_failure or "unavailable")
                     return false
                 end
             elseif card.root:visible() then return false end
@@ -236,7 +226,6 @@ function C:_verify_render()
 end
 
 function C:_combat_conflict()
-    self._conflict_detail = nil
     local panel, lc = kyohud._panel, self._layout_cache
     if not lc or not panel_alive(panel) then return false end
     local ok, conflict = pcall(function()
@@ -244,20 +233,16 @@ function C:_combat_conflict()
         local function overlaps(p)
             if not panel_alive(p) or not p:visible() then return false end
             if type(p.alpha) == "function" and p:alpha() <= 0 then return false end
-            local x, y = p:x(), p:y()
+            local x, y = panel:x() + p:x(), panel:y() + p:y()
             if type(p.world_x) == "function" and type(self._parent_panel.world_x) == "function" then
                 x = p:world_x() - self._parent_panel:world_x()
                 y = p:world_y() - self._parent_panel:world_y()
             end
             local hit = p:w() > 0 and p:h() > 0 and x < lc.x + lc.total_w and x + p:w() > lc.x
                 and y < lc.y + lc.card_h and y + p:h() > lc.y
-            if hit then
-                self._conflict_detail = string.format("rect=%.1f,%.1f,%.1f,%.1f", x, y, p:w(), p:h())
-            end
             return hit
         end
-        -- Only our existing drawn combat children, never a native/third-party tree scan.
-        if panel:w() < lc.parent_w or panel:h() < lc.parent_h then return overlaps(panel) end
+        -- Root placement container is never occupancy; only our direct drawn children, no native scan.
         for _, child in pairs(panel:children()) do
             if overlaps(child) then return true end
         end
@@ -417,12 +402,10 @@ function C:update(manager, t, dt)
     if self._conflict then
         safe_call(self._root, "set_visible", false)
         self._render_verified = false
-        self:_diagnostic("conflict", self._conflict_detail or "read-error")
         return
     end
     if not self._layout_cache then
         safe_call(self._root, "set_visible", false)
-        self:_diagnostic("layout")
         return
     end
     local snap = nil
@@ -443,13 +426,6 @@ function C:update(manager, t, dt)
                 safe_call(self._root, "set_visible", false)
             end
         end
-    end
-    if self._render_verified then
-        self:_diagnostic("visible")
-    elseif not snap or #snap == 0 then
-        self:_diagnostic("empty")
-    else
-        self:_diagnostic("render", self._verify_detail or "root-or-primitive")
     end
 end
 

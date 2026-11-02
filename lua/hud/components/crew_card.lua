@@ -483,17 +483,14 @@ function Card:update(actor, t)
 end
 
 function Card:verify()
-    self._verify_failure = nil
     if not self:_all_live() then return false end
     if not self._geo then return false end
     if not self._exp then return false end
 
     local result = true
-    local context = "root-or-gauge"
-    local function chk(cond, metric)
+    local function chk(cond)
         if not cond then
             result = false
-            if not self._verify_failure then self._verify_failure = context .. ":" .. (metric or "geometry-color-visibility") end
         end
     end
 
@@ -507,8 +504,7 @@ function Card:verify()
         chk(self.root:visible() == true)
         chk(self.root:alpha() == 1)
 
-        local function chk_text(p, e, geo_e, color_e, label)
-            context = label
+        local function chk_text(p, e, geo_e, color_e)
             chk(near(p:x(), geo_e.x))
             chk(near(p:y(), geo_e.y))
             chk(near(p:w(), geo_e.w))
@@ -517,8 +513,8 @@ function Card:verify()
             chk(p:alpha() == 1)
 
             if e then
-                chk(p:text() == e.text, "text")
-                chk(near(p:font_size(), e.fsize), "font-size")
+                chk(p:text() == e.text)
+                chk(near(p:font_size(), e.fsize))
             end
             if color_e then
                 local c = nil
@@ -533,15 +529,14 @@ function Card:verify()
             end
             local tw, th = measure(p)
             if tw then
-                if not (tw <= p:w() + 0.5) then chk(false, string.format("extent-width=%.2f/%.2f", tw, p:w())) end
-                if not (th <= p:h() + 0.5) then chk(false, string.format("extent-height=%.2f/%.2f", th, p:h())) end
+                chk(tw <= p:w() + 0.5)
+                chk(th <= p:h() + 0.5)
             else
                 result = false
             end
         end
 
-        chk_text(self._name_text, exp.name_text, exp.name_text_geo, exp.name_color, "name")
-        context = "health-gauge"
+        chk_text(self._name_text, exp.name_text, exp.name_text_geo, exp.name_color)
 
         chk(near(self._hp_bg:x(), exp.hp_bg_geo.x))
         chk(near(self._hp_bg:y(), exp.hp_bg_geo.y))
@@ -564,8 +559,7 @@ function Card:verify()
             result = false
         end
 
-        chk_text(self._health_text, exp.health_text, exp.health_text_geo, exp.health_text_color, "health")
-        context = "armor-gauge"
+        chk_text(self._health_text, exp.health_text, exp.health_text_geo, exp.health_text_color)
 
         chk(near(self._ar_bg:x(), exp.ar_bg_geo.x))
         chk(near(self._ar_bg:y(), exp.ar_bg_geo.y))
@@ -588,13 +582,13 @@ function Card:verify()
             result = false
         end
 
-        chk_text(self._armor_text, exp.armor_text, exp.armor_text_geo, exp.armor_text_color, "armor")
-        chk_text(self._weapon_text, exp.weapon_text, exp.weapon_text_geo, exp.weapon_text_color, "weapon")
-        chk_text(self._equipment_text, exp.equipment_text, exp.equipment_text_geo, exp.equipment_text_color, "equipment")
-        chk_text(self._cables_text, exp.cables_text, exp.cables_text_geo, exp.cables_text_color, "cables")
-        chk_text(self._projectile_text, exp.projectile_text, exp.projectile_text_geo, exp.projectile_text_color, "projectile")
-        chk_text(self._interaction_text, exp.interaction_text, exp.interaction_text_geo, exp.interaction_text_color, "interaction")
-        chk_text(self._status_text, exp.status_text, exp.status_text_geo, exp.status_text_color, "status")
+        chk_text(self._armor_text, exp.armor_text, exp.armor_text_geo, exp.armor_text_color)
+        chk_text(self._weapon_text, exp.weapon_text, exp.weapon_text_geo, exp.weapon_text_color)
+        chk_text(self._equipment_text, exp.equipment_text, exp.equipment_text_geo, exp.equipment_text_color)
+        chk_text(self._cables_text, exp.cables_text, exp.cables_text_geo, exp.cables_text_color)
+        chk_text(self._projectile_text, exp.projectile_text, exp.projectile_text_geo, exp.projectile_text_color)
+        chk_text(self._interaction_text, exp.interaction_text, exp.interaction_text_geo, exp.interaction_text_color)
+        chk_text(self._status_text, exp.status_text, exp.status_text_geo, exp.status_text_color)
     end)
 
     if not worked then return false end

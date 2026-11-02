@@ -293,6 +293,9 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
         x, y, w, h = align_buff_cell_rect(x, y, w, h)
 
         local line_width = clamp(math.min(w, h) * 0.055, 2, 3)
+        local padding = (line_width + 2) * 0.5
+        local origin_x = x - padding
+        local origin_y = y - padding
         local remaining_length = (w * 2 + h * 2) * progress
         local half_w = w * 0.5
 
@@ -302,23 +305,27 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
             points[i] = nil
         end
         remaining_length = append_progress_segment(
-            points, remaining_length, x + half_w, y, x + w, y, half_w
+            points, remaining_length, padding + half_w, padding, padding + w, padding, half_w
         )
         remaining_length = append_progress_segment(
-            points, remaining_length, x + w, y, x + w, y + h, h
+            points, remaining_length, padding + w, padding, padding + w, padding + h, h
         )
         remaining_length = append_progress_segment(
-            points, remaining_length, x + w, y + h, x, y + h, w
+            points, remaining_length, padding + w, padding + h, padding, padding + h, w
         )
         remaining_length = append_progress_segment(
-            points, remaining_length, x, y + h, x, y, h
+            points, remaining_length, padding, padding + h, padding, padding, h
         )
         append_progress_segment(
-            points, remaining_length, x, y, x + half_w, y, half_w
+            points, remaining_length, padding, padding, padding + half_w, padding, half_w
         )
 
         -- Only two polylines per buff: a subtle halo and the crisp stroke.
         panel:polyline({
+            x = origin_x,
+            y = origin_y,
+            w = w + 2 * padding,
+            h = h + 2 * padding,
             points = points,
             line_width = line_width + 2,
             color = color,
@@ -326,6 +333,10 @@ if RequiredScript == "lib/managers/hudmanagerpd2"
             layer = layer,
         })
         panel:polyline({
+            x = origin_x,
+            y = origin_y,
+            w = w + 2 * padding,
+            h = h + 2 * padding,
             points = points,
             line_width = line_width,
             color = color,

@@ -153,9 +153,10 @@ class CrewReadbackTests(unittest.TestCase):
             end
             kyohud.settings.hud_scale=1
             local r=C._root
-            -- A visible owned combat panel is a concrete conflict, not a speculative full-HUD scan.
+            -- A visible drawn child is a concrete conflict, not a speculative full-HUD scan.
             kyohud._panel=panel_double:panel({name='combat_sentinel'})
             kyohud._panel:set_shape(r:x(),r:y(),r:w(),r:h())
+            kyohud._panel:rect({x=0,y=0,w=r:w(),h=r:h()})
             kyohud._panel:set_visible(true)
             RT:update(managers.hud,1.7,.05)
             _conflict_hidden=not r:visible()
