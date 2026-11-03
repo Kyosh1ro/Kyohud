@@ -244,8 +244,8 @@ end
 
 local OBJECTIVES_ROOT_NAME = "kyohud_objectives_panel"
 local MAX_SLOTS = 3
-local REF_OBJ_FONT_SIZE = 20
-local MIN_OBJ_FONT_SIZE = 12
+local REF_OBJ_FONT_SIZE = 28
+local MIN_OBJ_FONT_SIZE = 1
 
 local COMPLETION_PULSE_T = 0.900
 local COMPLETION_EXIT_T = 0.300
@@ -257,7 +257,8 @@ local COMPLETION_PULSE_MIN = 0.45
 local COMPLETION_PULSE_MAX = 1.0
 local COMPLETION_HISTORY_MAX = 2
 local HUD_ACCENT_COLOR = Color(0.52, 0.88, 0.92)
-local HUD_DEFAULT_COLOR = Color(1, 1, 1, 1)
+local HUD_DEFAULT_COLOR = Color(211/255, 218/255, 224/255)
+local HUD_AMOUNT_COLOR = Color(127/255, 137/255, 148/255)
 
 local function o_smoothstep(t)
     if t <= 0 then return 0 end
@@ -502,8 +503,8 @@ local function o_verify_geometry_after_apply(self, new_layout, tol)
                 -- Skip geometry checks for coordinated slide slots (they are moving)
             else
                 local y = (i - 1) * new_layout.row_h
-                local text_w = new_layout.root_w * 0.7
-                local amount_w = new_layout.root_w - text_w
+                local text_w = new_layout.text_w
+                local amount_w = new_layout.amount_w
                 if slot.text and mount_panel_alive(slot.text) then
                     local ok, sx, sy, sw, sh = o_read_prim_shape(slot.text)
                     if not ok or not o_shape_matches(sx, sy, sw, sh, 0, y, text_w, new_layout.row_h, tol) then
@@ -520,7 +521,7 @@ local function o_verify_geometry_after_apply(self, new_layout, tol)
                         return false
                     end
                     local ok_fs, fs = o_read_prim_font_size(slot.amount)
-                    if not ok_fs or math.abs(fs - new_layout.font_size) > 0.5 then
+                    if not ok_fs or math.abs(fs - new_layout.amount_font_size) > 0.5 then
                         return false
                     end
                 end
@@ -532,7 +533,7 @@ end
 
 local function o_layout_fit_sig(layout)
     if not layout then return "" end
-    return tostring(layout.root_w) .. "|" .. tostring(layout.font_size) .. "|" .. tostring(layout.row_h)
+    return tostring(layout.root_w) .. "|" .. tostring(layout.font_size) .. "|" .. tostring(layout.row_h) .. "|" .. tostring(layout.text_w) .. "|" .. tostring(layout.amount_font_size)
 end
 
 function O:_compute_fitted_display(prim, source, max_w, max_h)
@@ -548,6 +549,12 @@ function O:_compute_fitted_display(prim, source, max_w, max_h)
 
     mount_safe_call(prim, "set_text", source)
     local ok, tw, th = o_measure_text_rect(prim)
+    if ok then
+        self._natural_measurements = self._natural_measurements or {}
+        self._natural_measurements[prim] = {source=source, fs=prim:font_size(), w=tw}
+    end
+    local g = self._layout_cache
+    if g and g.amount_w > 0 then max_w = math.max(0, max_w-10*g.e) end
     if ok and tw <= max_w and th <= max_h then
         return source, tw, th
     end
@@ -721,11 +728,14 @@ function O:_compute_layout(parent_w, parent_h)
         region = layout.objectives_region(parent_w, parent_h)
     end
     if not region then return nil end
-    local root_x = region.x
-    local root_y = region.y
-    local root_w = region.w
-    local root_h = region.h
-    local row_h = root_h / MAX_SLOTS
+    local placement = layout.mission_objectives(parent_w, parent_h, scale,
+        kyohud.settings.enable_mission == true, true, false)
+    if not placement then return nil end
+    local root_x = placement.x
+    local root_y = placement.objectives_y
+    local root_w = placement.w
+    local root_h = placement.objectives_h
+    local row_h = placement.row_h
     local font_size = math.floor(REF_OBJ_FONT_SIZE * effective_scale)
     local max_font = math.floor(row_h)
     if font_size > max_font then
@@ -734,6 +744,69 @@ function O:_compute_layout(parent_w, parent_h)
     if font_size < MIN_OBJ_FONT_SIZE then
         font_size = MIN_OBJ_FONT_SIZE
     end
+    local amount_w = 0
+    if self:_any_completion_active() and self._layout_cache then
+        local previous = self._layout_cache
+        -- Completion alone does not change the cell width. Reserve extra room
+        -- only for content actually selected next, not the full 640-unit cap.
+        local ratio = effective_scale / previous.e
+        root_w = math.min(root_w, previous.root_w * ratio)
+        amount_w = previous.amount_w * ratio
+        local selected = self:select_visible()
+        for _, entry in ipairs(selected or {}) do
+            local source = entry.text or ""
+            local width = #source * font_size * 0.6
+            for _, m in pairs(self._natural_measurements or {}) do
+                if m.source == source and m.fs == font_size then width = m.w; break end
+            end
+            local amount = mount_format_amount(entry)
+            if amount then
+                amount_w = math.max(amount_w, math.ceil(#amount * font_size * 0.6) + 1)
+            end
+            local required = math.ceil(width) + 1 + 42*effective_scale + amount_w
+                + (amount_w > 0 and 10*effective_scale or 0)
+            root_w = math.min(placement.w, math.max(root_w, required))
+        end
+    else
+        local displayed, histories = self:_compute_displayed_entries()
+        local natural_w = 0
+        local any = false
+        for i = 1, MAX_SLOTS do
+            local entry = displayed and displayed[i]
+            if entry then
+                any = true
+                local source = entry.text or ""
+                local width = #source * font_size * 0.6
+                for _, m in pairs(self._natural_measurements or {}) do
+                    if m.source == source and m.fs == font_size then width = m.w; break end
+                end
+                -- Reserve the measurement outwards: subtracting fractional
+                -- padding later must not turn a fitting title into ellipsis.
+                natural_w = math.max(natural_w,math.ceil(width)+1)
+                local amount = not (histories and histories[i]) and mount_format_amount(entry) or nil
+                if amount then
+                    local aw = #amount * font_size * 0.6
+                    local slot = self._slot_prims[i]
+                    if slot and mount_panel_alive(slot.amount) then
+                        local ok, measured = pcall(function()
+                            if slot.amount:text() ~= amount then return nil end
+                            local _,_,w,h = slot.amount:text_rect()
+                            if mount_is_finite(w) and mount_is_finite(h) then
+                                return w * font_size / slot.amount:font_size()
+                            end
+                        end)
+                        if ok and measured then aw = measured end
+                    end
+                    amount_w = math.max(amount_w,math.ceil(aw)+1)
+                end
+            end
+        end
+        if any then
+            root_w = math.min(root_w,natural_w+42*effective_scale+amount_w+(amount_w>0 and 10*effective_scale or 0))
+        end
+    end
+    local text_w = root_w-42*effective_scale-amount_w
+    if text_w <= 0 then return nil end
     return {
         root_x = root_x,
         root_y = root_y,
@@ -741,6 +814,11 @@ function O:_compute_layout(parent_w, parent_h)
         root_h = root_h,
         font_size = font_size,
         row_h = row_h,
+        e = effective_scale,
+        content_h = placement.content_h,
+        text_w = text_w,
+        amount_w = amount_w,
+        amount_font_size = font_size,
         parent_w = parent_w,
         parent_h = parent_h,
     }
@@ -827,7 +905,7 @@ function O:_capture_completion(entry_id)
     local slot = self._slot_prims[slot_idx]
     if not slot then return end
     local ly = self._layout_cache
-    local text_w = ly.root_w * 0.7
+    local text_w = ly.text_w
     local row_h = ly.row_h
     local source_text = (entry and type(entry.text) == "string") and entry.text or ""
     local display_text = source_text
@@ -1011,6 +1089,7 @@ function O:animate(t, dt)
         self._sync_in_progress = false
     end
     if any_active then
+        self:_sync_decorations()
         if not self:_verify_render() then
             self:_release_native()
         end
@@ -1038,7 +1117,7 @@ function O:_compact_successor(i, entry)
         return
     end
     local source_text = (entry and type(entry.text) == "string") and entry.text or ""
-    local text_w = ly.root_w * 0.7
+    local text_w = ly.text_w
     local row_h = ly.row_h
     local display_text = source_text
     local fitted_w = 0
@@ -1094,7 +1173,7 @@ function O:_start_successor_entry(i, entry)
     local ly = self._layout_cache
     if not ly then return end
     local source_text = (entry and type(entry.text) == "string") and entry.text or ""
-    local text_w = ly.root_w * 0.7
+    local text_w = ly.text_w
     local row_h = ly.row_h
     local display_text = source_text
     local fitted_w = 0
@@ -1148,8 +1227,8 @@ function O:_ensure_coordinated_slide_extra()
     local font = mount_get_font()
     if not font then return end
     local layout = self._layout_cache
-    local text_w = layout.root_w * 0.7
-    local amount_w = layout.root_w - text_w
+    local text_w = layout.text_w
+    local amount_w = layout.amount_w
     local extra = self._coordinated_slide_extra
     if extra then
         local needs_relayout = false
@@ -1163,19 +1242,19 @@ function O:_ensure_coordinated_slide_extra()
             end
             if extra.amount and mount_panel_alive(extra.amount) then
                 mount_safe_call(extra.amount, "set_shape", text_w, -layout.row_h, amount_w, layout.row_h)
-                mount_safe_call(extra.amount, "set_font_size", layout.font_size)
+                mount_safe_call(extra.amount, "set_font_size", layout.amount_font_size)
             end
             extra._layout_sig = o_layout_fit_sig(layout)
         end
         return
     end
     extra = {}
-    local status, prim = mount_safe_call(self._root_panel, "text", {
+    local status, prim = mount_safe_call(self._content_panel, "text", {
         name = "objective_extra_text",
         text = "",
         font = font,
         font_size = layout.font_size,
-        color = Color(1, 1, 1, 1),
+        color = HUD_DEFAULT_COLOR,
         x = 0,
         y = -layout.row_h,
         w = text_w,
@@ -1190,12 +1269,12 @@ function O:_ensure_coordinated_slide_extra()
     if status == MOUNT_CALL_OK and prim then
         extra.text = prim
     end
-    status, prim = mount_safe_call(self._root_panel, "text", {
+    status, prim = mount_safe_call(self._content_panel, "text", {
         name = "objective_extra_amount",
         text = "",
         font = font,
-        font_size = layout.font_size,
-        color = Color(1, 1, 1, 1),
+        font_size = layout.amount_font_size,
+        color = Color(127/255, 137/255, 148/255),
         x = text_w,
         y = -layout.row_h,
         w = amount_w,
@@ -1238,7 +1317,7 @@ function O:_render_coordinated_slide_history(completion_slot_idx, c, eased_exit)
         local is_history = history_snapshot[si] == true
         local should_fade = is_history and (si + 1 > _vis_limit)
         local source_text = snap_entry.text or ""
-        local text_w = ly.root_w * 0.7
+        local text_w = ly.text_w
         local row_h = ly.row_h
         local display_text = source_text
         if slot.text and mount_panel_alive(slot.text) then
@@ -1313,7 +1392,7 @@ function O:_render_coordinated_slide_new_current(completion_slot_idx, c, eased_e
     if not ly then return end
     local entry = c.successor_pending_entry
     local source_text = entry.text or ""
-    local text_w = ly.root_w * 0.7
+    local text_w = ly.text_w
     local row_h = ly.row_h
     local display_text = source_text
     if extra.text and mount_panel_alive(extra.text) then
@@ -1336,14 +1415,14 @@ function O:_render_coordinated_slide_new_current(completion_slot_idx, c, eased_e
         if not ok_y or math.abs(act_y - target_y) > 0.5 then
             mount_safe_call(extra.text, "set_y", target_y)
         end
+        local ok_c, cc = pcall(function() return extra.text:color() end)
+        if not ok_c or not o_color_matches_ref(cc, HUD_DEFAULT_COLOR) then
+            mount_safe_call(extra.text, "set_color", HUD_DEFAULT_COLOR)
+        end
         local t_alpha = eased_exit
         local ok_a, act_a = pcall(function() return extra.text:alpha() end)
         if not ok_a or math.abs(act_a - t_alpha) > 0.01 then
             mount_safe_call(extra.text, "set_alpha", t_alpha)
-        end
-        local ok_c, cc = pcall(function() return extra.text:color() end)
-        if not ok_c or not o_color_matches_ref(cc, HUD_DEFAULT_COLOR) then
-            mount_safe_call(extra.text, "set_color", HUD_DEFAULT_COLOR)
         end
     end
     if extra.amount and mount_panel_alive(extra.amount) then
@@ -1498,7 +1577,7 @@ function O:_render_completion_slot(i)
     if not ly then return false end
     local sig = o_layout_fit_sig(ly)
     if c.fit_sig ~= sig and slot.text and mount_panel_alive(slot.text) then
-        local text_w = ly.root_w * 0.7
+        local text_w = ly.text_w
         local row_h = ly.row_h
         local display, fw = self:_compute_fitted_display(slot.text, c.source_text, text_w, row_h)
         c.display_text = display
@@ -1620,6 +1699,7 @@ function O:_render_completion_slot(i)
 end
 
 function O:_clear_slot_prims()
+    self._natural_measurements = nil
     for i = 1, MAX_SLOTS do
         self._slot_prims[i] = nil
         self._slot_text_cache[i] = nil
@@ -1647,7 +1727,135 @@ function O:_clear_slot_prims()
     end
 end
 
+function O:_ensure_content_panel()
+    local g = self._layout_cache
+    if not g or not mount_panel_alive(self._root_panel) then return false end
+    if self._content_root ~= self._root_panel then self._content_panel = nil end
+    if not mount_panel_alive(self._content_panel) then
+        local status, panel = mount_safe_call(self._root_panel, "panel", {name="objective_content",
+            x=28*g.e, y=0, w=g.root_w-42*g.e, h=g.root_h})
+        if status ~= MOUNT_CALL_OK or not panel then return false end
+        self._content_panel = panel
+        self._content_root = self._root_panel
+    end
+    local ok, x,y,w,h = o_read_prim_shape(self._content_panel)
+    if not ok or not o_shape_matches(x,y,w,h,28*g.e,0,g.root_w-42*g.e,g.root_h,0.5) then
+        mount_safe_call(self._content_panel,"set_shape",28*g.e,0,g.root_w-42*g.e,g.root_h)
+    end
+    return true
+end
+
+local function o_decoration_shape(g, slot, key)
+    local ok, x, y, w, h = pcall(function()
+        local text_y = slot.text:y()
+        if not mount_is_finite(text_y) then return nil end
+        if key == "marker" then return 12*g.e, text_y+(g.content_h-6*g.e)/2, 6*g.e, 6*g.e end
+        local measured, width = o_measure_text_rect(slot.text)
+        if not measured or width < 0 then return nil end
+        -- The root is a shared animation/fitting budget, not a drawn cell.
+        -- Histories must not inherit another occurrence's longer title width.
+        local cell_w = math.ceil(width)+1+42*g.e
+        if not mount_panel_alive(slot.amount) then return nil end
+        if slot.amount:visible() and slot.amount:text() ~= "" then
+            local right = slot.amount:x()+slot.amount:w()+42*g.e
+            if not mount_is_finite(right) then return nil end
+            cell_w = math.max(cell_w, right)
+        end
+        return 0, text_y, math.min(g.root_w, cell_w), g.content_h
+    end)
+    if ok then return x, y, w, h end
+    return nil
+end
+
+local function o_decoration_color(key)
+    if key == "marker" then return Color(242/255,194/255,48/255) end
+    return Color(11/255,13/255,17/255)
+end
+
+function O:_sync_decorations()
+    local g = self._layout_cache
+    if not g or not self:_ensure_content_panel() then return end
+    for i = 1, MAX_SLOTS+1 do
+        local slot = i <= MAX_SLOTS and self._slot_prims[i] or self._coordinated_slide_extra
+        if slot and mount_panel_alive(slot.text) then
+            local ok, alpha, visible = pcall(function()
+                return slot.text:alpha(), slot.text:visible() and slot.text:text() ~= ""
+            end)
+            if ok then
+                -- Keep the completion cyan, but give ordinary progress its own
+                -- secondary ink. Diesel color and alpha share one channel.
+                local completion = i <= MAX_SLOTS and self._slot_completion[i]
+                if not (completion and completion.active) then
+                    for _, key in ipairs({"text", "amount"}) do
+                        local p = slot[key]
+                        if mount_panel_alive(p) then
+                            local color = key == "text" and HUD_DEFAULT_COLOR or HUD_AMOUNT_COLOR
+                            local read_ok, current, current_alpha = pcall(function() return p:color(), p:alpha() end)
+                            if read_ok and not o_color_matches_ref(current, color) then
+                                mount_safe_call(p, "set_color", color)
+                                mount_safe_call(p, "set_alpha", current_alpha)
+                            end
+                        end
+                    end
+                end
+                for _, key in ipairs({"bg", "marker"}) do
+                    local x,y,w,h = o_decoration_shape(g,slot,key)
+                    if x == nil then return end
+                    local color = o_decoration_color(key)
+                    local a = alpha * (key == "bg" and 0.72 or 1)
+                    if not mount_panel_alive(slot[key]) then
+                        local status, p = mount_safe_call(self._root_panel,"rect",{
+                            name="objective_"..i.."_"..key,x=x,y=y,w=w,h=h,
+                            color=color,alpha=a,visible=visible,layer=-1})
+                        if status == MOUNT_CALL_OK then slot[key] = p end
+                    end
+                    local p = slot[key]
+                    if mount_panel_alive(p) then
+                        mount_safe_call(p,"set_shape",x,y,w,h)
+                        mount_safe_call(p,"set_color",color)
+                        mount_safe_call(p,"set_alpha",a)
+                        mount_safe_call(p,"set_visible",visible)
+                    end
+                end
+            end
+        end
+    end
+end
+
+function O:_verify_decorations()
+    local g = self._layout_cache
+    if not g or not mount_panel_alive(self._content_panel) then return false end
+    local ok,x,y,w,h = o_read_prim_shape(self._content_panel)
+    if not ok or not o_shape_matches(x,y,w,h,28*g.e,0,g.root_w-42*g.e,g.root_h,0.5) then return false end
+    for i = 1, MAX_SLOTS+1 do
+        local slot = i <= MAX_SLOTS and self._slot_prims[i] or self._coordinated_slide_extra
+        if slot then
+            local valid,result = pcall(function()
+                local visible = slot.text:visible() and slot.text:text() ~= ""
+                local a = slot.text:alpha()
+                local completion = i <= MAX_SLOTS and self._slot_completion[i]
+                local active = completion and completion.active
+                if not o_color_matches_ref(slot.text:color(), active and HUD_ACCENT_COLOR or HUD_DEFAULT_COLOR) then return false end
+                if not o_color_matches_ref(slot.amount:color(), active and HUD_ACCENT_COLOR or HUD_AMOUNT_COLOR) then return false end
+                for _, key in ipairs({"bg","marker"}) do
+                    local p = slot[key]
+                    if not mount_panel_alive(p) or p:visible() ~= visible then return false end
+                    local x,y,w,h = o_decoration_shape(g,slot,key)
+                    if x == nil then return false end
+                    if not o_shape_matches(p:x(),p:y(),p:w(),p:h(),x,y,w,h,0.5) then return false end
+                    if math.abs(p:alpha()-a*(key == "bg" and 0.72 or 1)) > 0.01 then return false end
+                    if not o_color_matches_ref(p:color(),o_decoration_color(key)) then return false end
+                end
+                return true
+            end)
+            if not valid or not result then return false end
+        elseif i <= MAX_SLOTS then return false end
+    end
+    return true
+end
+
 function O:_ensure_slot_prims()
+    if not self:_ensure_content_panel() then return end
     if not self._root_panel or not mount_panel_alive(self._root_panel) then return end
     if not self._layout_cache then return end
     local font = mount_get_font()
@@ -1662,13 +1870,13 @@ function O:_ensure_slot_prims()
         end
 
         local y = (i - 1) * layout.row_h
-        local text_w = layout.root_w * 0.7
-        local amount_w = layout.root_w - text_w
+        local text_w = layout.text_w
+        local amount_w = layout.amount_w
 
         if not slot.text or not mount_panel_alive(slot.text) then
             slot.text = nil
             self._slot_text_cache[i] = nil
-            local status, prim = mount_safe_call(self._root_panel, "text", {
+            local status, prim = mount_safe_call(self._content_panel, "text", {
                 name = "objective_" .. i .. "_text",
                 text = "",
                 font = font,
@@ -1692,11 +1900,11 @@ function O:_ensure_slot_prims()
         if not slot.amount or not mount_panel_alive(slot.amount) then
             slot.amount = nil
             self._slot_amount_cache[i] = nil
-            local status, prim = mount_safe_call(self._root_panel, "text", {
+            local status, prim = mount_safe_call(self._content_panel, "text", {
                 name = "objective_" .. i .. "_amount",
                 text = "",
                 font = font,
-                font_size = layout.font_size,
+                font_size = layout.amount_font_size,
                 color = Color(1, 1, 1, 1),
                 x = text_w,
                 y = y,
@@ -1716,6 +1924,7 @@ function O:_ensure_slot_prims()
 end
 
 function O:_sync_primitives()
+    if self._layout_cache then self:_update_layout() end
     if not self._root_panel or not mount_panel_alive(self._root_panel) then
         self:_release_native()
         return
@@ -1751,7 +1960,7 @@ function O:_sync_primitives()
         end
 
         if slot.text and mount_panel_alive(slot.text) then
-            local text_w = layout.root_w * 0.7
+            local text_w = layout.text_w
             local row_h = layout.row_h
 
             local fit = self._slot_fit_cache[i]
@@ -1855,6 +2064,16 @@ function O:_sync_primitives()
 
         ::sync_continue::
     end
+    if not self._presentation_relayout and not self:_any_completion_active() then
+        self._presentation_relayout = true
+        local previous = self._layout_cache
+        self:_update_layout()
+        if self._layout_cache and (not previous or o_layout_fit_sig(previous) ~= o_layout_fit_sig(self._layout_cache)) then
+            self:_sync_primitives()
+        end
+        self._presentation_relayout = nil
+    end
+    self:_sync_decorations()
     self:_sync_native_visibility()
 end
 
@@ -1892,7 +2111,9 @@ function O:_update_layout()
         self._layout_cache.root_y ~= new_layout.root_y or
         self._layout_cache.root_w ~= new_layout.root_w or
         self._layout_cache.root_h ~= new_layout.root_h or
-        self._layout_cache.font_size ~= new_layout.font_size
+        self._layout_cache.font_size ~= new_layout.font_size or
+        self._layout_cache.text_w ~= new_layout.text_w or
+        self._layout_cache.amount_w ~= new_layout.amount_w
 
     local primitives_match = true
     if not desired_changed then
@@ -1910,8 +2131,8 @@ function O:_update_layout()
                         -- Skip geometry checks for coordinated slide slots (they are moving)
                     else
                         local y = (i - 1) * new_layout.row_h
-                        local text_w = new_layout.root_w * 0.7
-                        local amount_w = new_layout.root_w - text_w
+                        local text_w = new_layout.text_w
+                        local amount_w = new_layout.amount_w
                         if slot.text and mount_panel_alive(slot.text) then
                             local ok, sx, sy, sw, sh = o_read_prim_shape(slot.text)
                             if not ok or not o_shape_matches(sx, sy, sw, sh, 0, y, text_w, new_layout.row_h, tol) then
@@ -1931,7 +2152,7 @@ function O:_update_layout()
                                 break
                             end
                             local ok_fs, fs = o_read_prim_font_size(slot.amount)
-                            if not ok_fs or math.abs(fs - new_layout.font_size) > 0.5 then
+                            if not ok_fs or math.abs(fs - new_layout.amount_font_size) > 0.5 then
                                 primitives_match = false
                                 break
                             end
@@ -1950,6 +2171,28 @@ function O:_update_layout()
         self._layout_cache = nil
         return
     end
+    -- A transition may widen its horizontal budget. Preserve the animated Y
+    -- of every occurrence while updating widths, including retained siblings.
+    if desired_changed then
+        for i = 1, MAX_SLOTS+1 do
+            local slot = i <= MAX_SLOTS and self._slot_prims[i] or self._coordinated_slide_extra
+            if slot then
+                for _, key in ipairs({"text","amount"}) do
+                    local p = slot[key]
+                    if mount_panel_alive(p) then
+                        local ok, _, y = o_read_prim_shape(p)
+                        if ok then
+                            local x = key == "text" and 0 or new_layout.text_w
+                            local w = key == "text" and new_layout.text_w or new_layout.amount_w
+                            local fs = key == "text" and new_layout.font_size or new_layout.amount_font_size
+                            mount_safe_call(p,"set_shape",x,y,w,new_layout.row_h)
+                            mount_safe_call(p,"set_font_size",fs)
+                        end
+                    end
+                end
+            end
+        end
+    end
     for i = 1, MAX_SLOTS do
         local slot = self._slot_prims[i]
         if slot then
@@ -1959,15 +2202,15 @@ function O:_update_layout()
                 -- Coordinated slide slots are animating; skip their layout mutation here
             else
                 local y = (i - 1) * new_layout.row_h
-                local text_w = new_layout.root_w * 0.7
-                local amount_w = new_layout.root_w - text_w
+                local text_w = new_layout.text_w
+                local amount_w = new_layout.amount_w
                 if slot.text and mount_panel_alive(slot.text) then
                     mount_safe_call(slot.text, "set_shape", 0, y, text_w, new_layout.row_h)
                     mount_safe_call(slot.text, "set_font_size", new_layout.font_size)
                 end
                 if slot.amount and mount_panel_alive(slot.amount) then
                     mount_safe_call(slot.amount, "set_shape", text_w, y, amount_w, new_layout.row_h)
-                    mount_safe_call(slot.amount, "set_font_size", new_layout.font_size)
+                    mount_safe_call(slot.amount, "set_font_size", new_layout.amount_font_size)
                 end
             end
         end
@@ -1985,6 +2228,7 @@ function O:_verify_render()
     if not self._root_panel or not mount_panel_alive(self._root_panel) then return false end
     local geom = self._layout_cache
     if geom.root_w <= 0 or geom.root_h <= 0 or geom.font_size <= 0 then return false end
+    if not self:_verify_decorations() then return false end
 
     local _vis_limit = kyohud.settings and kyohud.settings.objectives_visible_limit
     if _vis_limit == nil then _vis_limit = 1 end
@@ -2056,7 +2300,7 @@ function O:_verify_render()
             if math.abs(fs - geom.font_size) > 0.5 then return false end
             local ok_c, c = pcall(function() return slot.text:color() end)
             if not ok_c or not o_color_matches_ref(c, expected_color) then return false end
-            local text_w = geom.root_w * 0.7
+            local text_w = geom.text_w
             local expected_text_y = completion.title_y_base
             if is_coordinated and not p1 then
                 expected_text_y = completion.title_y_base + geom.row_h * eased_exit
@@ -2093,10 +2337,10 @@ function O:_verify_render()
             if av ~= expected_amt_vis then return false end
             local ok_afs, afs = pcall(function() return slot.amount:font_size() end)
             if not ok_afs or not (mount_is_finite(afs) and afs > 0) then return false end
-            if math.abs(afs - geom.font_size) > 0.5 then return false end
+            if math.abs(afs - geom.amount_font_size) > 0.5 then return false end
             local ok_ac, ac = pcall(function() return slot.amount:color() end)
             if not ok_ac or not o_color_matches_ref(ac, expected_color) then return false end
-            local amount_w = geom.root_w - text_w
+            local amount_w = geom.amount_w
             local expected_amt_y = completion.amount_y_base
             if is_coordinated and not p1 then
                 expected_amt_y = completion.amount_y_base + geom.row_h * eased_exit
@@ -2156,7 +2400,7 @@ function O:_verify_render()
                     if not ok_ey or not mount_is_finite(ey) then return false end
                     local expected_extra_y = -geom.row_h + (0 - (-geom.row_h)) * eased_exit
                     if math.abs(ey - expected_extra_y) > 0.5 then return false end
-                    local text_w = geom.root_w * 0.7
+                    local text_w = geom.text_w
                     local eok, ex, ey, ew, eh = o_read_prim_shape(extra.text)
                     if not eok then return false end
                     if math.abs(ex) > tol then return false end
@@ -2177,13 +2421,13 @@ function O:_verify_render()
                     if eat ~= expected_amt then return false end
                     local ok_eafs, eafs = pcall(function() return extra.amount:font_size() end)
                     if not ok_eafs or not (mount_is_finite(eafs) and eafs > 0) then return false end
-                    if math.abs(eafs - geom.font_size) > 0.5 then return false end
+                    if math.abs(eafs - geom.amount_font_size) > 0.5 then return false end
                     if should_show then
                         local ok_eaa, eaa = pcall(function() return extra.amount:alpha() end)
                         if not ok_eaa or not mount_is_finite(eaa) then return false end
                         if math.abs(eaa - eased_exit) > 0.05 then return false end
                     end
-                    local amount_w = geom.root_w - text_w
+                    local amount_w = geom.amount_w
                     local eaok, eax, eay, eaw, eah = o_read_prim_shape(extra.amount)
                     if not eaok then return false end
                     if math.abs(eax - text_w) > tol then return false end
@@ -2204,7 +2448,7 @@ function O:_verify_render()
                         local snap_entry = snapshot[si]
                         local is_hist = hist_snap[si] == true
                         local snap_source = snap_entry.text or ""
-                        local snap_text_w = geom.root_w * 0.7
+                        local snap_text_w = geom.text_w
                         local snap_row_h = geom.row_h
                         local snap_display = snap_source
                         local snap_fit = self._slot_fit_cache[si]
@@ -2262,8 +2506,8 @@ function O:_verify_render()
                         if hav ~= snap_amt_show then return false end
                         local ok_hafs, hafs = pcall(function() return hist_slot.amount:font_size() end)
                         if not ok_hafs or not (mount_is_finite(hafs) and hafs > 0) then return false end
-                        if math.abs(hafs - geom.font_size) > 0.5 then return false end
-                        local snap_amount_w = geom.root_w - snap_text_w
+                        if math.abs(hafs - geom.amount_font_size) > 0.5 then return false end
+                        local snap_amount_w = geom.amount_w
                         local haok, hax, hay, haw, hah = o_read_prim_shape(hist_slot.amount)
                         if not haok then return false end
                         if math.abs(hax - snap_text_w) > tol then return false end
@@ -2292,7 +2536,7 @@ function O:_verify_render()
             local expected_alpha = eased
             local expected_y_offset = COMPLETION_RISE * (1.0 - eased)
             local expected_display = completion.successor_display or completion.successor_text or ""
-            local text_w = geom.root_w * 0.7
+            local text_w = geom.text_w
             local ok_t, t = pcall(function() return slot.text:text() end)
             if not ok_t or type(t) ~= "string" then return false end
             if t ~= expected_display then return false end
@@ -2336,8 +2580,8 @@ function O:_verify_render()
             if av ~= expected_amt_vis then return false end
             local ok_afs, afs = pcall(function() return slot.amount:font_size() end)
             if not ok_afs or not (mount_is_finite(afs) and afs > 0) then return false end
-            if math.abs(afs - geom.font_size) > 0.5 then return false end
-            local amount_w = geom.root_w - text_w
+            if math.abs(afs - geom.amount_font_size) > 0.5 then return false end
+            local amount_w = geom.amount_w
             local expected_amt_y = completion.amount_y_base + expected_y_offset
             local aok, ax, ay, aw, ah = o_read_prim_shape(slot.amount)
             if not aok then return false end
@@ -2393,7 +2637,7 @@ function O:_verify_render()
                 if not ok_fs or not (mount_is_finite(fs) and fs > 0) then return false end
                 if math.abs(fs - geom.font_size) > 0.5 then return false end
                 local text_y = (i - 1) * geom.row_h
-                local text_w = geom.root_w * 0.7
+                local text_w = geom.text_w
                 local tok, tx, ty, tw, th = o_read_prim_shape(slot.text)
                 if not tok then return false end
                 if not o_shape_matches(tx, ty, tw, th, 0, text_y, text_w, geom.row_h, tol) then return false end
@@ -2425,10 +2669,10 @@ function O:_verify_render()
                 if v ~= expected_vis then return false end
                 local ok_fs, fs = pcall(function() return slot.amount:font_size() end)
                 if not ok_fs or not (mount_is_finite(fs) and fs > 0) then return false end
-                if math.abs(fs - geom.font_size) > 0.5 then return false end
+                if math.abs(fs - geom.amount_font_size) > 0.5 then return false end
                 local amount_y = (i - 1) * geom.row_h
-                local text_w = geom.root_w * 0.7
-                local amount_w = geom.root_w - text_w
+                local text_w = geom.text_w
+                local amount_w = geom.amount_w
                 local aok, ax, ay, aw, ah = o_read_prim_shape(slot.amount)
                 if not aok then return false end
                 if not o_shape_matches(ax, ay, aw, ah, text_w, amount_y, amount_w, geom.row_h, tol) then return false end
@@ -2498,6 +2742,8 @@ function O:_resolve_selected_active_id()
 end
 
 function O:_release_native()
+    local rt = kyohud.hud.runtime
+    if rt and rt.set_objectives_covered then rt:set_objectives_covered(false) end
     local had = self._native_acquired or self._native_leaves or self._native_active_id or self._native_completion_pending
     if not had then return true end
     local nv = kyohud.hud.native_visibility
@@ -2702,6 +2948,7 @@ function O:_sync_native_visibility()
     self._native_generation = gen
     self._native_active_id = active_id
     self._native_acquired = acquired == true
+    if acquired == true then rt:set_objectives_covered(true) end
     if acquired ~= true then
         mount_safe_call(self._root_panel, "set_visible", false)
     end

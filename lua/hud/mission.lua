@@ -63,15 +63,10 @@ local CALL_OK = "ok"
 local CALL_MISSING = "missing"
 local CALL_ERROR = "error"
 
-local ROW_MARGIN = 10
-local REF_FONT_SIZE = 20
 local MIN_FONT_SIZE = 12
-local TIMER_CHAR_WIDTH = 7
-local BAGS_CHAR_WIDTH = 4
-local TITLE_GAP = 10
-local REF_TITLE_W = 300
-local REF_ROW_W = REF_FONT_SIZE * TIMER_CHAR_WIDTH + TITLE_GAP + REF_TITLE_W + TITLE_GAP + REF_FONT_SIZE * BAGS_CHAR_WIDTH
-local HUD_ACCENT_COLOR = Color(0.52, 0.88, 0.92)
+local TIMER_COLOR = Color(242/255, 194/255, 48/255)
+local TITLE_COLOR = Color(238/255, 241/255, 244/255)
+local LABEL_COLOR = Color(1, 1, 1)
 
 local function is_valid_time_value(v)
     if type(v) ~= "number" then return false end
@@ -149,64 +144,58 @@ function M:_is_timer_enabled()
     return true
 end
 
+local function measured_width(prim, text, size)
+    if panel_alive(prim) then
+        local ok, width = pcall(function()
+            if prim:text() ~= text or math.abs(prim:font_size()-size) > 0.01 then return nil end
+            local _,_,w,h = prim:text_rect()
+            if is_finite_num(w) and is_finite_num(h) then return w end
+        end)
+        if ok and width then return math.ceil(width) + 1 end
+    end
+    return #text * size * 0.6
+end
+
 function M:_compute_layout(parent_w, parent_h, scale)
-    if not is_finite_num(parent_w) or not is_finite_num(parent_h) then
-        return nil
-    end
-    if parent_w <= 0 or parent_h <= 0 then
-        return nil
-    end
     local layout = kyohud.hud.layout
-    if not layout or type(layout.resolve) ~= "function" then
-        return nil
-    end
-    local geom = layout.resolve(parent_w, parent_h, scale)
-    if not geom or not geom.valid then
-        return nil
-    end
-    local us = geom.uniform_scale or 1
-    local s = geom.scale or 1
-    local effective_scale = us * s
-    local font_size = math.max(MIN_FONT_SIZE, math.floor(REF_FONT_SIZE * effective_scale))
-    local row_h = math.max(font_size * 2, MIN_FONT_SIZE * 2)
-    local margin = geom.margin_x or 0
-    local gap = TITLE_GAP * effective_scale
-    local timer_w = font_size * TIMER_CHAR_WIDTH
-    local bags_w = font_size * BAGS_CHAR_WIDTH
-    local min_title_w = font_size * 8
-    local min_row_w = math.ceil(timer_w + bags_w + 2 * gap + min_title_w)
-    local row_w = math.max(REF_ROW_W * effective_scale, min_row_w)
-    local available_w = geom.available_x or parent_w
-    local max_w = parent_w * 0.70
-    if row_w > available_w then row_w = available_w end
-    if row_w > max_w then row_w = max_w end
-    local title_w = row_w - timer_w - 2 * gap - bags_w
-    if title_w < min_title_w or timer_w <= 0 or bags_w <= 0 or row_h <= 0 then
-        return nil
-    end
-    local region = nil
-    if type(layout.objectives_region) == "function" then
-        region = layout.objectives_region(parent_w, parent_h)
-    end
+    if not layout then return nil end
+    -- The legacy native reservation is deliberately not rescaled or repurposed.
+    local region = layout.objectives_region(parent_w,parent_h)
     if not region then return nil end
-    local root_x = margin
-    local root_y = region.y + region.h + margin
-    if root_y + row_h > parent_h then return nil end
-    if root_x + row_w > parent_w then return nil end
+    local rt = kyohud.hud.runtime
+    local reserve = kyohud.settings.enable_objectives ~= true
+        or (self._mounted and not (rt and rt._objectives_covered))
+    local g = layout.mission_objectives(parent_w,parent_h,scale,true,
+        kyohud.settings.enable_objectives == true,reserve)
+    if not g then return nil end
+    local e = g.e
+    local fs = math.max(MIN_FONT_SIZE,math.floor(28*e))
+    local timer_text = self._timer_text or "00:00"
+    local timer_w = measured_width(self._timer_prim,timer_text,fs) + 24*e
+    local label = self._bags_label_text or "BAGS"
+    local count = self._bags_known and tostring(self._bags_count) or "--"
+    local bags_w = math.max(64*e, measured_width(self._bags_label_prim,label,14*e)+24*e,
+        measured_width(self._bags_prim,count,18*e)+24*e)
+    local title = self._title_text or "HEIST IN PROGRESS"
+    local fit = self._title_fit
+    local title_width = #title*fs*0.6
+    if fit and fit.source == title and fit.fs == fs then title_width = fit.natural_w end
+    -- Intrinsic cells must not refit to an epsilon below the measured text
+    -- after adding/subtracting fractional padding. Keep one logical pixel spare.
+    title_width = math.ceil(title_width) + 1
+    local row_w = math.min(g.w,timer_w+title_width+32*e+3*e+bags_w)
+    local title_w = row_w-timer_w-3*e-bags_w
+    if title_w <= 32*e or g.mission_h < fs then return nil end
     return {
-        font_size = font_size,
-        root_x = root_x,
-        root_y = root_y,
-        root_w = row_w,
-        root_h = row_h,
-        timer = { x = 0, y = 0, w = timer_w, h = row_h },
-        title = { x = timer_w + gap, y = 0, w = title_w, h = row_h },
-        bags_label = { x = row_w - bags_w, y = 0, w = bags_w, h = font_size },
-        bags = { x = row_w - bags_w, y = font_size, w = bags_w, h = row_h - font_size },
-        row_y = root_y,
-        row_h = row_h,
-        parent_w = parent_w,
-        parent_h = parent_h,
+        font_size=fs, e=e, root_x=g.x, root_y=g.y, root_w=row_w, root_h=g.mission_h,
+        timer_bg={x=0,y=0,w=timer_w,h=g.mission_h},
+        title_bg={x=timer_w,y=0,w=title_w,h=g.mission_h},
+        bags_bg={x=row_w-bags_w,y=0,w=bags_w,h=g.mission_h},
+        timer={x=12*e,y=0,w=timer_w-24*e,h=g.mission_h},
+        title={x=timer_w+14*e,y=0,w=title_w-32*e,h=g.mission_h},
+        bags_label={x=row_w-bags_w+12*e,y=3*e,w=bags_w-24*e,h=17*e},
+        bags={x=row_w-bags_w+12*e,y=20*e,w=bags_w-24*e,h=24*e},
+        row_y=g.y,row_h=g.mission_h,parent_w=parent_w,parent_h=parent_h
     }
 end
 
@@ -342,11 +331,121 @@ local function actual_shape_matches(obj, desired)
     return true
 end
 
+local function ink_matches(prim, expected)
+    local ok, result = pcall(function()
+        local c = prim:color()
+        return math.abs(c.r-expected.r) < 0.001
+            and math.abs(c.g-expected.g) < 0.001
+            and math.abs(c.b-expected.b) < 0.001
+    end)
+    return ok and result
+end
+
+function M:_sync_inks()
+    for _, item in ipairs({
+        {self._timer_prim, TIMER_COLOR}, {self._title_prim, TITLE_COLOR},
+        {self._bags_label_prim, LABEL_COLOR}, {self._bags_prim, LABEL_COLOR}
+    }) do
+        local p = item[1]
+        if panel_alive(p) and not ink_matches(p, item[2]) then
+            local status, alpha = safe_call(p, "alpha")
+            safe_call(p, "set_color", item[2])
+            if status == CALL_OK then safe_call(p, "set_alpha", alpha) end
+        end
+    end
+end
+
+function M:_sync_backgrounds()
+    local g = self._layout_cache
+    if not g or not panel_alive(self._root_panel) then return end
+    if self._background_root ~= self._root_panel then self._backgrounds = {}; self._background_root = self._root_panel end
+    self._backgrounds = self._backgrounds or {}
+    for _, key in ipairs({"timer", "title", "bags"}) do
+        local shape = g[key .. "_bg"]
+        local p = self._backgrounds[key]
+        local color = key == "timer" and Color(0, 0, 0) or Color(11/255, 13/255, 17/255)
+        local alpha = key == "timer" and 0.86 or 0.80
+        local visible = not self._render_failed and (key ~= "timer" or (self._timer_known and self:_is_timer_enabled()))
+        if not panel_alive(p) then
+            local status, created = safe_call(self._root_panel, "rect", {
+                name = "mission_" .. key .. "_bg", x = shape.x, y = shape.y,
+                w = shape.w, h = shape.h, color = color, alpha = alpha, visible = visible, layer = -1
+            })
+            if status == CALL_OK then p = created; self._backgrounds[key] = p end
+        end
+        if panel_alive(p) then
+            if not actual_shape_matches(p, shape) then safe_call(p, "set_shape", shape.x, shape.y, shape.w, shape.h) end
+            safe_call(p, "set_color", color)
+            safe_call(p, "set_alpha", alpha)
+            safe_call(p, "set_visible", visible == true)
+        end
+    end
+end
+
+function M:_verify_backgrounds()
+    local g = self._layout_cache
+    if not g then return false end
+    for _, key in ipairs({"timer", "title", "bags"}) do
+        local p = self._backgrounds and self._backgrounds[key]
+        if not panel_alive(p) or not actual_shape_matches(p, g[key .. "_bg"]) then return false end
+        local ok, valid = pcall(function()
+            local c = p:color()
+            local expected = key == "timer" and 0 or 1
+            local visible = not self._render_failed and (key ~= "timer" or (self._timer_known and self:_is_timer_enabled()))
+            return math.abs(c.r - expected * 11/255) < 0.001
+                and math.abs(c.g - expected * 13/255) < 0.001
+                and math.abs(c.b - expected * 17/255) < 0.001
+                and math.abs(p:alpha() - (key == "timer" and 0.86 or 0.80)) < 0.001
+                and p:visible() == (visible == true)
+        end)
+        if not ok or not valid then return false end
+    end
+    return true
+end
+
+function M:_verify_labels()
+    local g = self._layout_cache
+    if not g then return false end
+    local fit = self._title_fit
+    local labels = {
+        {self._title_prim, g.title, fit and fit.text, g.font_size, true},
+        {self._bags_label_prim, g.bags_label, self._bags_label_text, 14*g.e, true},
+        {self._bags_prim, g.bags, self._bags_known and tostring(self._bags_count) or "--", 18*g.e, true}
+    }
+    if self._timer_known and self:_is_timer_enabled() then
+        labels[#labels+1] = {self._timer_prim,g.timer,self._timer_text,g.font_size,true}
+    end
+    if not ink_matches(self._title_prim, TITLE_COLOR)
+        or not ink_matches(self._bags_label_prim, LABEL_COLOR)
+        or not ink_matches(self._bags_prim, LABEL_COLOR) then return false end
+    if self._timer_known and self:_is_timer_enabled()
+        and not ink_matches(self._timer_prim, TIMER_COLOR) then return false end
+    if not fit or fit.source ~= (self._title_text or "") or fit.w ~= g.title.w or fit.fs ~= g.font_size then return false end
+    for _, item in ipairs(labels) do
+        local p, shape, text, fs = item[1],item[2],item[3],item[4]
+        if not panel_alive(p) or not actual_shape_matches(p,shape) then return false end
+        local ok, valid = pcall(function()
+            local _,_,w,h = p:text_rect()
+            return p:text() == text and p:visible() == (not self._render_failed)
+                and math.abs(p:font_size()-fs) <= 0.5
+                and is_finite_num(w) and is_finite_num(h)
+                and w <= shape.w+0.5 and h <= shape.h+0.5
+        end)
+        if not ok or not valid then return false end
+    end
+    return true
+end
+
 function M:_verify_render()
     if not self._layout_cache then
         self._render_verified = false
         return false
     end
+    if not self:_verify_backgrounds() or not self:_verify_labels() then self._render_verified = false; return false end
+    local root_geom = self._layout_cache
+    if not panel_alive(self._root_panel) or not actual_shape_matches(self._root_panel, {
+        x=root_geom.root_x, y=root_geom.root_y, w=root_geom.root_w, h=root_geom.root_h
+    }) then self._render_verified = false; return false end
     local timer_enabled = self:_is_timer_enabled()
     if not self._timer_known or not timer_enabled then
         self._render_verified = true
@@ -424,6 +523,11 @@ function M:_handle_render_failure()
     self._render_failed = true
     self._render_verified = false
     self._layout_cache = nil
+    if self._backgrounds then
+        for _, p in pairs(self._backgrounds) do
+            if panel_alive(p) then safe_call(p, "set_visible", false) end
+        end
+    end
     if self._timer_prim and panel_alive(self._timer_prim) then
         safe_call(self._timer_prim, "set_visible", false)
         self._cached_timer_visible = false
@@ -580,9 +684,9 @@ function M:_ensure_timer_prim()
     local opts = {
         name = TIMER_PRIM_NAME,
         text = self._timer_text or "",
-        font = font,
+        font = "fonts/font_large_mf",
         font_size = self._layout_cache.font_size,
-        color = HUD_ACCENT_COLOR,
+        color = TIMER_COLOR,
         x = geom.x,
         y = geom.y,
         w = geom.w,
@@ -620,12 +724,12 @@ function M:_ensure_title_prim()
         text = self._title_text,
         font = font,
         font_size = self._layout_cache.font_size,
-        color = Color(1, 1, 1, 1),
+        color = TITLE_COLOR,
         x = geom.x,
         y = geom.y,
         w = geom.w,
         h = geom.h,
-        align = "center",
+        align = "left",
         vertical = "center",
         wrap = false,
         word_wrap = false,
@@ -649,7 +753,7 @@ function M:_ensure_bags_prim()
         name = BAGS_PRIM_NAME,
         text = self._bags_known and tostring(self._bags_count) or "--",
         font = font,
-        font_size = self._layout_cache.font_size,
+        font_size = 18 * self._layout_cache.e,
         color = Color(1, 1, 1, 1),
         x = geom.x,
         y = geom.y,
@@ -693,7 +797,7 @@ function M:_ensure_bags_label_prim()
         name = BAGS_LABEL_PRIM_NAME,
         text = self._bags_label_text,
         font = font,
-        font_size = self._layout_cache.font_size,
+        font_size = 14 * self._layout_cache.e,
         color = Color(1, 1, 1, 1),
         x = geom.x,
         y = geom.y,
@@ -713,17 +817,20 @@ function M:_ensure_bags_label_prim()
 end
 
 function M:_ensure_primitives()
+    self:_update_layout()
     self:_ensure_timer_prim()
     self:_ensure_title_prim()
     self:_ensure_bags_label_prim()
     self:_ensure_bags_prim()
+    self:_sync_primitives()
 end
 
 function M:_sync_timer_prim()
     if not self._timer_prim then return end
     if not panel_alive(self._timer_prim) then return end
     local text = self._timer_text or ""
-    if text ~= self._cached_timer_text then
+    local read_status, actual_text = safe_call(self._timer_prim, "text")
+    if read_status ~= CALL_OK or actual_text ~= text then
         local status, _ = safe_call(self._timer_prim, "set_text", text)
         if status == CALL_OK then
             local ok_rb, rb = pcall(function() return self._timer_prim:text() end)
@@ -748,8 +855,43 @@ end
 function M:_sync_title_prim()
     if not self._title_prim then return end
     if not panel_alive(self._title_prim) then return end
-    local text = self._title_text or ""
-    if text ~= self._cached_title_text then
+    local geom = self._layout_cache
+    if not geom then return end
+    local source = self._title_text or ""
+    local fit = self._title_fit
+    if not fit or fit.prim ~= self._title_prim or fit.source ~= source or fit.w ~= geom.title.w or fit.fs ~= geom.font_size then
+        local p = self._title_prim
+        safe_call(p, "set_text", source)
+        local ok, _, _, w, h = pcall(function() return p:text_rect() end)
+        if not ok or not is_finite_num(w) or not is_finite_num(h) then self._title_fit = nil; return end
+        local text = source
+        if w > geom.title.w then
+            local ends = {0}
+            for pos in source:gmatch("()[%z\1-\127\194-\244][\128-\191]*") do
+                if pos > 1 then ends[#ends+1] = pos-1 end
+            end
+            ends[#ends+1] = #source
+            local lo, hi, best = 1, #ends, ""
+            while lo <= hi do
+                local mid = math.floor((lo+hi)/2)
+                local candidate = source:sub(1, ends[mid]) .. "..."
+                safe_call(p, "set_text", candidate)
+                local status, _, _, mw, mh = pcall(function() return p:text_rect() end)
+                if status and is_finite_num(mw) and is_finite_num(mh)
+                    and mw <= geom.title.w and mh <= geom.title.h then
+                    best = candidate; lo = mid+1
+                else hi = mid-1 end
+            end
+            text = best
+        end
+        self._title_fit = {prim=p, source=source, w=geom.title.w, fs=geom.font_size, natural_w=w, text=text}
+        fit = self._title_fit
+        safe_call(p, "set_text", text)
+        self._cached_title_text = text
+    end
+    local text = fit.text
+    local read_status, actual_text = safe_call(self._title_prim, "text")
+    if read_status ~= CALL_OK or actual_text ~= text then
         local status, _ = safe_call(self._title_prim, "set_text", text)
         if status == CALL_OK then
             local ok_rb, rb = pcall(function() return self._title_prim:text() end)
@@ -774,7 +916,8 @@ function M:_sync_bags_prim()
     if not self._bags_prim then return end
     if not panel_alive(self._bags_prim) then return end
     local text = self._bags_known and tostring(self._bags_count) or "--"
-    if text ~= self._cached_bags_text then
+    local read_status, actual_text = safe_call(self._bags_prim, "text")
+    if read_status ~= CALL_OK or actual_text ~= text then
         local status, _ = safe_call(self._bags_prim, "set_text", text)
         if status == CALL_OK then
             local ok_rb, rb = pcall(function() return self._bags_prim:text() end)
@@ -802,7 +945,8 @@ function M:_sync_bags_label_prim()
         self._bags_label_text = self:_resolve_bags_label()
     end
     local text = self._bags_label_text
-    if text ~= self._cached_bags_label_text then
+    local read_status, actual_text = safe_call(self._bags_label_prim, "text")
+    if read_status ~= CALL_OK or actual_text ~= text then
         local status, _ = safe_call(self._bags_label_prim, "set_text", text)
         if status == CALL_OK then
             local ok_rb, rb = pcall(function() return self._bags_label_prim:text() end)
@@ -828,6 +972,10 @@ function M:_sync_primitives()
     self:_sync_title_prim()
     self:_sync_bags_label_prim()
     self:_sync_bags_prim()
+    self:_update_layout()
+    self:_sync_title_prim()
+    self:_sync_backgrounds()
+    self:_sync_inks()
 end
 
 function M:_take_snapshot(mgr)
@@ -892,7 +1040,7 @@ function M:_update_layout()
         self._layout_cache.root_y ~= new_layout.root_y or
         self._layout_cache.root_w ~= new_layout.root_w or
         self._layout_cache.root_h ~= new_layout.root_h or
-        self._layout_cache.font_size ~= new_layout.font_size
+        self._layout_cache.font_size ~= new_layout.font_size or not self:_verify_labels()
     if not changed then return end
     local rs = safe_call(self._root_panel, "set_shape", new_layout.root_x, new_layout.root_y, new_layout.root_w, new_layout.root_h)
     if rs ~= CALL_OK then
@@ -909,11 +1057,11 @@ function M:_update_layout()
     end
     if self._bags_label_prim and panel_alive(self._bags_label_prim) then
         safe_call(self._bags_label_prim, "set_shape", new_layout.bags_label.x, new_layout.bags_label.y, new_layout.bags_label.w, new_layout.bags_label.h)
-        safe_call(self._bags_label_prim, "set_font_size", new_layout.font_size)
+        safe_call(self._bags_label_prim, "set_font_size", 14 * new_layout.e)
     end
     if self._bags_prim and panel_alive(self._bags_prim) then
         safe_call(self._bags_prim, "set_shape", new_layout.bags.x, new_layout.bags.y, new_layout.bags.w, new_layout.bags.h)
-        safe_call(self._bags_prim, "set_font_size", new_layout.font_size)
+        safe_call(self._bags_prim, "set_font_size", 18 * new_layout.e)
     end
     self._cached_font_size = new_layout.font_size
     self._layout_cache = new_layout
@@ -1209,6 +1357,7 @@ function M:update(manager, t, dt)
                 self._render_failed = true
                 self:_handle_render_failure()
             else
+                safe_call(self._root_panel, "set_visible", true)
                 self:_try_acquire_native()
             end
         end
@@ -1265,6 +1414,13 @@ function M:update(manager, t, dt)
                     end
                 end
             end
+        end
+        self:_update_layout()
+        self:_ensure_primitives()
+        self:_sync_primitives()
+        if not self:_verify_render() then
+            self:_handle_render_failure()
+            return
         end
         if not self._native_acquired and self._render_verified then
             self:_try_acquire_native()

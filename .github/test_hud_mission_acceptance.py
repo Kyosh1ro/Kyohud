@@ -12,6 +12,7 @@ No production edits. Coordinator executes RED.
 from pathlib import Path
 import json as pyjson
 import unittest
+from hud_presentation_fixture import PRESENTATION_DIESEL
 from lupa.luajit21 import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -319,7 +320,7 @@ _MOUNT_BOILER = '''
 def _lua_acc(with_mission=True, ctx=None, gpc=False, ky_opts=False):
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.globals().ModPath = ROOT.as_posix() + "/"
-    lua.execute(_STUBS); lua.execute(_DIESEL); lua.execute(_ENH_TIMER); lua.execute(_ENH_HM)
+    lua.execute(_STUBS); lua.execute(_DIESEL); lua.execute(PRESENTATION_DIESEL); lua.execute(_ENH_TIMER); lua.execute(_ENH_HM)
     if gpc: lua.execute(_GPC)
     if ctx: lua.execute(f'RequiredScript = "{ctx}"')
     lua.execute("_init_fp = _make_parent(); _make_mgr(_init_fp)")
@@ -982,6 +983,7 @@ class GPCTimerSnapshotTests(unittest.TestCase):
         lua.globals().ModPath = ROOT.as_posix() + "/"
         lua.execute(_STUBS)
         lua.execute(_DIESEL)
+        lua.execute(PRESENTATION_DIESEL)
         lua.execute(_ENH_TIMER)
         lua.execute(_ENH_HM)
         lua.execute(_GPC)

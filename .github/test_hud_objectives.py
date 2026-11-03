@@ -26,6 +26,7 @@ Loads objectives chunk under objectivesmanager AND hudmanagerpd2 contexts.
 """
 from pathlib import Path
 import unittest
+from hud_presentation_fixture import PRESENTATION_DIESEL
 
 from lupa.luajit21 import LuaRuntime
 
@@ -429,6 +430,7 @@ def _lua():
     lua.execute(STUBS)
     lua.execute(DIESEL)
     lua.execute("_init_fp = _make_parent(); _make_mgr(_init_fp)")
+    lua.execute(PRESENTATION_DIESEL)
     lua.execute('RequiredScript = "lib/managers/hudmanagerpd2"')
     for path in [LAYOUT_PATH, NATIVE_VIS_PATH, RUNTIME_PATH, MISSION_PATH]:
         src = _read(path)
@@ -1249,13 +1251,13 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(O._panel._name == "kyohud_objectives_panel",
                 "O._panel name must be kyohud_objectives_panel, got " .. tostring(O._panel._name))
 
-            local obj_text_prim = O._panel:child("objective_1_text")
+            local obj_text_prim = O._panel:child("objective_content"):child("objective_1_text")
             assert(obj_text_prim, "objective_1_text primitive must exist")
             local obj_text = obj_text_prim:text()
             assert(obj_text == "Sécurisez les sacs",
                 "objective_1_text must equal 'Sécurisez les sacs', got " .. tostring(obj_text))
 
-            local obj_amount_prim = O._panel:child("objective_1_amount")
+            local obj_amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(obj_amount_prim, "objective_1_amount primitive must exist")
             local obj_amount = obj_amount_prim:text()
             assert(obj_amount == "0/1",
@@ -1265,8 +1267,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             local panel_h = O._panel:h()
             assert(type(panel_y) == "number", "panel y must be number")
             assert(type(panel_h) == "number", "panel h must be number")
-            assert(panel_y + panel_h <= 100,
-                "panel y+h must be <= 100 (Mission reserved zone), got " .. tostring(panel_y + panel_h))
+            assert(panel_y == 36 and panel_h == 123,
+                "E objective-only panel must have y36/h123, got bottom " .. tostring(panel_y + panel_h))
 
             assert(O._panel._parent == RT._root_panel,
                 "O._panel parent must be RT._root_panel")
@@ -1318,7 +1320,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(O._panel._name == "kyohud_objectives_panel",
                 "O._panel name must be kyohud_objectives_panel, got " .. tostring(O._panel._name))
 
-            local obj_text_prim = O._panel:child("objective_1_text")
+            local obj_text_prim = O._panel:child("objective_content"):child("objective_1_text")
             assert(obj_text_prim, "objective_1_text primitive must exist")
             local text_x, text_y, text_w, text_h = obj_text_prim:text_rect()
             local obj_text_w = obj_text_prim:w()
@@ -1330,7 +1332,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(text_h <= obj_text_h,
                 "text_rect height (" .. tostring(text_h) .. ") must be <= text:h() (" .. tostring(obj_text_h) .. ")")
 
-            local obj_amount_prim = O._panel:child("objective_1_amount")
+            local obj_amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(obj_amount_prim, "objective_1_amount primitive must exist")
             local obj_amount = obj_amount_prim:text()
             assert(obj_amount == "2/10",
@@ -1354,7 +1356,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(RT._root_panel == root_before,
                 "RT._root_panel must remain same instance after resize")
 
-            local obj_text_prim_after = O._panel:child("objective_1_text")
+            local obj_text_prim_after = O._panel:child("objective_content"):child("objective_1_text")
             assert(obj_text_prim_after == text_prim_before,
                 "text primitive must remain same instance after resize")
 
@@ -1366,7 +1368,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(text_h2 <= obj_text_h2,
                 "text_rect height after resize (" .. tostring(text_h2) .. ") must be <= text:h() (" .. tostring(obj_text_h2) .. ")")
 
-            local obj_amount_prim_after = O._panel:child("objective_1_amount")
+            local obj_amount_prim_after = O._panel:child("objective_content"):child("objective_1_amount")
             local obj_amount_after = obj_amount_prim_after:text()
             assert(obj_amount_after == "2/10",
                 "objective_1_amount must remain '2/10' after resize, got " .. tostring(obj_amount_after))
@@ -1501,7 +1503,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(baseline == true,
                 "baseline _verify_render must be true, got " .. tostring(baseline))
 
-            local text_prim = O._panel:child("objective_1_text")
+            local text_prim = O._panel:child("objective_content"):child("objective_1_text")
             assert(text_prim, "objective_1_text primitive must exist")
 
             local orig_x = text_prim:x()
@@ -1580,7 +1582,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(baseline == true,
                 "baseline _verify_render must be true, got " .. tostring(baseline))
 
-            local amount_prim = O._panel:child("objective_1_amount")
+            local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(amount_prim, "objective_1_amount primitive must exist")
             local initial_text = amount_prim:text()
             assert(initial_text == "0/3",
@@ -1652,7 +1654,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
             assert(type(O._panel) == "table", "O._panel must exist after mount")
 
-            local text_prim = O._panel:child("objective_1_text")
+            local text_prim = O._panel:child("objective_content"):child("objective_1_text")
             assert(text_prim, "objective_1_text primitive must exist")
             local initial_text = text_prim:text()
             assert(initial_text == "First title",
@@ -1689,7 +1691,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(after_recovery == true,
                 "_verify_render must be true after recovery, got " .. tostring(after_recovery))
 
-            local final_text_prim = O._panel:child("objective_1_text")
+            local final_text_prim = O._panel:child("objective_content"):child("objective_1_text")
             assert(final_text_prim == text_prim,
                 "text primitive must remain same instance throughout")
         ''')
@@ -1736,7 +1738,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(baseline == true,
                 "baseline _verify_render must be true, got " .. tostring(baseline))
 
-            local amount_prim = O._panel:child("objective_1_amount")
+            local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(amount_prim, "objective_1_amount primitive must exist")
             local initial_text = amount_prim:text()
             assert(initial_text == "0/3",
@@ -1744,7 +1746,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
             local panel_before = O._panel
 
-            O._panel:remove(amount_prim)
+            O._panel:child("objective_content"):remove(amount_prim)
 
             assert(amount_prim._alive == false,
                 "removed amount primitive must be marked dead")
@@ -1758,7 +1760,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(O._panel == panel_before,
                 "objective panel must remain same instance after RT:update")
 
-            local recreated_prim = O._panel:child("objective_1_amount")
+            local recreated_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(recreated_prim, "objective_1_amount must be recreated after RT:update")
             local recovered_text = recreated_prim:text()
             assert(recovered_text == "0/3",
@@ -1815,7 +1817,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(baseline == true,
                 "baseline _verify_render must be true, got " .. tostring(baseline))
 
-            local amount_prim = O._panel:child("objective_1_amount")
+            local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(amount_prim, "objective_1_amount primitive must exist")
             local initial_visible = amount_prim:visible()
             assert(initial_visible == true,
@@ -1844,7 +1846,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(O._panel == panel_before,
                 "objective panel must remain same instance after RT:update")
 
-            local prim_after = O._panel:child("objective_1_amount")
+            local prim_after = O._panel:child("objective_content"):child("objective_1_amount")
             assert(prim_after == prim_before,
                 "amount primitive must remain same instance after RT:update")
 
@@ -1862,12 +1864,12 @@ class ObjectivesBehavioralTests(unittest.TestCase):
         """RED: set_font_size no-op -> retry via RT:update.
 
         Enable foundation/objectives, mount RT/O, seed active objective amount=1,
-        at 1920x1080 scale=1.0. Assert _verify_render true and amount font_size 20.
+        at 1920x1080 scale=1.0. Assert _verify_render true and amount font_size 28.
         Replace amount primitive set_font_size with no-op. Change hud_scale to 1.05,
-        RT:refresh_settings triggers _update_layout which attempts set_font_size(21)
-        but no-op keeps it at 20. Assert amount font_size still 20, _verify_render
+        RT:refresh_settings triggers _update_layout which attempts set_font_size(29)
+        but no-op keeps it at 28. Assert amount font_size still 28, _verify_render
         false. Restore original setter, RT:update(managers.hud, 1.0, 0.05) with no
-        O manual repair. Assert same primitive/root, amount font_size 21 and
+        O manual repair. Assert same primitive/root, amount font_size 29 and
         _verify_render true.
         """
         lua, ok = _lua()
@@ -1900,11 +1902,11 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(baseline == true,
                 "baseline _verify_render must be true, got " .. tostring(baseline))
 
-            local amount_prim = O._panel:child("objective_1_amount")
+            local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(amount_prim, "objective_1_amount primitive must exist")
             local initial_fs = amount_prim:font_size()
-            assert(initial_fs == 20,
-                "initial amount font_size must be 20, got " .. tostring(initial_fs))
+            assert(initial_fs == 28,
+                "initial amount font_size must be 28, got " .. tostring(initial_fs))
 
             local root_before = RT._root_panel
             local panel_before = O._panel
@@ -1917,8 +1919,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             RT:refresh_settings(managers.hud)
 
             local stale_fs = amount_prim:font_size()
-            assert(stale_fs == 20,
-                "amount font_size must still be 20 after no-op setter, got " .. tostring(stale_fs))
+            assert(stale_fs == 28,
+                "amount font_size must still be 28 after no-op setter, got " .. tostring(stale_fs))
 
             local after_stale = O:_verify_render()
             assert(after_stale == false,
@@ -1933,13 +1935,13 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(O._panel == panel_before,
                 "objective panel must remain same instance after RT:update")
 
-            local prim_after = O._panel:child("objective_1_amount")
+            local prim_after = O._panel:child("objective_content"):child("objective_1_amount")
             assert(prim_after == prim_before,
                 "amount primitive must remain same instance after RT:update")
 
             local recovered_fs = amount_prim:font_size()
-            assert(recovered_fs == 21,
-                "recovered amount font_size must be 21, got " .. tostring(recovered_fs))
+            assert(recovered_fs == 29,
+                "recovered amount font_size must be 29, got " .. tostring(recovered_fs))
 
             local after_recovery = O:_verify_render()
             assert(after_recovery == true,
@@ -1953,10 +1955,10 @@ class ObjectivesBehavioralTests(unittest.TestCase):
         Enable foundation/objectives, mount RT and O, activate objective with
         amount=1, current=0. For each invalid font_size case (NaN, +infinity,
         missing getter, throwing getter): fresh _lua fixture, verify baseline
-        _verify_render true and amount font_size 20. Override amount primitive
+        _verify_render true and amount font_size 28. Override amount primitive
         font_size getter to return invalid value. Assert _verify_render false.
         Restore original getter. Invoke RT:update at t=1.0. Assert same panel
-        and primitive identity, amount font_size 20, _verify_render true.
+        and primitive identity, amount font_size 28, _verify_render true.
         NaN case: baseline code permits NaN through type/fs<=0 check (RED).
         """
         for invalid_case in ["nan", "inf", "missing", "throwing"]:
@@ -1991,11 +1993,11 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     assert(baseline == true,
                         "baseline _verify_render must be true, got " .. tostring(baseline))
 
-                    local amount_prim = O._panel:child("objective_1_amount")
+                    local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(amount_prim, "objective_1_amount primitive must exist")
                     local initial_fs = amount_prim:font_size()
-                    assert(initial_fs == 20,
-                        "initial amount font_size must be 20, got " .. tostring(initial_fs))
+                    assert(initial_fs == 28,
+                        "initial amount font_size must be 28, got " .. tostring(initial_fs))
 
                     local panel_before = O._panel
                     local prim_before = amount_prim
@@ -2029,13 +2031,13 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     assert(O._panel == panel_before,
                         "objective panel must remain same instance after RT:update")
 
-                    local prim_after = O._panel:child("objective_1_amount")
+                    local prim_after = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(prim_after == prim_before,
                         "amount primitive must remain same instance after RT:update")
 
                     local recovered_fs = amount_prim:font_size()
-                    assert(recovered_fs == 20,
-                        "recovered amount font_size must be 20, got " .. tostring(recovered_fs))
+                    assert(recovered_fs == 28,
+                        "recovered amount font_size must be 28, got " .. tostring(recovered_fs))
 
                     local after_recovery = O:_verify_render()
                     assert(after_recovery == true,
@@ -2089,7 +2091,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     assert(baseline == true,
                         "baseline _verify_render must be true, got " .. tostring(baseline))
 
-                    local amount_prim = O._panel:child("objective_1_amount")
+                    local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(amount_prim, "objective_1_amount primitive must exist")
 
                     local orig_x = amount_prim:x()
@@ -2150,7 +2152,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     assert(O._panel == panel_before,
                         "objective panel must remain same instance after RT:update")
 
-                    local prim_after = O._panel:child("objective_1_amount")
+                    local prim_after = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(prim_after == prim_before,
                         "amount primitive must remain same instance after RT:update")
 
@@ -2217,7 +2219,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     assert(baseline == true,
                         "baseline _verify_render must be true, got " .. tostring(baseline))
 
-                    local amount_prim = O._panel:child("objective_1_amount")
+                    local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(amount_prim, "objective_1_amount primitive must exist")
                     local initial_text = amount_prim:text()
                     assert(initial_text == "0/3",
@@ -2265,7 +2267,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     assert(O._panel == panel_before,
                         "objective panel must remain same instance after RT:update")
 
-                    local prim_after = O._panel:child("objective_1_amount")
+                    local prim_after = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(prim_after == prim_before,
                         "amount primitive must remain same instance after RT:update")
 
@@ -2329,8 +2331,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
                     local panel_before = O._panel
                     local root_before = O._root_panel
-                    local text_prim_before = O._panel:child("objective_1_text")
-                    local amount_prim_before = O._panel:child("objective_1_amount")
+                    local text_prim_before = O._panel:child("objective_content"):child("objective_1_text")
+                    local amount_prim_before = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(text_prim_before, "objective_1_text primitive must exist")
                     assert(amount_prim_before, "objective_1_amount primitive must exist")
 
@@ -2364,8 +2366,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     assert(O._root_panel == root_before,
                         "objective root panel must remain same instance after corrupt RT:update")
 
-                    local text_prim_after = O._panel:child("objective_1_text")
-                    local amount_prim_after = O._panel:child("objective_1_amount")
+                    local text_prim_after = O._panel:child("objective_content"):child("objective_1_text")
+                    local amount_prim_after = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(text_prim_after == text_prim_before,
                         "text primitive must remain same instance after corrupt RT:update")
                     assert(amount_prim_after == amount_prim_before,
@@ -2388,8 +2390,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     assert(O._root_panel == root_before,
                         "objective root panel must remain same instance after recovery RT:update")
 
-                    local text_prim_recovered = O._panel:child("objective_1_text")
-                    local amount_prim_recovered = O._panel:child("objective_1_amount")
+                    local text_prim_recovered = O._panel:child("objective_content"):child("objective_1_text")
+                    local amount_prim_recovered = O._panel:child("objective_content"):child("objective_1_amount")
                     assert(text_prim_recovered == text_prim_before,
                         "text primitive must remain same instance after recovery RT:update")
                     assert(amount_prim_recovered == amount_prim_before,
@@ -2406,10 +2408,10 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
         Enable foundation/objectives, mount RT and O, activate objective with
         amount=3, current=0. For each primitive (title, amount): fresh fixture,
-        verify baseline _verify_render true and font_size 20. Mutate font size
+        verify baseline _verify_render true and font_size (title 28, amount 28). Mutate font size
         to 99 (parent dimensions, settings, texts and layout unchanged). Assert
         _verify_render false. Call RT:update at t=1.0. Assert same panel and
-        primitive identities, font_size 20, _verify_render true.
+        primitive identities, font_size (title 28, amount 28), _verify_render true.
         """
         for prim_name in ["title", "amount"]:
             with self.subTest(prim_name=prim_name):
@@ -2448,15 +2450,15 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
                     local prim
                     if "{prim_name}" == "title" then
-                        prim = O._panel:child("objective_1_text")
+                        prim = O._panel:child("objective_content"):child("objective_1_text")
                     else
-                        prim = O._panel:child("objective_1_amount")
+                        prim = O._panel:child("objective_content"):child("objective_1_amount")
                     end
                     assert(prim, "objective_1_{prim_name} primitive must exist")
 
                     local initial_fs = prim:font_size()
-                    assert(initial_fs == 20,
-                        "initial {prim_name} font_size must be 20, got " .. tostring(initial_fs))
+                    assert(initial_fs == ("{prim_name}" == "title" and 28 or 28),
+                        "initial {prim_name} font_size must be " .. ("{prim_name}" == "title" and 28 or 28) .. ", got " .. tostring(initial_fs))
 
                     prim:set_font_size(99)
 
@@ -2477,16 +2479,16 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
                     local prim_after
                     if "{prim_name}" == "title" then
-                        prim_after = O._panel:child("objective_1_text")
+                        prim_after = O._panel:child("objective_content"):child("objective_1_text")
                     else
-                        prim_after = O._panel:child("objective_1_amount")
+                        prim_after = O._panel:child("objective_content"):child("objective_1_amount")
                     end
                     assert(prim_after == prim,
                         "{prim_name} primitive must remain same instance after RT:update")
 
                     local recovered_fs = prim:font_size()
-                    assert(recovered_fs == 20,
-                        "recovered {prim_name} font_size must be 20, got " .. tostring(recovered_fs))
+                    assert(recovered_fs == ("{prim_name}" == "title" and 28 or 28),
+                        "recovered {prim_name} font_size must be " .. ("{prim_name}" == "title" and 28 or 28) .. ", got " .. tostring(recovered_fs))
 
                     local after_recovery = O:_verify_render()
                     assert(after_recovery == true,
@@ -2543,10 +2545,10 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                     local prim
                     local expected_text
                     if "{prim_name}" == "title" then
-                        prim = O._panel:child("objective_1_text")
+                        prim = O._panel:child("objective_content"):child("objective_1_text")
                         expected_text = "Collect bags"
                     else
-                        prim = O._panel:child("objective_1_amount")
+                        prim = O._panel:child("objective_content"):child("objective_1_amount")
                         expected_text = "0/3"
                     end
                     assert(prim, "objective_1_{prim_name} primitive must exist")
@@ -2574,9 +2576,9 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
                     local prim_after
                     if "{prim_name}" == "title" then
-                        prim_after = O._panel:child("objective_1_text")
+                        prim_after = O._panel:child("objective_content"):child("objective_1_text")
                     else
-                        prim_after = O._panel:child("objective_1_amount")
+                        prim_after = O._panel:child("objective_content"):child("objective_1_amount")
                     end
                     assert(prim_after == prim,
                         "{prim_name} primitive must remain same instance after RT:update")
@@ -2638,9 +2640,9 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
                     local prim
                     if "{prim_name}" == "title" then
-                        prim = O._panel:child("objective_1_text")
+                        prim = O._panel:child("objective_content"):child("objective_1_text")
                     else
-                        prim = O._panel:child("objective_1_amount")
+                        prim = O._panel:child("objective_content"):child("objective_1_amount")
                     end
                     assert(prim, "objective_1_{prim_name} primitive must exist")
 
@@ -2667,9 +2669,9 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
                     local prim_after
                     if "{prim_name}" == "title" then
-                        prim_after = O._panel:child("objective_1_text")
+                        prim_after = O._panel:child("objective_content"):child("objective_1_text")
                     else
-                        prim_after = O._panel:child("objective_1_amount")
+                        prim_after = O._panel:child("objective_content"):child("objective_1_amount")
                     end
                     assert(prim_after == prim,
                         "{prim_name} primitive must remain same instance after RT:update")
@@ -2744,7 +2746,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             RT:update(managers.hud, 1.0, 0.05)
 
             assert(type(O._panel) == "table", "O._panel must exist after mount")
-            local amount_prim = O._panel:child("objective_1_amount")
+            local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(amount_prim, "objective_1_amount primitive must exist")
             local amount_text = amount_prim:text()
             assert(amount_text == "1/3", "amount text must be '1/3', got " .. tostring(amount_text))
@@ -2821,7 +2823,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             RT:update(managers.hud, 1.0, 0.05)
 
             assert(type(O._panel) == "table", "O._panel must exist after mount")
-            local amount_prim = O._panel:child("objective_1_amount")
+            local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(amount_prim, "objective_1_amount primitive must exist")
             local amount_text = amount_prim:text()
             assert(amount_text == "2/3", "amount text must be '2/3', got " .. tostring(amount_text))
@@ -2936,8 +2938,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(type(O._panel) == "table", "O._panel must exist after mount")
             assert(#O._active == 1, "O._active must have 1 entry before reset")
 
-            local title_prim = O._panel:child("objective_1_text")
-            local amount_prim = O._panel:child("objective_1_amount")
+            local title_prim = O._panel:child("objective_content"):child("objective_1_text")
+            local amount_prim = O._panel:child("objective_content"):child("objective_1_amount")
             assert(title_prim, "objective_1_text primitive must exist")
             assert(amount_prim, "objective_1_amount primitive must exist")
             local title_before = title_prim:text()
@@ -2988,8 +2990,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                 "sentinel must remain " .. tostring(sentinel_before) ..
                 ", got " .. tostring(kyohud.killstreak))
 
-            local title_prim_after = O._panel:child("objective_1_text")
-            local amount_prim_after = O._panel:child("objective_1_amount")
+            local title_prim_after = O._panel:child("objective_content"):child("objective_1_text")
+            local amount_prim_after = O._panel:child("objective_content"):child("objective_1_amount")
             assert(title_prim_after == title_prim,
                 "title primitive must remain same instance")
             assert(amount_prim_after == amount_prim,
@@ -3044,8 +3046,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(#O._active == 1, "O._active must have 1 entry before OM2 rebind")
 
             local panel_before = O._panel
-            local title_prim_before = O._panel:child("objective_1_text")
-            local amount_prim_before = O._panel:child("objective_1_amount")
+            local title_prim_before = O._panel:child("objective_content"):child("objective_1_text")
+            local amount_prim_before = O._panel:child("objective_content"):child("objective_1_amount")
             assert(title_prim_before, "objective_1_text primitive must exist")
             assert(amount_prim_before, "objective_1_amount primitive must exist")
             local title_before = title_prim_before:text()
@@ -3081,8 +3083,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(O._panel == panel_before,
                 "O._panel must remain same instance after OM2:reset")
 
-            local title_prim_after_reset = O._panel:child("objective_1_text")
-            local amount_prim_after_reset = O._panel:child("objective_1_amount")
+            local title_prim_after_reset = O._panel:child("objective_content"):child("objective_1_text")
+            local amount_prim_after_reset = O._panel:child("objective_content"):child("objective_1_amount")
             assert(title_prim_after_reset == title_prim_before,
                 "title primitive must remain same instance after OM2:reset")
             assert(amount_prim_after_reset == amount_prim_before,
@@ -3132,8 +3134,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(O._active[1].current_amount == 0,
                 "O._active[1] current_amount must be 0, got " .. tostring(O._active[1].current_amount))
 
-            local title_prim_before_stale = O._panel:child("objective_1_text")
-            local amount_prim_before_stale = O._panel:child("objective_1_amount")
+            local title_prim_before_stale = O._panel:child("objective_content"):child("objective_1_text")
+            local amount_prim_before_stale = O._panel:child("objective_content"):child("objective_1_amount")
             assert(title_prim_before_stale == title_prim_before,
                 "title primitive must remain same instance before stale OM1:reset")
             assert(amount_prim_before_stale == amount_prim_before,
@@ -3154,8 +3156,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(O._active[1].text == active_text_before_stale,
                 "O._active[1] text must remain unchanged after stale OM1:reset, got " .. tostring(O._active[1].text))
 
-            local title_prim_after_stale = O._panel:child("objective_1_text")
-            local amount_prim_after_stale = O._panel:child("objective_1_amount")
+            local title_prim_after_stale = O._panel:child("objective_content"):child("objective_1_text")
+            local amount_prim_after_stale = O._panel:child("objective_content"):child("objective_1_amount")
             assert(title_prim_after_stale == title_prim_before,
                 "title primitive must remain same instance after stale OM1:reset")
             assert(amount_prim_after_stale == amount_prim_before,
@@ -3235,8 +3237,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(#O._active == 2, "O._active must have 2 entries before replacement, got " .. #O._active)
 
             local panel_before = O._panel
-            local title_prim_before = O._panel:child("objective_1_text")
-            local amount_prim_before = O._panel:child("objective_1_amount")
+            local title_prim_before = O._panel:child("objective_content"):child("objective_1_text")
+            local amount_prim_before = O._panel:child("objective_content"):child("objective_1_amount")
             assert(title_prim_before, "objective_1_text primitive must exist")
             assert(amount_prim_before, "objective_1_amount primitive must exist")
 
@@ -3266,8 +3268,8 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(OM._delayed_presentation.activate_params.id == "new_id",
                 "delayed payload id must be new_id, got " .. tostring(OM._delayed_presentation.activate_params.id))
 
-            local title_prim_after = O._panel:child("objective_1_text")
-            local amount_prim_after = O._panel:child("objective_1_amount")
+            local title_prim_after = O._panel:child("objective_content"):child("objective_1_text")
+            local amount_prim_after = O._panel:child("objective_content"):child("objective_1_amount")
             assert(title_prim_after == title_prim_before, "title primitive must remain same instance")
             assert(amount_prim_after == amount_prim_before, "amount primitive must remain same instance")
 
@@ -3350,7 +3352,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             assert(sel_before[1].id == "b", "selected must be b (newer), got " .. tostring(sel_before[1].id))
 
             local panel_before = O._panel
-            local title_prim_before = O._panel:child("objective_1_text")
+            local title_prim_before = O._panel:child("objective_content"):child("objective_1_text")
             assert(title_prim_before, "objective_1_text primitive must exist")
             local title_text_before = title_prim_before:text()
             assert(title_text_before == "Newer objective",
@@ -3398,7 +3400,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
 
             assert(O._panel == panel_before,
                 "O._panel must remain same instance, got " .. tostring(O._panel))
-            local title_prim_after = O._panel:child("objective_1_text")
+            local title_prim_after = O._panel:child("objective_content"):child("objective_1_text")
             assert(title_prim_after == title_prim_before,
                 "title primitive must remain same instance")
             local title_text_after = title_prim_after:text()
@@ -3649,7 +3651,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
                 _m_root_h = m_layout.root_h
                 _m_font_size = m_layout.font_size
                 _margin_x = geom.margin_x
-                _expected_m_root_y = region.y + region.h + geom.margin_x
+                _expected_m_root_y = region.y + region.h + 36
             end
 
             call_count = 0
@@ -3680,7 +3682,7 @@ class ObjectivesBehavioralTests(unittest.TestCase):
             if m_layout_15 then
                 _m_root_y_15 = m_layout_15.root_y
                 _margin_x_15 = L.resolve(1920, 1080, 1.5).margin_x
-                _expected_m_root_y_15 = region_15.y + region_15.h + _margin_x_15
+                _expected_m_root_y_15 = region_15.y + region_15.h + 36 * L.resolve(1920, 1080, 1.5).scale
             end
         ''')
 
@@ -3702,19 +3704,19 @@ class ObjectivesBehavioralTests(unittest.TestCase):
         region_w = lua.eval("_region_w")
         region_h = lua.eval("_region_h")
 
-        self.assertEqual(o_root_x, region_x,
-            "O root_x must equal region.x (both 0)")
-        self.assertEqual(o_root_y, region_y,
-            "O root_y must equal region.y (both 0)")
-        self.assertEqual(o_root_w, region_w,
-            "O root_w must equal region.w (both 500)")
-        self.assertEqual(o_root_h, region_h,
-            "O root_h must equal region.h (both 100)")
+        self.assertEqual(o_root_x, 40,
+            "Objective-only E anchor x must be 40")
+        self.assertEqual(o_root_y, 36,
+            "Objective-only E anchor y must be 36")
+        self.assertEqual(o_root_w, 640,
+            "Empty objective layout must preserve its 640 reference budget")
+        self.assertEqual(o_root_h, 123,
+            "Three persistent row slots must reserve 123 reference units")
 
         m_root_y = lua.eval("_m_root_y")
         expected_m_root_y = lua.eval("_expected_m_root_y")
         self.assertAlmostEqual(m_root_y, expected_m_root_y, places=1,
-            msg="Mission root_y must equal region.y + region.h + margin_x")
+            msg="Mission-only root_y must equal native reservation bottom plus 36")
 
         consumer_after_mission_15 = lua.eval("_consumer_count_after_mission_15")
         consumer_after_both_15 = lua.eval("_consumer_count_after_both_15")
@@ -3735,22 +3737,25 @@ class ObjectivesBehavioralTests(unittest.TestCase):
         m_root_y_15 = lua.eval("_m_root_y_15")
         expected_m_root_y_15 = lua.eval("_expected_m_root_y_15")
         self.assertAlmostEqual(m_root_y_15, expected_m_root_y_15, places=1,
-            msg="Mission root_y at scale 1.5 must equal region.y + region.h + margin_x")
+            msg="Mission-only root_y must retain native reservation plus scaled E margin")
 
         o_root_h = lua.eval("_o_root_h")
         o_root_h_15 = lua.eval("_o_root_h_15")
         m_root_y = lua.eval("_m_root_y")
         m_root_y_15 = lua.eval("_m_root_y_15")
 
-        o_bottom = o_root_y + o_root_h
+        # These two direct layouts are computed with their sibling disabled.
+        # The combined active placement is covered through the real runtime in
+        # test_hud_mission_objectives_presentation, not by adding solo rectangles.
+        o_bottom = region_y + region_h
         m_top = m_root_y
         self.assertLessEqual(o_bottom, m_top,
-            "No overlap: Objectives bottom (0+100=100) must be <= Mission top (138.4)")
+            "Mission alone must not overlap the native objective reservation")
 
-        o_bottom_15 = o_root_y + o_root_h_15
+        o_bottom_15 = region_h_15
         m_top_15 = m_root_y_15
         self.assertLessEqual(o_bottom_15, m_top_15,
-            "No overlap at scale 1.5: Objectives bottom must be <= Mission top")
+            "Clamped scale must not shrink the native objective reservation")
 
 
 if __name__ == "__main__":

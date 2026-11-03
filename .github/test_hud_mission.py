@@ -13,6 +13,7 @@ FileNotFoundError.
 """
 from pathlib import Path
 import unittest
+from hud_presentation_fixture import PRESENTATION_DIESEL
 
 from lupa.luajit21 import LuaRuntime
 
@@ -296,6 +297,7 @@ def _lua(with_mission=True, context=None):
     lua.globals().ModPath = ROOT.as_posix() + "/"
     lua.execute(STUBS)
     lua.execute(DIESEL)
+    lua.execute(PRESENTATION_DIESEL)
     lua.execute(NATIVE_TIMER_FIXTURE)
     lua.execute(HUDMANAGER_TIMER_FIXTURE)
     if context:
@@ -1863,10 +1865,10 @@ class MissionLifecycleSnapshotTests(unittest.TestCase):
 
 
 class MissionFontTests(unittest.TestCase):
-    """RED: mission must use tweak_data.hud.medium_font_noshadow, not hud_fonts.timer."""
+    """Mission uses native PAYDAY 2 fonts, with large figures for the E timer."""
 
-    def test_timer_prim_uses_medium_font_noshadow(self):
-        """Timer primitive font must be tweak_data.hud.medium_font_noshadow."""
+    def test_timer_prim_uses_native_large_font(self):
+        """The E timer fixes the native large font at construction."""
         lua, ok = _lua()
         self.assertTrue(ok, "RED: mission.lua must exist")
         if not ok:
@@ -1892,8 +1894,8 @@ class MissionFontTests(unittest.TestCase):
             _prim = kyohud.hud.mission._timer_prim
             _font = _prim and _prim._font or nil
         ''')
-        self.assertEqual(lua.globals()._font, "fonts/font_medium_mf",
-            "RED: timer primitive must use tweak_data.hud.medium_font_noshadow")
+        self.assertEqual(lua.globals()._font, "fonts/font_large_mf",
+            "timer figures must use the approved native large font")
 
     def test_missing_font_fails_closed(self):
         """When tweak_data.hud.medium_font_noshadow is missing, primitive

@@ -4,6 +4,7 @@ Tests objectives module acquires native visibility for 8 HUDObjectives leaves,
 hides them during render, restores when disabled. Exposes missing acquisition.
 """
 import unittest
+from hud_presentation_fixture import PRESENTATION_DIESEL
 
 from test_hud_objectives import _lua
 
@@ -252,6 +253,7 @@ Color = function(...)
 end
 ''')
     lua.execute(DIESEL)
+    lua.execute(PRESENTATION_DIESEL)
 
     # Define HUDObjectives native class and callback helper before loading objectives
     lua.execute(NATIVE_HUD_OBJECTIVES_FIXTURE)

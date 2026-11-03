@@ -171,6 +171,26 @@ function RT:_coordinate_crew(method_name, ...)
     end
 end
 
+-- Presentation-only handshake: vacate the native objective reservation before
+-- any leaf is restored. No polling, source collection or new hook is involved.
+function RT:set_objectives_covered(covered)
+    covered = covered == true
+    if self._objectives_covered == covered then return end
+    self._objectives_covered = covered
+    local mission = kyohud.hud.mission
+    if mission and mission._mounted and panel_alive(mission._root_panel) then
+        safe_call(mission._root_panel, "set_visible", false)
+        mission:_update_layout()
+        mission:_ensure_primitives()
+        mission:_sync_primitives()
+        if mission:_verify_render() then
+            safe_call(mission._root_panel, "set_visible", true)
+        else
+            mission:_handle_render_failure()
+        end
+    end
+end
+
 function RT:_coordinate_mission(method_name, ...)
     local mission = kyohud.hud.mission
     if mission and type(mission[method_name]) == "function" and self._manager then

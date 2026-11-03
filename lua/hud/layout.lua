@@ -119,6 +119,23 @@ function L.anchor_rect(geom, x_pct, y_pct, ref_w, ref_h)
     return { x = x, y = y, w = rw, h = rh }
 end
 
+-- E reference coordinates; the native reservation below remains independent.
+function L.mission_objectives(w, h, scale, mission, objectives, reserve_native)
+    local g = L.resolve(w, h, scale)
+    if not g.valid then return nil end
+    local e = g.uniform_scale * g.scale
+    local x, y = 40 * e, 36 * e
+    if reserve_native then y = math.min(100, h) + y end
+    local width = math.min(640 * e, w - 2 * x)
+    -- Keep the native centered timer readable when Mission is disabled.
+    if not mission then width = math.min(width, w * 0.5 - x - 80 * e) end
+    local objective_y = y + (mission and (44 + 3) * e or 0)
+    if width <= 0 or y + 44 * e > h or objective_y + 120 * e > h then return nil end
+    return { e = e, x = x, y = y, w = width, mission_h = 44 * e,
+        objectives_y = objective_y, row_h = 41 * e, content_h = 38 * e,
+        objectives_h = 123 * e }
+end
+
 function L.objectives_region(w, h)
     if not posfinite(w) or not posfinite(h) then
         return nil
