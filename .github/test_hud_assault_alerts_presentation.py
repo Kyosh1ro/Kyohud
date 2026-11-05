@@ -372,9 +372,12 @@ class AssaultECompositionRegressionTests(unittest.TestCase):
                 "RED: A._ticker_panel must exist")
             local ticker_w = A._ticker_panel:w()
             local ticker_h = A._ticker_panel:h()
-            assert(math.abs(ticker_w - expected_ticker_w) < 0.5,
-                "RED: ticker_panel w must be 340e=" .. expected_ticker_w
-                .. " got " .. ticker_w)
+            local sx,sy,state_ink,sh=A._ticker_a:text_rect()
+            assert(ticker_w >= state_ink and ticker_w-state_ink <= 3*e+.001,
+                "state panel must fit measured ink with minimal padding")
+            assert(math.abs(A._ticker_panel:x()+ticker_w - 332*e) < 0.5)
+            assert(math.abs(A._title_panel:w()+ticker_w - 316*e) < 0.5)
+            assert(A._title_panel:x()+A._title_panel:w() < A._ticker_panel:x())
             assert(math.abs(ticker_h - expected_ticker_h) < 0.5,
                 "RED: ticker_panel h must be 40e=" .. expected_ticker_h
                 .. " got " .. ticker_h)

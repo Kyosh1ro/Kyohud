@@ -142,12 +142,12 @@ class EndToEndActivationTests(unittest.TestCase):
         self.assertEqual(lua.eval("kyohud.killstreak"), 17,
             "RED: combat sentinel 17 must be preserved")
         lua.execute('''
-            _ticker_x_before = kyohud.hud.assault._ticker_a:x()
+            _ticker_x_before = kyohud.hud.assault._title_a:x()
             local mgr = _G.managers.hud
             mgr:update(1.0, 0.05)
-            _ticker_x_t1 = kyohud.hud.assault._ticker_a:x()
+            _ticker_x_t1 = kyohud.hud.assault._title_a:x()
             mgr:update(1.05, 0.05)
-            _ticker_x_t2 = kyohud.hud.assault._ticker_a:x()
+            _ticker_x_t2 = kyohud.hud.assault._title_a:x()
         ''')
         g2 = lua.globals()
         self.assertLess(float(g2._ticker_x_t1), float(g2._ticker_x_before),

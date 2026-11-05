@@ -188,6 +188,9 @@ class CasingCloseDiagAbsenceTests(unittest.TestCase):
             _attempts = 0
             _attempted_cc = false
             function log(msg)
+                if type(msg) == "string" and msg:find("[KyoHUD][AssaultStateDiag]", 1, true) then
+                    return
+                end
                 _attempts = _attempts + 1
                 if type(msg) == "string" and msg:find("mode=casing_close", 1, true) then
                     _attempted_cc = true

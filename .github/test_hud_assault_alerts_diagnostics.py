@@ -200,6 +200,9 @@ class PresentationDiagAbsenceTests(unittest.TestCase):
                 lua.execute(r'''
                     _attempts = 0
                     function log(msg)
+                        if type(msg) == "string" and msg:find("[KyoHUD][AssaultStateDiag]", 1, true) then
+                            return
+                        end
                         _attempts = _attempts + 1
                         error("simulated log failure")
                     end

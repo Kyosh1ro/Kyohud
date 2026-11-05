@@ -525,13 +525,13 @@ class AssaultRenderEnabledTransitionTests(unittest.TestCase):
             local panel_id_after_mount = _panel_id
 
             local clip_x = A._ticker_panel:x()
-            local ticker_x_before = A._ticker_a:x()
+            local ticker_x_before = A._title_a:x()
             local a_before = A._ticker_a
             local b_before = A._ticker_b
 
             A:update(managers.hud, 10.05, 0.05)
 
-            local ticker_x_after = A._ticker_a:x()
+            local ticker_x_after = A._title_a:x()
             assert(ticker_x_after < ticker_x_before,
                 "RED: ticker_a x must move left after tick, before="
                 .. ticker_x_before .. " after=" .. ticker_x_after)
@@ -539,6 +539,7 @@ class AssaultRenderEnabledTransitionTests(unittest.TestCase):
             assert(A._ticker_panel:x() == clip_x,
                 "RED: _ticker_panel x must remain fixed at clip_x="
                 .. clip_x .. " got=" .. A._ticker_panel:x())
+            assert(A._ticker_a:x() == 0, "secondary state must not scroll")
 
             assert(rawequal(a_before, A._ticker_a),
                 "RED: ticker_a identity must be preserved (rawequal)")
@@ -626,6 +627,8 @@ class AssaultVisualCorrectnessTests(unittest.TestCase):
             assert(tc.r < 0.5 and tc.g < 0.5 and tc.b < 0.5, "text color must be dark RGB")
             managers.groupai:state()._hunt_mode = true; managers.hud:sync_set_assault_mode("phalanx")
             A:update(managers.hud, 10.1, 0.05)
+            -- phase settle: let animated normal->endless fade finish (150ms)
+            A:update(managers.hud, 10.3, 0.2)
             local tc2 = A._ticker_a._color
             assert(tc2 and tc2.a==1 and tc2.r==1 and tc2.g==1 and tc2.b==1, "phalanx text must be white RGB1 alpha1")
             assert(A._ticker_a:text():find("SANS FIN") ~= nil, "endless label must be present")
