@@ -332,6 +332,7 @@ local function actual_shape_matches(obj, desired)
 end
 
 local function ink_matches(prim, expected)
+    if not panel_alive(prim) then return false end
     local ok, result = pcall(function()
         local c = prim:color()
         return math.abs(c.r-expected.r) < 0.001

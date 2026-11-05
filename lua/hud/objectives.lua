@@ -488,6 +488,41 @@ local function o_shape_matches(ax, ay, aw, ah, bx, by, bw, bh, tol)
     return true
 end
 
+local function o_amount_x_after_text(text_prim, layout)
+    if not layout then return 0 end
+    local fallback = layout.text_w or 0
+    if not text_prim or not mount_panel_alive(text_prim) then
+        return fallback
+    end
+    local ok_text, txt = pcall(function() return text_prim:text() end)
+    if not ok_text or type(txt) ~= "string" or txt == "" then
+        return fallback
+    end
+    local ok_rect, _, _, ink_w, _ = pcall(function()
+        return text_prim:text_rect()
+    end)
+    if not ok_rect or not mount_is_finite(ink_w) or ink_w <= 0 then
+        return fallback
+    end
+    local text_x = 0
+    local ok_x, tx = pcall(function() return text_prim:x() end)
+    if ok_x and mount_is_finite(tx) then text_x = tx end
+    local ink_right = text_x + ink_w
+    local gap = 10 * (layout.e or 1)
+    local desired = ink_right + gap
+    if desired > fallback then return fallback end
+    return desired
+end
+
+local function o_apply_amount_x(prim, desired_x)
+    if not prim or not mount_panel_alive(prim) then return end
+    if not mount_is_finite(desired_x) then return end
+    local ok, cur_x, cur_y, cur_w, cur_h = o_read_prim_shape(prim)
+    if not ok then return end
+    if mount_is_finite(cur_x) and math.abs(cur_x - desired_x) <= 0.5 then return end
+    mount_safe_call(prim, "set_shape", desired_x, cur_y, cur_w, cur_h)
+end
+
 local function o_verify_geometry_after_apply(self, new_layout, tol)
     local root_ok, rx, ry, rw, rh = o_read_prim_shape(self._root_panel)
     if not root_ok or not o_shape_matches(rx, ry, rw, rh,
@@ -516,8 +551,9 @@ local function o_verify_geometry_after_apply(self, new_layout, tol)
                     end
                 end
                 if slot.amount and mount_panel_alive(slot.amount) then
+                    local expected_amount_x = o_amount_x_after_text(slot.text, new_layout)
                     local ok, sx, sy, sw, sh = o_read_prim_shape(slot.amount)
-                    if not ok or not o_shape_matches(sx, sy, sw, sh, text_w, y, amount_w, new_layout.row_h, tol) then
+                    if not ok or not o_shape_matches(sx, sy, sw, sh, expected_amount_x, y, amount_w, new_layout.row_h, tol) then
                         return false
                     end
                     local ok_fs, fs = o_read_prim_font_size(slot.amount)
@@ -842,7 +878,11 @@ function O:_clear_completion_slot(i)
             mount_safe_call(slot.amount, "set_color", HUD_DEFAULT_COLOR)
             mount_safe_call(slot.amount, "set_alpha", 1)
             local ly = self._layout_cache
-            if ly then mount_safe_call(slot.amount, "set_y", (i - 1) * ly.row_h) end
+            if ly then
+                mount_safe_call(slot.amount, "set_y", (i - 1) * ly.row_h)
+                local ax = o_amount_x_after_text(slot.text, ly)
+                o_apply_amount_x(slot.amount, ax)
+            end
             mount_safe_call(slot.amount, "set_visible", false)
         end
         if slot.strike and mount_panel_alive(slot.strike) then
@@ -1154,6 +1194,8 @@ function O:_compact_successor(i, entry)
         mount_safe_call(slot.amount, "set_color", HUD_DEFAULT_COLOR)
         mount_safe_call(slot.amount, "set_alpha", 1)
         mount_safe_call(slot.amount, "set_y", title_y)
+        local ax = o_amount_x_after_text(slot.text, ly)
+        o_apply_amount_x(slot.amount, ax)
     end
     if slot.strike and mount_panel_alive(slot.strike) then
         local ok_w, aw = pcall(function() return slot.strike:w() end)
@@ -1215,6 +1257,8 @@ function O:_start_successor_entry(i, entry)
         mount_safe_call(slot.amount, "set_visible", amt ~= "")
         mount_safe_call(slot.amount, "set_alpha", 0)
         mount_safe_call(slot.amount, "set_y", c.amount_y_base + COMPLETION_RISE)
+        local ax = o_amount_x_after_text(slot.text, ly)
+        o_apply_amount_x(slot.amount, ax)
     end
     if slot.strike and mount_panel_alive(slot.strike) then
         mount_safe_call(slot.strike, "set_visible", false)
@@ -1241,7 +1285,8 @@ function O:_ensure_coordinated_slide_extra()
                 mount_safe_call(extra.text, "set_font_size", layout.font_size)
             end
             if extra.amount and mount_panel_alive(extra.amount) then
-                mount_safe_call(extra.amount, "set_shape", text_w, -layout.row_h, amount_w, layout.row_h)
+                local extra_amt_x = o_amount_x_after_text(extra.text, layout)
+                mount_safe_call(extra.amount, "set_shape", extra_amt_x, -layout.row_h, amount_w, layout.row_h)
                 mount_safe_call(extra.amount, "set_font_size", layout.amount_font_size)
             end
             extra._layout_sig = o_layout_fit_sig(layout)
@@ -1275,11 +1320,11 @@ function O:_ensure_coordinated_slide_extra()
         font = font,
         font_size = layout.amount_font_size,
         color = Color(127/255, 137/255, 148/255),
-        x = text_w,
+        x = o_amount_x_after_text(extra.text, layout),
         y = -layout.row_h,
         w = amount_w,
         h = layout.row_h,
-        align = "right",
+        align = "left",
         vertical = "center",
         wrap = false,
         word_wrap = false,
@@ -1378,6 +1423,8 @@ function O:_render_coordinated_slide_history(completion_slot_idx, c, eased_exit)
             if not ok_a or math.abs(act_a - a_alpha) > 0.01 then
                 mount_safe_call(slot.amount, "set_alpha", a_alpha)
             end
+            local ax = o_amount_x_after_text(slot.text, ly)
+            o_apply_amount_x(slot.amount, ax)
         end
         ::continue::
     end
@@ -1447,6 +1494,8 @@ function O:_render_coordinated_slide_new_current(completion_slot_idx, c, eased_e
         if not ok_a or math.abs(act_a - a_alpha) > 0.01 then
             mount_safe_call(extra.amount, "set_alpha", a_alpha)
         end
+        local ax = o_amount_x_after_text(extra.text, ly)
+        o_apply_amount_x(extra.amount, ax)
     end
 end
 
@@ -1507,6 +1556,11 @@ function O:_render_completion_slot(i)
                     mount_safe_call(slot.amount, "set_color", HUD_DEFAULT_COLOR)
                     mount_safe_call(slot.amount, "set_alpha", 1)
                     mount_safe_call(slot.amount, "set_y", c.amount_y_base)
+                    local ly = self._layout_cache
+                    if ly then
+                        local ax = o_amount_x_after_text(slot.text, ly)
+                        o_apply_amount_x(slot.amount, ax)
+                    end
                 end
                 if slot.strike and mount_panel_alive(slot.strike) then
                     local ok_w, aw = pcall(function() return slot.strike:w() end)
@@ -1563,6 +1617,11 @@ function O:_render_completion_slot(i)
             local ok_y, act_y = pcall(function() return slot.amount:y() end)
             if not ok_y or math.abs(act_y - a_y) > 0.5 then
                 mount_safe_call(slot.amount, "set_y", a_y)
+            end
+            local ly = self._layout_cache
+            if ly then
+                local ax = o_amount_x_after_text(slot.text, ly)
+                o_apply_amount_x(slot.amount, ax)
             end
         end
         if slot.strike and mount_panel_alive(slot.strike) then
@@ -1667,6 +1726,8 @@ function O:_render_completion_slot(i)
         if not ok_y or math.abs(act_y - a_y) > 0.5 then
             mount_safe_call(slot.amount, "set_y", a_y)
         end
+        local ax = o_amount_x_after_text(slot.text, ly)
+        o_apply_amount_x(slot.amount, ax)
     end
     if slot.strike and mount_panel_alive(slot.strike) then
         local ok_w, aw = pcall(function() return slot.strike:w() end)
@@ -1900,17 +1961,18 @@ function O:_ensure_slot_prims()
         if not slot.amount or not mount_panel_alive(slot.amount) then
             slot.amount = nil
             self._slot_amount_cache[i] = nil
+            local amount_x = o_amount_x_after_text(slot.text, layout)
             local status, prim = mount_safe_call(self._content_panel, "text", {
                 name = "objective_" .. i .. "_amount",
                 text = "",
                 font = font,
                 font_size = layout.amount_font_size,
                 color = Color(1, 1, 1, 1),
-                x = text_w,
+                x = amount_x,
                 y = y,
                 w = amount_w,
                 h = layout.row_h,
-                align = "right",
+                align = "left",
                 vertical = "center",
                 wrap = false,
                 word_wrap = false,
@@ -2060,6 +2122,8 @@ function O:_sync_primitives()
             if not ok_c or not o_color_matches_ref(cc, HUD_DEFAULT_COLOR) then
                 mount_safe_call(slot.amount, "set_color", HUD_DEFAULT_COLOR)
             end
+            local expected_ax = o_amount_x_after_text(slot.text, layout)
+            o_apply_amount_x(slot.amount, expected_ax)
         end
 
         ::sync_continue::
@@ -2146,8 +2210,9 @@ function O:_update_layout()
                             end
                         end
                         if slot.amount and mount_panel_alive(slot.amount) then
+                            local expected_amount_x = o_amount_x_after_text(slot.text, new_layout)
                             local ok, sx, sy, sw, sh = o_read_prim_shape(slot.amount)
-                            if not ok or not o_shape_matches(sx, sy, sw, sh, text_w, y, amount_w, new_layout.row_h, tol) then
+                            if not ok or not o_shape_matches(sx, sy, sw, sh, expected_amount_x, y, amount_w, new_layout.row_h, tol) then
                                 primitives_match = false
                                 break
                             end
@@ -2177,17 +2242,21 @@ function O:_update_layout()
         for i = 1, MAX_SLOTS+1 do
             local slot = i <= MAX_SLOTS and self._slot_prims[i] or self._coordinated_slide_extra
             if slot then
-                for _, key in ipairs({"text","amount"}) do
-                    local p = slot[key]
-                    if mount_panel_alive(p) then
-                        local ok, _, y = o_read_prim_shape(p)
-                        if ok then
-                            local x = key == "text" and 0 or new_layout.text_w
-                            local w = key == "text" and new_layout.text_w or new_layout.amount_w
-                            local fs = key == "text" and new_layout.font_size or new_layout.amount_font_size
-                            mount_safe_call(p,"set_shape",x,y,w,new_layout.row_h)
-                            mount_safe_call(p,"set_font_size",fs)
-                        end
+                local tp = slot.text
+                if mount_panel_alive(tp) then
+                    local ok, _, y = o_read_prim_shape(tp)
+                    if ok then
+                        mount_safe_call(tp,"set_shape",0,y,new_layout.text_w,new_layout.row_h)
+                        mount_safe_call(tp,"set_font_size",new_layout.font_size)
+                    end
+                end
+                local ap = slot.amount
+                if mount_panel_alive(ap) then
+                    local ok, _, y = o_read_prim_shape(ap)
+                    if ok then
+                        local ax = o_amount_x_after_text(tp, new_layout)
+                        mount_safe_call(ap,"set_shape",ax,y,new_layout.amount_w,new_layout.row_h)
+                        mount_safe_call(ap,"set_font_size",new_layout.amount_font_size)
                     end
                 end
             end
@@ -2209,7 +2278,8 @@ function O:_update_layout()
                     mount_safe_call(slot.text, "set_font_size", new_layout.font_size)
                 end
                 if slot.amount and mount_panel_alive(slot.amount) then
-                    mount_safe_call(slot.amount, "set_shape", text_w, y, amount_w, new_layout.row_h)
+                    local amt_x = o_amount_x_after_text(slot.text, new_layout)
+                    mount_safe_call(slot.amount, "set_shape", amt_x, y, amount_w, new_layout.row_h)
                     mount_safe_call(slot.amount, "set_font_size", new_layout.amount_font_size)
                 end
             end
@@ -2350,7 +2420,8 @@ function O:_verify_render()
             local aok, ax, ay, aw, ah = o_read_prim_shape(slot.amount)
             if not aok then return false end
             if math.abs(ay - expected_amt_y) > tol then return false end
-            if math.abs(ax - text_w) > tol then return false end
+            local expected_ax = o_amount_x_after_text(slot.text, geom)
+            if math.abs(ax - expected_ax) > tol then return false end
             if math.abs(aw - amount_w) > tol then return false end
             if math.abs(ah - geom.row_h) > tol then return false end
             local amok, amw, amh = o_measure_text_rect(slot.amount)
@@ -2430,7 +2501,8 @@ function O:_verify_render()
                     local amount_w = geom.amount_w
                     local eaok, eax, eay, eaw, eah = o_read_prim_shape(extra.amount)
                     if not eaok then return false end
-                    if math.abs(eax - text_w) > tol then return false end
+                    local expected_eax = o_amount_x_after_text(extra.text, geom)
+                    if math.abs(eax - expected_eax) > tol then return false end
                     if math.abs(eay - ey) > tol then return false end
                     if math.abs(eaw - amount_w) > tol then return false end
                     if math.abs(eah - geom.row_h) > tol then return false end
@@ -2510,7 +2582,8 @@ function O:_verify_render()
                         local snap_amount_w = geom.amount_w
                         local haok, hax, hay, haw, hah = o_read_prim_shape(hist_slot.amount)
                         if not haok then return false end
-                        if math.abs(hax - snap_text_w) > tol then return false end
+                        local expected_hax = o_amount_x_after_text(hist_slot.text, geom)
+                        if math.abs(hax - expected_hax) > tol then return false end
                         if math.abs(hay - expected_y) > 0.5 then return false end
                         if math.abs(haw - snap_amount_w) > tol then return false end
                         if math.abs(hah - geom.row_h) > tol then return false end
@@ -2586,7 +2659,8 @@ function O:_verify_render()
             local aok, ax, ay, aw, ah = o_read_prim_shape(slot.amount)
             if not aok then return false end
             if math.abs(ay - expected_amt_y) > tol then return false end
-            if math.abs(ax - text_w) > tol then return false end
+            local expected_ax = o_amount_x_after_text(slot.text, geom)
+            if math.abs(ax - expected_ax) > tol then return false end
             if math.abs(aw - amount_w) > tol then return false end
             if math.abs(ah - geom.row_h) > tol then return false end
             local amok, amw, amh = o_measure_text_rect(slot.amount)
@@ -2671,11 +2745,11 @@ function O:_verify_render()
                 if not ok_fs or not (mount_is_finite(fs) and fs > 0) then return false end
                 if math.abs(fs - geom.amount_font_size) > 0.5 then return false end
                 local amount_y = (i - 1) * geom.row_h
-                local text_w = geom.text_w
                 local amount_w = geom.amount_w
+                local expected_ax = o_amount_x_after_text(slot.text, geom)
                 local aok, ax, ay, aw, ah = o_read_prim_shape(slot.amount)
                 if not aok then return false end
-                if not o_shape_matches(ax, ay, aw, ah, text_w, amount_y, amount_w, geom.row_h, tol) then return false end
+                if not o_shape_matches(ax, ay, aw, ah, expected_ax, amount_y, amount_w, geom.row_h, tol) then return false end
                 local amok, amw, amh = o_measure_text_rect(slot.amount)
                 if not amok then return false end
                 if amw > amount_w + 1.0 then return false end
