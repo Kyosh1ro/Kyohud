@@ -150,6 +150,10 @@ A._ticker_b = A._ticker_b
 A._glyph_prim = A._glyph_prim
 A._hostages_prim = A._hostages_prim
 A._converted_prim = A._converted_prim
+A._hostages_bg = A._hostages_bg
+A._converted_bg = A._converted_bg
+A._hostages_icon = A._hostages_icon
+A._converted_icon = A._converted_icon
 A._layout_cache = A._layout_cache
 A._render_verified = A._render_verified or false
 A._render_failed = A._render_failed or false
@@ -167,6 +171,8 @@ A._cached_font = A._cached_font
 A._cached_font_size = A._cached_font_size
 A._cached_bg_key = A._cached_bg_key
 A._cached_text_color_key = A._cached_text_color_key
+A._cached_status_texture = A._cached_status_texture
+A._texture_avail_cache = A._texture_avail_cache or {}
 
 A._native_corner = A._native_corner
 A._native_hud_panel = A._native_hud_panel
@@ -196,17 +202,38 @@ local TICKER_B_NAME = "kyohud_assault_ticker_b"
 local GLYPH_NAME = "kyohud_assault_glyph"
 local HOSTAGES_NAME = "kyohud_assault_hostages"
 local CONVERTED_NAME = "kyohud_assault_converted"
+local HOSTAGES_BG_NAME = "kyohud_assault_hostages_bg"
+local CONVERTED_BG_NAME = "kyohud_assault_converted_bg"
+local HOSTAGES_ICON_NAME = "kyohud_assault_hostages_icon"
+local CONVERTED_ICON_NAME = "kyohud_assault_converted_icon"
+
+local TEX_ASSAULT = "guis/textures/pd2/hud_icon_assaultbox"
+local TEX_PADLOCK = "guis/textures/pd2/hud_icon_padlockbox"
+local TEX_HOSTAGE = "guis/textures/pd2/hud_icon_hostage"
+local TEX_CONVERTED = "guis/textures/pd2/skilltree/icons_atlas"
+local TEX_CONVERTED_RECT = { 384, 512, 64, 64 }
 
 local REF_MARGIN_RIGHT = 40
 local REF_TOP = 36
-local REF_WIDTH = 380
-local REF_HEIGHT = 76
+local REF_WIDTH = 383
+local REF_HEIGHT = 70
 local REF_TICKER_W = 340
 local REF_TICKER_H = 40
+local REF_STATUS_W = 40
+local REF_STATUS_H = 40
+local REF_GAP = 3
+local REF_COUNTER_VGAP = 4
+local REF_COUNTER_H = 26
 local REF_FONT_SIZE = 20
+local REF_COUNTER_FONT = 16
 local MIN_FONT_SIZE = 12
+local MIN_COUNTER_FONT = 10
 local REF_TICKER_SPEED = 60
 local REF_TICKER_GAP = 40
+local REF_CELL_PAD = 10
+local REF_ICON_SIZE = 16
+local REF_ICON_GAP = 6
+local REF_CELL_GAP = 3
 local COUNTER_INTERVAL = 0.5
 
 local function a_panel_alive(p)
@@ -247,6 +274,94 @@ local function a_is_vr()
     return _G.IS_VR == true
 end
 
+local function a_texture_available(path)
+    if type(path) ~= "string" or path == "" then return false end
+    if A._texture_avail_cache[path] ~= nil then
+        return A._texture_avail_cache[path]
+    end
+    local result = true
+    if DB ~= nil then
+        local ok, res = pcall(function()
+            local has = DB.has
+            if type(has)~="function" then return false end
+            return has(DB,Idstring("texture"),Idstring(path))
+        end)
+        if not ok then
+            result = false
+        else
+            result = res == true
+        end
+    end
+    A._texture_avail_cache[path] = result
+    return result
+end
+
+local function a_texture_matches(actual, expected_path)
+    if type(expected_path) ~= "string" or expected_path == "" then return false end
+    if actual == nil then return false end
+    if type(actual) == "string" then return actual == expected_path end
+    local ok, matches = pcall(function()
+        return actual:key() == Idstring(expected_path):key()
+    end)
+    return ok and matches == true
+end
+
+local function a_read_color(prim)
+    if not prim or not a_panel_alive(prim) then return nil end
+    local ok_c, c = pcall(function() return prim:color() end)
+    if not ok_c or c == nil then return nil end
+    local r, g, b
+    if type(c) == "table" then
+        r = c.r; g = c.g; b = c.b
+    elseif type(c) == "userdata" then
+        local ok_r, rv = pcall(function() return c.r end)
+        local ok_g, gv = pcall(function() return c.g end)
+        local ok_b, bv = pcall(function() return c.b end)
+        if ok_r then r = rv end
+        if ok_g then g = gv end
+        if ok_b then b = bv end
+    end
+    if not a_is_finite(r) or not a_is_finite(g) or not a_is_finite(b) then return nil end
+    local ok_a, a = pcall(function() return prim:alpha() end)
+    if not ok_a or not a_is_finite(a) then return nil end
+    return r, g, b, a
+end
+
+local function a_resolve_status_texture(endless)
+    if endless then
+        if a_texture_available(TEX_PADLOCK) then return TEX_PADLOCK end
+        if a_texture_available(TEX_ASSAULT) then return TEX_ASSAULT end
+        return nil
+    else
+        if a_texture_available(TEX_ASSAULT) then return TEX_ASSAULT end
+        return nil
+    end
+end
+
+local function a_color(r, g, b, a)
+    if a ~= nil then
+        return Color(a, r, g, b)
+    end
+    return Color(1, r, g, b)
+end
+
+local COLOR_TICKER_BG_NORMAL = nil
+local COLOR_TICKER_BG_ENDLESS = nil
+local COLOR_TICKER_INK_NORMAL = nil
+local COLOR_TICKER_INK_ENDLESS = nil
+local COLOR_CELL_BG = nil
+local COLOR_COUNTER_INK = nil
+
+local function a_init_colors()
+    if COLOR_TICKER_BG_NORMAL then return end
+    COLOR_TICKER_BG_NORMAL  = a_color(0.949, 0.890, 0.106)
+    COLOR_TICKER_BG_ENDLESS = a_color(1.0, 0.165, 0.333)
+    COLOR_TICKER_INK_NORMAL = a_color(0.067, 0.067, 0.067)
+    COLOR_TICKER_INK_ENDLESS = a_color(1, 1, 1, 1)
+    COLOR_CELL_BG           = a_color(0.043, 0.051, 0.067, 0.75)
+    COLOR_COUNTER_INK       = a_color(0.788, 0.820, 0.847)
+end
+
 local function a_get_runtime_root()
     local rt = kyohud.hud.runtime
     if not rt then return nil end
@@ -272,42 +387,11 @@ function A:_compute_layout(parent_w, parent_h)
     if not a_is_finite(parent_w) or not a_is_finite(parent_h) then return nil end
     if parent_w <= 0 or parent_h <= 0 then return nil end
     local layout = kyohud.hud.layout
-    if not layout or type(layout.resolve) ~= "function" then return nil end
+    if not layout or type(layout.assault_alerts) ~= "function" then return nil end
     local scale = kyohud.settings.hud_scale or 1
-    local geom = layout.resolve(parent_w, parent_h, scale)
+    local geom = layout.assault_alerts(parent_w, parent_h, scale)
     if not geom or not geom.valid then return nil end
-    local us = geom.uniform_scale or 1
-    local s = geom.scale or 1
-    local es = us * s
-    local root_w = REF_WIDTH * es
-    local root_h = REF_HEIGHT * es
-    local margin_right = REF_MARGIN_RIGHT * es
-    local top = REF_TOP * es
-    local root_x = parent_w - margin_right - root_w
-    local root_y = top
-    if root_x < 0 or root_y < 0 then return nil end
-    if root_x + root_w > parent_w or root_y + root_h > parent_h then return nil end
-    if type(layout.objectives_region) == "function" then
-        local obj = layout.objectives_region(parent_w, parent_h)
-        if obj and root_x < obj.w and root_y < obj.h then return nil end
-    end
-    local ticker_w = REF_TICKER_W * es
-    local ticker_h = REF_TICKER_H * es
-    local glyph_w = root_w - ticker_w
-    if glyph_w < 0 then glyph_w = 0 end
-    local counts_h = root_h - ticker_h
-    if counts_h < 0 then counts_h = 0 end
-    local font_size = math.max(MIN_FONT_SIZE, math.floor(REF_FONT_SIZE * es))
-    return {
-        es = es,
-        root_x = root_x, root_y = root_y,
-        root_w = root_w, root_h = root_h,
-        font_size = font_size,
-        ticker = { x = 0, y = 0, w = ticker_w, h = ticker_h },
-        glyph = { x = ticker_w, y = 0, w = glyph_w, h = ticker_h },
-        hostages = { x = 0, y = ticker_h, w = root_w * 0.5, h = counts_h },
-        converted = { x = root_w * 0.5, y = ticker_h, w = root_w * 0.5, h = counts_h },
-    }
+    return geom
 end
 
 function A:_resolve_difficulty_text()
@@ -372,54 +456,38 @@ function A:_resolve_ticker_text()
     if diff == "" then
         return status
     end
-    return status .. " " .. diff
-end
-
-function A:_resolve_glyph_text()
-    return self._state.endless == true and "!!" or "!"
+    return status .. " /// " .. diff
 end
 
 function A:_resolve_hostages_text()
-    local label = "HOSTAGES"
-    local ok_loc, loc = pcall(function() return managers.localization end)
-    if ok_loc and loc then
-        local ok_t, t = pcall(function() return loc:text("ky_hud_hostages_label") end)
-        if ok_t and type(t) == "string" and t ~= "" then label = t end
-    end
     local h = self._state.hostages
     if h == nil then
-        return label .. ": --"
+        return "--"
     end
-    return label .. ": " .. tostring(h)
+    return tostring(h)
 end
 
 function A:_resolve_converted_text()
-    local label = "CONVERTED"
-    local ok_loc, loc = pcall(function() return managers.localization end)
-    if ok_loc and loc then
-        local ok_t, t = pcall(function() return loc:text("ky_hud_converted_label") end)
-        if ok_t and type(t) == "string" and t ~= "" then label = t end
-    end
     local c = self._state.converted
     if c == nil then
-        return label .. ": --"
+        return "--"
     end
-    return label .. ": " .. tostring(c)
+    return tostring(c)
 end
 
 function A:_ensure_bg_rect()
     if self._bg_rect and a_panel_alive(self._bg_rect) then return end
     if not self._root_panel or not a_panel_alive(self._root_panel) then return end
     if not self._layout_cache then return end
+    a_init_colors()
     local layout = self._layout_cache
     local endless = self._state.endless == true
-    local color = endless
-        and Color(1.0, 0.165, 0.333)
-        or Color(0.949, 0.890, 0.106)
+    local color = endless and COLOR_TICKER_BG_ENDLESS or COLOR_TICKER_BG_NORMAL
+    local bg = layout.bg or layout.ticker
     local status, rect = a_safe_call(self._root_panel, "rect", {
         name = BG_RECT_NAME,
-        x = 0, y = 0,
-        w = layout.root_w, h = layout.root_h,
+        x = bg.x, y = bg.y,
+        w = bg.w, h = bg.h,
         color = color,
         layer = 0,
     })
@@ -451,16 +519,17 @@ function A:_ensure_ticker_texts()
         and self._ticker_b and a_panel_alive(self._ticker_b) then return end
     if not self._ticker_panel or not a_panel_alive(self._ticker_panel) then return end
     if not self._layout_cache then return end
+    a_init_colors()
     local font = self:_get_font()
     local layout = self._layout_cache
     local endless = self._state.endless == true
-    local text_color = endless and Color(1, 1, 1, 1) or Color(1, 0.1, 0.1, 0.1)
+    local text_color = endless and COLOR_TICKER_INK_ENDLESS or COLOR_TICKER_INK_NORMAL
     local ticker_text = self:_resolve_ticker_text()
     local sa, pa = a_safe_call(self._ticker_panel, "text", {
         name = TICKER_A_NAME,
         text = ticker_text,
         font = font,
-        font_size = layout.font_size,
+        font_size = layout.ticker_font,
         color = text_color,
         x = 0, y = 0,
         w = layout.ticker.w, h = layout.ticker.h,
@@ -472,7 +541,7 @@ function A:_ensure_ticker_texts()
         self._ticker_a = pa
         self._cached_ticker_text = ticker_text
         self._cached_font = font
-        self._cached_font_size = layout.font_size
+        self._cached_font_size = layout.ticker_font
         self._ticker_x_a = 0
         self._ticker_gap = REF_TICKER_GAP * (layout.es or 1)
         local ok_mr, mx, my, mw, mh = pcall(function() return pa:text_rect() end)
@@ -489,7 +558,7 @@ function A:_ensure_ticker_texts()
         name = TICKER_B_NAME,
         text = ticker_text,
         font = font,
-        font_size = layout.font_size,
+        font_size = layout.ticker_font,
         color = text_color,
         x = bx, y = 0,
         w = ticker_w, h = layout.ticker.h,
@@ -507,26 +576,22 @@ function A:_ensure_glyph_prim()
     if self._glyph_prim and a_panel_alive(self._glyph_prim) then return end
     if not self._root_panel or not a_panel_alive(self._root_panel) then return end
     if not self._layout_cache then return end
-    local font = self:_get_font()
     local layout = self._layout_cache
     local endless = self._state.endless == true
-    local text_color = endless and Color(1, 1, 1, 1) or Color(1, 0.1, 0.1, 0.1)
-    local glyph_text = self:_resolve_glyph_text()
-    local status, prim = a_safe_call(self._root_panel, "text", {
+    local tex = a_resolve_status_texture(endless)
+    if not tex then return end
+    local st = layout.status
+    if not st then return end
+    local status, prim = a_safe_call(self._root_panel, "bitmap", {
         name = GLYPH_NAME,
-        text = glyph_text,
-        font = font,
-        font_size = layout.font_size,
-        color = text_color,
-        x = layout.glyph.x, y = layout.glyph.y,
-        w = layout.glyph.w, h = layout.glyph.h,
-        align = "center", vertical = "center",
-        wrap = false, word_wrap = false,
+        texture = tex,
+        x = st.x, y = st.y,
+        w = st.w, h = st.h,
         layer = 1,
     })
     if status == a_call_ok and prim then
         self._glyph_prim = prim
-        self._cached_glyph_text = glyph_text
+        self._cached_status_texture = tex
     end
 end
 
@@ -534,22 +599,21 @@ function A:_ensure_hostages_prim()
     if self._hostages_prim and a_panel_alive(self._hostages_prim) then return end
     if not self._root_panel or not a_panel_alive(self._root_panel) then return end
     if not self._layout_cache then return end
+    a_init_colors()
     local font = self:_get_font()
     local layout = self._layout_cache
-    local endless = self._state.endless == true
-    local text_color = endless and Color(1, 1, 1, 1) or Color(1, 0.1, 0.1, 0.1)
     local text = self:_resolve_hostages_text()
     local status, prim = a_safe_call(self._root_panel, "text", {
         name = HOSTAGES_NAME,
         text = text,
         font = font,
-        font_size = layout.font_size,
-        color = text_color,
-        x = layout.hostages.x, y = layout.hostages.y,
-        w = layout.hostages.w, h = layout.hostages.h,
+        font_size = layout.counter_font,
+        color = COLOR_COUNTER_INK,
+        x = 0, y = layout.counter_y,
+        w = 1, h = layout.counter_h,
         align = "left", vertical = "center",
         wrap = false, word_wrap = false,
-        layer = 1,
+        layer = 2,
     })
     if status == a_call_ok and prim then
         self._hostages_prim = prim
@@ -561,26 +625,168 @@ function A:_ensure_converted_prim()
     if self._converted_prim and a_panel_alive(self._converted_prim) then return end
     if not self._root_panel or not a_panel_alive(self._root_panel) then return end
     if not self._layout_cache then return end
+    a_init_colors()
     local font = self:_get_font()
     local layout = self._layout_cache
-    local endless = self._state.endless == true
-    local text_color = endless and Color(1, 1, 1, 1) or Color(1, 0.1, 0.1, 0.1)
     local text = self:_resolve_converted_text()
     local status, prim = a_safe_call(self._root_panel, "text", {
         name = CONVERTED_NAME,
         text = text,
         font = font,
-        font_size = layout.font_size,
-        color = text_color,
-        x = layout.converted.x, y = layout.converted.y,
-        w = layout.converted.w, h = layout.converted.h,
-        align = "right", vertical = "center",
+        font_size = layout.counter_font,
+        color = COLOR_COUNTER_INK,
+        x = 0, y = layout.counter_y,
+        w = 1, h = layout.counter_h,
+        align = "left", vertical = "center",
         wrap = false, word_wrap = false,
-        layer = 1,
+        layer = 2,
     })
     if status == a_call_ok and prim then
         self._converted_prim = prim
         self._cached_converted_text = text
+    end
+end
+
+function A:_measure_text_w(prim)
+    if not prim or not a_panel_alive(prim) then return 0 end
+    local ok, mx, my, mw, mh = pcall(function() return prim:text_rect() end)
+    if ok and a_is_finite(mw) and mw > 0 then return mw end
+    return 0
+end
+
+function A:_cell_width(text_w)
+    local layout = self._layout_cache
+    if not layout then return 0 end
+    local pad = (layout.cell_pad or REF_CELL_PAD) * 2
+    local icon = layout.icon_size or REF_ICON_SIZE
+    local gap = layout.icon_gap or REF_ICON_GAP
+    return text_w + pad + icon + gap
+end
+
+function A:_position_counters()
+    if not self._layout_cache then return end
+    local layout = self._layout_cache
+    local h_tw = self:_measure_text_w(self._hostages_prim)
+    local c_tw = self:_measure_text_w(self._converted_prim)
+    local h_cw = self:_cell_width(h_tw)
+    local c_cw = self:_cell_width(c_tw)
+    local cg = layout.cell_gap or REF_CELL_GAP
+    local cy = layout.counter_y
+    local ch = layout.counter_h
+    local rw = layout.root_w
+    local pad = layout.cell_pad or REF_CELL_PAD
+    local isz = layout.icon_size or REF_ICON_SIZE
+    local igap = layout.icon_gap or REF_ICON_GAP
+
+    local c_x = rw - c_cw
+    local h_x = c_x - cg - h_cw
+
+    if self._converted_bg and a_panel_alive(self._converted_bg) then
+        a_safe_call(self._converted_bg, "set_shape", c_x, cy, c_cw, ch)
+    end
+    if self._hostages_bg and a_panel_alive(self._hostages_bg) then
+        a_safe_call(self._hostages_bg, "set_shape", h_x, cy, h_cw, ch)
+    end
+
+    local text_y = cy
+    local text_h = ch
+
+    if self._converted_prim and a_panel_alive(self._converted_prim) then
+        local tx = c_x + pad + isz + igap
+        a_safe_call(self._converted_prim, "set_shape", tx, text_y, c_tw, text_h)
+    end
+    if self._hostages_prim and a_panel_alive(self._hostages_prim) then
+        local tx = h_x + pad + isz + igap
+        a_safe_call(self._hostages_prim, "set_shape", tx, text_y, h_tw, text_h)
+    end
+
+    local icon_y = cy + math.floor((ch - isz) / 2)
+    if icon_y < cy then icon_y = cy end
+
+    if self._converted_icon and a_panel_alive(self._converted_icon) then
+        a_safe_call(self._converted_icon, "set_shape", c_x + pad, icon_y, isz, isz)
+    end
+    if self._hostages_icon and a_panel_alive(self._hostages_icon) then
+        a_safe_call(self._hostages_icon, "set_shape", h_x + pad, icon_y, isz, isz)
+    end
+end
+
+function A:_ensure_hostages_bg()
+    if self._hostages_bg and a_panel_alive(self._hostages_bg) then return end
+    if not self._root_panel or not a_panel_alive(self._root_panel) then return end
+    if not self._layout_cache then return end
+    a_init_colors()
+    local layout = self._layout_cache
+    local h_tw = self:_measure_text_w(self._hostages_prim)
+    local cw = self:_cell_width(h_tw)
+    local status, rect = a_safe_call(self._root_panel, "rect", {
+        name = HOSTAGES_BG_NAME,
+        x = 0, y = layout.counter_y,
+        w = cw, h = layout.counter_h,
+        color = COLOR_CELL_BG,
+        layer = 1,
+    })
+    if status == a_call_ok and rect then
+        self._hostages_bg = rect
+    end
+end
+
+function A:_ensure_converted_bg()
+    if self._converted_bg and a_panel_alive(self._converted_bg) then return end
+    if not self._root_panel or not a_panel_alive(self._root_panel) then return end
+    if not self._layout_cache then return end
+    a_init_colors()
+    local layout = self._layout_cache
+    local c_tw = self:_measure_text_w(self._converted_prim)
+    local cw = self:_cell_width(c_tw)
+    local status, rect = a_safe_call(self._root_panel, "rect", {
+        name = CONVERTED_BG_NAME,
+        x = layout.root_w - cw, y = layout.counter_y,
+        w = cw, h = layout.counter_h,
+        color = COLOR_CELL_BG,
+        layer = 1,
+    })
+    if status == a_call_ok and rect then
+        self._converted_bg = rect
+    end
+end
+
+function A:_ensure_hostages_icon()
+    if self._hostages_icon and a_panel_alive(self._hostages_icon) then return end
+    if not self._root_panel or not a_panel_alive(self._root_panel) then return end
+    if not self._layout_cache then return end
+    if not a_texture_available(TEX_HOSTAGE) then return end
+    local layout = self._layout_cache
+    local isz = layout.icon_size or REF_ICON_SIZE
+    local status, prim = a_safe_call(self._root_panel, "bitmap", {
+        name = HOSTAGES_ICON_NAME,
+        texture = TEX_HOSTAGE,
+        x = 0, y = layout.counter_y,
+        w = isz, h = isz,
+        layer = 2,
+    })
+    if status == a_call_ok and prim then
+        self._hostages_icon = prim
+    end
+end
+
+function A:_ensure_converted_icon()
+    if self._converted_icon and a_panel_alive(self._converted_icon) then return end
+    if not self._root_panel or not a_panel_alive(self._root_panel) then return end
+    if not self._layout_cache then return end
+    if not a_texture_available(TEX_CONVERTED) then return end
+    local layout = self._layout_cache
+    local isz = layout.icon_size or REF_ICON_SIZE
+    local status, prim = a_safe_call(self._root_panel, "bitmap", {
+        name = CONVERTED_ICON_NAME,
+        texture = TEX_CONVERTED,
+        texture_rect = TEX_CONVERTED_RECT,
+        x = 0, y = layout.counter_y,
+        w = isz, h = isz,
+        layer = 2,
+    })
+    if status == a_call_ok and prim then
+        self._converted_icon = prim
     end
 end
 
@@ -591,19 +797,45 @@ function A:_ensure_primitives()
     self:_ensure_glyph_prim()
     self:_ensure_hostages_prim()
     self:_ensure_converted_prim()
+    self:_ensure_hostages_bg()
+    self:_ensure_converted_bg()
+    self:_ensure_hostages_icon()
+    self:_ensure_converted_icon()
+    self:_position_counters()
 end
 
 function A:_sync_bg_rect()
     if not self._bg_rect or not a_panel_alive(self._bg_rect) then return end
+    if not self._layout_cache then return end
+    a_init_colors()
     local endless = self._state.endless == true
     local key = endless and "endless" or "normal"
-    if key ~= self._cached_bg_key then
-        local color = endless
-            and Color(1.0, 0.165, 0.333)
-            or Color(0.949, 0.890, 0.106)
-        a_safe_call(self._bg_rect, "set_color", color)
-        self._cached_bg_key = key
+    local bg = self._layout_cache.bg or self._layout_cache.ticker
+    local s_x, ax = a_safe_call(self._bg_rect, "x")
+    local s_y, ay = a_safe_call(self._bg_rect, "y")
+    local s_w, aw = a_safe_call(self._bg_rect, "w")
+    local s_h, ah = a_safe_call(self._bg_rect, "h")
+    if s_x == a_call_ok and s_y == a_call_ok and s_w == a_call_ok and s_h == a_call_ok
+        and a_is_finite(ax) and a_is_finite(ay) and a_is_finite(aw) and a_is_finite(ah) then
+        if math.abs(ax - bg.x) > 0.5 or math.abs(ay - bg.y) > 0.5
+            or math.abs(aw - bg.w) > 0.5 or math.abs(ah - bg.h) > 0.5 then
+            a_safe_call(self._bg_rect, "set_shape", bg.x, bg.y, bg.w, bg.h)
+        end
     end
+    local color = endless and COLOR_TICKER_BG_ENDLESS or COLOR_TICKER_BG_NORMAL
+    local r, g, b, alpha = a_read_color(self._bg_rect)
+    local exp_r = endless and 1.0 or 0.949
+    local exp_g = endless and 0.165 or 0.890
+    local exp_b = endless and 0.333 or 0.106
+    if r and (math.abs(r - exp_r) > 0.01 or math.abs(g - exp_g) > 0.01
+        or math.abs(b - exp_b) > 0.01 or math.abs(alpha - 1) > 0.02) then
+        a_safe_call(self._bg_rect, "set_color", color)
+    end
+    local ok_v, vis = pcall(function() return self._bg_rect:visible() end)
+    if ok_v and vis ~= true then
+        a_safe_call(self._bg_rect, "set_visible", true)
+    end
+    self._cached_bg_key = key
 end
 
 function A:_sync_ticker_text()
@@ -632,6 +864,12 @@ function A:_sync_ticker_text()
             needs_measure = true
         end
     end
+    local es = (self._layout_cache and self._layout_cache.es) or 1
+    local desired_gap = REF_TICKER_GAP * es
+    if not self._ticker_gap or math.abs(self._ticker_gap - desired_gap) > 0.5 then
+        self._ticker_gap = desired_gap
+        needs_measure = true
+    end
     if needs_measure then
         local ok_mr, mx, my, mw, mh = pcall(function() return self._ticker_a:text_rect() end)
         if ok_mr and a_is_finite(mw) and mw > 0 then
@@ -639,82 +877,135 @@ function A:_sync_ticker_text()
             local ticker_h = (self._layout_cache and self._layout_cache.ticker and self._layout_cache.ticker.h) or REF_TICKER_H
             local ax = self._ticker_x_a or 0
             a_safe_call(self._ticker_a, "set_shape", ax, 0, mw, ticker_h)
-            local bx = self._ticker_x_b or (mw + (self._ticker_gap or REF_TICKER_GAP))
+            local gap = self._ticker_gap or desired_gap
+            local bx = ax + mw + gap
+            self._ticker_x_b = bx
             a_safe_call(self._ticker_b, "set_shape", bx, 0, mw, ticker_h)
+        end
+    end
+    local ticker_h = (self._layout_cache and self._layout_cache.ticker and self._layout_cache.ticker.h) or REF_TICKER_H
+    local mw = self._ticker_measured_w or 0
+    local s_ax, rax = a_safe_call(self._ticker_a, "x")
+    local s_ay, ray = a_safe_call(self._ticker_a, "y")
+    local s_aw, raw = a_safe_call(self._ticker_a, "w")
+    local s_ah, rah = a_safe_call(self._ticker_a, "h")
+    if s_ax == a_call_ok and s_ay == a_call_ok and s_aw == a_call_ok and s_ah == a_call_ok
+        and a_is_finite(rax) and a_is_finite(ray) and a_is_finite(raw) and a_is_finite(rah) then
+        if math.abs(ray - 0) > 0.5 or math.abs(rah - ticker_h) > 0.5
+            or (mw > 0 and math.abs(raw - mw) > 0.5) then
+            a_safe_call(self._ticker_a, "set_shape", rax, 0, mw > 0 and mw or raw, ticker_h)
+        end
+    end
+    local s_bx, rbx = a_safe_call(self._ticker_b, "x")
+    local s_by, rby = a_safe_call(self._ticker_b, "y")
+    local s_bw, rbw = a_safe_call(self._ticker_b, "w")
+    local s_bh, rbh = a_safe_call(self._ticker_b, "h")
+    if s_bx == a_call_ok and s_by == a_call_ok and s_bw == a_call_ok and s_bh == a_call_ok
+        and a_is_finite(rbx) and a_is_finite(rby) and a_is_finite(rbw) and a_is_finite(rbh) then
+        if math.abs(rby - 0) > 0.5 or math.abs(rbh - ticker_h) > 0.5
+            or (mw > 0 and math.abs(rbw - mw) > 0.5) then
+            local desired_bx = self._ticker_x_b or ((rax or 0) + mw + (self._ticker_gap or REF_TICKER_GAP))
+            a_safe_call(self._ticker_b, "set_shape", desired_bx, 0, mw > 0 and mw or rbw, ticker_h)
         end
     end
 end
 
-function A:_sync_glyph_text()
+function A:_sync_glyph_texture()
     if not self._glyph_prim or not a_panel_alive(self._glyph_prim) then return end
-    local new_text = self:_resolve_glyph_text()
-    if new_text ~= self._cached_glyph_text then
-        a_safe_call(self._glyph_prim, "set_text", new_text)
-        local ok_r, r = pcall(function() return self._glyph_prim:text() end)
-        if ok_r and r == new_text then
-            self._cached_glyph_text = new_text
+    local endless = self._state.endless == true
+    local tex = a_resolve_status_texture(endless)
+    if not tex then return end
+    local needs_set = (tex ~= self._cached_status_texture)
+    if not needs_set then
+        local ok_gt, gt = pcall(function() return self._glyph_prim:texture_name() end)
+        if ok_gt and not a_texture_matches(gt, tex) then
+            needs_set = true
         end
-    else
-        local ok_a, actual = pcall(function() return self._glyph_prim:text() end)
-        if ok_a and type(actual) == "string" and actual ~= new_text then
-            a_safe_call(self._glyph_prim, "set_text", new_text)
+    end
+    if needs_set then
+        local ok_set = pcall(function() self._glyph_prim:set_image(tex) end)
+        if ok_set then
+            local ok_r, actual = pcall(function() return self._glyph_prim:texture_name() end)
+            if ok_r and a_texture_matches(actual, tex) then
+                self._cached_status_texture = tex
+            end
         end
+    end
+    local ok_v, vis = pcall(function() return self._glyph_prim:visible() end)
+    if ok_v and vis ~= true then
+        a_safe_call(self._glyph_prim, "set_visible", true)
     end
 end
 
 function A:_sync_hostages_text()
     if not self._hostages_prim or not a_panel_alive(self._hostages_prim) then return end
     local new_text = self:_resolve_hostages_text()
+    local changed = false
     if new_text ~= self._cached_hostages_text then
         a_safe_call(self._hostages_prim, "set_text", new_text)
         local ok_r, r = pcall(function() return self._hostages_prim:text() end)
         if ok_r and r == new_text then
             self._cached_hostages_text = new_text
+            changed = true
         end
     else
         local ok_a, actual = pcall(function() return self._hostages_prim:text() end)
         if ok_a and type(actual) == "string" and actual ~= new_text then
             a_safe_call(self._hostages_prim, "set_text", new_text)
+            changed = true
         end
     end
+    if changed then self:_position_counters() end
 end
 
 function A:_sync_converted_text()
     if not self._converted_prim or not a_panel_alive(self._converted_prim) then return end
     local new_text = self:_resolve_converted_text()
+    local changed = false
     if new_text ~= self._cached_converted_text then
         a_safe_call(self._converted_prim, "set_text", new_text)
         local ok_r, r = pcall(function() return self._converted_prim:text() end)
         if ok_r and r == new_text then
             self._cached_converted_text = new_text
+            changed = true
         end
     else
         local ok_a, actual = pcall(function() return self._converted_prim:text() end)
         if ok_a and type(actual) == "string" and actual ~= new_text then
             a_safe_call(self._converted_prim, "set_text", new_text)
+            changed = true
         end
     end
+    if changed then self:_position_counters() end
 end
 
 function A:_sync_text_colors()
+    a_init_colors()
     local endless = self._state.endless == true
     local key = endless and "endless" or "normal"
-    if key == self._cached_text_color_key then return end
-    local color = endless and Color(1, 1, 1, 1) or Color(1, 0.1, 0.1, 0.1)
-    if self._ticker_a and a_panel_alive(self._ticker_a) then
-        a_safe_call(self._ticker_a, "set_color", color)
+    local ticker_color = endless and COLOR_TICKER_INK_ENDLESS or COLOR_TICKER_INK_NORMAL
+    local exp_tr, exp_tg, exp_tb = endless and 1 or 0.067, endless and 1 or 0.067, endless and 1 or 0.067
+    local exp_ta = 1
+    local pr, pg, pb, pa = a_read_color(self._ticker_a)
+    if pr and (math.abs(pr - exp_tr) > 0.01 or math.abs(pg - exp_tg) > 0.01
+        or math.abs(pb - exp_tb) > 0.01 or math.abs(pa - exp_ta) > 0.02) then
+        a_safe_call(self._ticker_a, "set_color", ticker_color)
     end
-    if self._ticker_b and a_panel_alive(self._ticker_b) then
-        a_safe_call(self._ticker_b, "set_color", color)
+    pr, pg, pb, pa = a_read_color(self._ticker_b)
+    if pr and (math.abs(pr - exp_tr) > 0.01 or math.abs(pg - exp_tg) > 0.01
+        or math.abs(pb - exp_tb) > 0.01 or math.abs(pa - exp_ta) > 0.02) then
+        a_safe_call(self._ticker_b, "set_color", ticker_color)
     end
-    if self._glyph_prim and a_panel_alive(self._glyph_prim) then
-        a_safe_call(self._glyph_prim, "set_color", color)
+    local exp_cr, exp_cg, exp_cb = 0.788, 0.820, 0.847
+    pr, pg, pb, pa = a_read_color(self._converted_prim)
+    if pr and (math.abs(pr - exp_cr) > 0.01 or math.abs(pg - exp_cg) > 0.01
+        or math.abs(pb - exp_cb) > 0.01 or math.abs(pa - 1) > 0.02) then
+        a_safe_call(self._converted_prim, "set_color", COLOR_COUNTER_INK)
     end
-    if self._hostages_prim and a_panel_alive(self._hostages_prim) then
-        a_safe_call(self._hostages_prim, "set_color", color)
-    end
-    if self._converted_prim and a_panel_alive(self._converted_prim) then
-        a_safe_call(self._converted_prim, "set_color", color)
+    pr, pg, pb, pa = a_read_color(self._hostages_prim)
+    if pr and (math.abs(pr - exp_cr) > 0.01 or math.abs(pg - exp_cg) > 0.01
+        or math.abs(pb - exp_cb) > 0.01 or math.abs(pa - 1) > 0.02) then
+        a_safe_call(self._hostages_prim, "set_color", COLOR_COUNTER_INK)
     end
     self._cached_text_color_key = key
 end
@@ -722,10 +1013,72 @@ end
 function A:_sync_primitives()
     self:_sync_bg_rect()
     self:_sync_ticker_text()
-    self:_sync_glyph_text()
+    self:_sync_glyph_texture()
     self:_sync_hostages_text()
     self:_sync_converted_text()
     self:_sync_text_colors()
+    self:_position_counters()
+    self:_sync_icon_states()
+end
+
+function A:_sync_icon_states()
+    a_init_colors()
+    local function restore_style(p, color, layer)
+        if not p or not a_panel_alive(p) then return end
+        local r,g,b,alpha = a_read_color(p)
+        local ok, same = pcall(function()
+            return r and math.abs(r-color.r)<.001 and math.abs(g-color.g)<.001
+                and math.abs(b-color.b)<.001 and math.abs(alpha-color.a)<.001
+                and p:layer()==layer and p:visible()==true
+        end)
+        if not ok or not same then
+            a_safe_call(p,"set_color",color)
+            a_safe_call(p,"set_alpha",color.a)
+            a_safe_call(p,"set_layer",layer)
+            a_safe_call(p,"set_visible",true)
+        end
+    end
+    restore_style(self._hostages_bg,COLOR_CELL_BG,1)
+    restore_style(self._converted_bg,COLOR_CELL_BG,1)
+    restore_style(self._hostages_icon,COLOR_TICKER_INK_ENDLESS,2)
+    restore_style(self._converted_icon,COLOR_TICKER_INK_ENDLESS,2)
+    restore_style(self._glyph_prim,COLOR_TICKER_INK_ENDLESS,1)
+    if self._hostages_icon and a_panel_alive(self._hostages_icon) then
+        local ok_v, v = pcall(function() return self._hostages_icon:visible() end)
+        if ok_v and v ~= true then
+            a_safe_call(self._hostages_icon, "set_visible", true)
+        end
+        local ok_tex, tex = pcall(function() return self._hostages_icon:texture_name() end)
+        if ok_tex and not a_texture_matches(tex, TEX_HOSTAGE) then
+            a_safe_call(self._hostages_icon, "set_image", TEX_HOSTAGE)
+        end
+    end
+    if self._converted_icon and a_panel_alive(self._converted_icon) then
+        local ok_v, v = pcall(function() return self._converted_icon:visible() end)
+        if ok_v and v ~= true then
+            a_safe_call(self._converted_icon, "set_visible", true)
+        end
+        local ok_tex, tex = pcall(function() return self._converted_icon:texture_name() end)
+        if ok_tex and not a_texture_matches(tex, TEX_CONVERTED) then
+            a_safe_call(self._converted_icon, "set_image", TEX_CONVERTED)
+        end
+        -- Native Bitmap has no texture_rect getter. Reapply the atlas crop at
+        -- the existing bounded poll instead of certifying a fictional readback.
+        a_safe_call(self._converted_icon,"set_texture_rect",TEX_CONVERTED_RECT[1],
+            TEX_CONVERTED_RECT[2],TEX_CONVERTED_RECT[3],TEX_CONVERTED_RECT[4])
+    end
+    if self._hostages_bg and a_panel_alive(self._hostages_bg) then
+        local ok_v, v = pcall(function() return self._hostages_bg:visible() end)
+        if ok_v and v ~= true then
+            a_safe_call(self._hostages_bg, "set_visible", true)
+        end
+    end
+    if self._converted_bg and a_panel_alive(self._converted_bg) then
+        local ok_v, v = pcall(function() return self._converted_bg:visible() end)
+        if ok_v and v ~= true then
+            a_safe_call(self._converted_bg, "set_visible", true)
+        end
+    end
 end
 
 function A:_update_ticker(dt)
@@ -738,9 +1091,8 @@ function A:_update_ticker(dt)
     local dx = speed * dt
     local ax = self._ticker_x_a - dx
     local cycle = (self._ticker_measured_w or 0) + (self._ticker_gap or (REF_TICKER_GAP * es))
-    if cycle > 0 then
-        ax = -(((-ax) % cycle))
-    end
+    if cycle <= 0 then return end
+    ax = -(((-ax) % cycle))
     local bx = ax + cycle
     a_safe_call(self._ticker_a, "set_x", ax)
     self._ticker_x_a = ax
@@ -812,38 +1164,43 @@ function A:_update_layout()
         self._layout_cache = nil
         return
     end
-    local changed = not self._layout_cache or
-        self._layout_cache.root_x ~= new_layout.root_x or
-        self._layout_cache.root_y ~= new_layout.root_y or
-        self._layout_cache.root_w ~= new_layout.root_w or
-        self._layout_cache.root_h ~= new_layout.root_h or
-        self._layout_cache.font_size ~= new_layout.font_size
-    if not changed then return end
+    local old = self._layout_cache
+    local changed = not old or
+        old.root_x ~= new_layout.root_x or
+        old.root_y ~= new_layout.root_y or
+        old.root_w ~= new_layout.root_w or
+        old.root_h ~= new_layout.root_h or
+        old.ticker_font ~= new_layout.ticker_font or
+        old.counter_font ~= new_layout.counter_font
+    if not changed then
+        self:_repair_layout_shapes(new_layout)
+        return
+    end
     a_safe_call(self._root_panel, "set_shape", new_layout.root_x, new_layout.root_y, new_layout.root_w, new_layout.root_h)
+    local bg = new_layout.bg or new_layout.ticker
     if self._bg_rect and a_panel_alive(self._bg_rect) then
-        a_safe_call(self._bg_rect, "set_shape", 0, 0, new_layout.root_w, new_layout.root_h)
+        a_safe_call(self._bg_rect, "set_shape", bg.x, bg.y, bg.w, bg.h)
     end
     if self._ticker_panel and a_panel_alive(self._ticker_panel) then
         a_safe_call(self._ticker_panel, "set_shape", new_layout.ticker.x, new_layout.ticker.y, new_layout.ticker.w, new_layout.ticker.h)
     end
-    if self._glyph_prim and a_panel_alive(self._glyph_prim) then
-        a_safe_call(self._glyph_prim, "set_shape", new_layout.glyph.x, new_layout.glyph.y, new_layout.glyph.w, new_layout.glyph.h)
-        a_safe_call(self._glyph_prim, "set_font_size", new_layout.font_size)
-    end
-    if self._hostages_prim and a_panel_alive(self._hostages_prim) then
-        a_safe_call(self._hostages_prim, "set_shape", new_layout.hostages.x, new_layout.hostages.y, new_layout.hostages.w, new_layout.hostages.h)
-        a_safe_call(self._hostages_prim, "set_font_size", new_layout.font_size)
-    end
-    if self._converted_prim and a_panel_alive(self._converted_prim) then
-        a_safe_call(self._converted_prim, "set_shape", new_layout.converted.x, new_layout.converted.y, new_layout.converted.w, new_layout.converted.h)
-        a_safe_call(self._converted_prim, "set_font_size", new_layout.font_size)
+    if self._glyph_prim and a_panel_alive(self._glyph_prim) and new_layout.status then
+        a_safe_call(self._glyph_prim, "set_shape", new_layout.status.x, new_layout.status.y, new_layout.status.w, new_layout.status.h)
     end
     if self._ticker_a and a_panel_alive(self._ticker_a) then
-        a_safe_call(self._ticker_a, "set_font_size", new_layout.font_size)
+        a_safe_call(self._ticker_a, "set_font_size", new_layout.ticker_font)
     end
     if self._ticker_b and a_panel_alive(self._ticker_b) then
-        a_safe_call(self._ticker_b, "set_font_size", new_layout.font_size)
+        a_safe_call(self._ticker_b, "set_font_size", new_layout.ticker_font)
     end
+    if self._hostages_prim and a_panel_alive(self._hostages_prim) then
+        a_safe_call(self._hostages_prim, "set_font_size", new_layout.counter_font)
+    end
+    if self._converted_prim and a_panel_alive(self._converted_prim) then
+        a_safe_call(self._converted_prim, "set_font_size", new_layout.counter_font)
+    end
+    self._layout_cache = new_layout
+    self._ticker_gap = REF_TICKER_GAP * (new_layout.es or 1)
     if self._ticker_a and a_panel_alive(self._ticker_a) then
         local ok_mr, mx, my, mw, mh = pcall(function() return self._ticker_a:text_rect() end)
         if ok_mr and a_is_finite(mw) and mw > 0 then
@@ -852,11 +1209,94 @@ function A:_update_layout()
             local ax = self._ticker_x_a or 0
             a_safe_call(self._ticker_a, "set_shape", ax, 0, mw, ticker_h)
             local gap = self._ticker_gap or (REF_TICKER_GAP * (new_layout.es or 1))
-            local bx = self._ticker_x_b or (mw + gap)
+            local bx = ax + mw + gap
+            self._ticker_x_b = bx
             a_safe_call(self._ticker_b, "set_shape", bx, 0, mw, ticker_h)
         end
     end
-    self._layout_cache = new_layout
+    self:_position_counters()
+    self:_repair_layout_shapes(new_layout)
+end
+
+function A:_repair_layout_shapes(layout)
+    if not layout then return end
+    local function repair(p, x, y, w, h)
+        if not p or not a_panel_alive(p) then return end
+        local ok, same = pcall(function()
+            return p:x() == x and p:y() == y and p:w() == w and p:h() == h
+        end)
+        if not ok or not same then a_safe_call(p, "set_shape", x, y, w, h) end
+    end
+    repair(self._root_panel, layout.root_x, layout.root_y, layout.root_w, layout.root_h)
+    repair(self._ticker_a, self._ticker_x_a, 0, self._ticker_measured_w, layout.ticker.h)
+    repair(self._ticker_b, self._ticker_x_b, 0, self._ticker_measured_w, layout.ticker.h)
+    local bg = layout.bg or layout.ticker
+    if self._bg_rect and a_panel_alive(self._bg_rect) then
+        local s_x, ax = a_safe_call(self._bg_rect, "x")
+        local s_y, ay = a_safe_call(self._bg_rect, "y")
+        local s_w, aw = a_safe_call(self._bg_rect, "w")
+        local s_h, ah = a_safe_call(self._bg_rect, "h")
+        if s_x == a_call_ok and s_y == a_call_ok and s_w == a_call_ok and s_h == a_call_ok
+            and a_is_finite(ax) and a_is_finite(ay) and a_is_finite(aw) and a_is_finite(ah) then
+            if math.abs(ax - bg.x) > 0.5 or math.abs(ay - bg.y) > 0.5
+                or math.abs(aw - bg.w) > 0.5 or math.abs(ah - bg.h) > 0.5 then
+                a_safe_call(self._bg_rect, "set_shape", bg.x, bg.y, bg.w, bg.h)
+            end
+        end
+    end
+    if self._ticker_panel and a_panel_alive(self._ticker_panel) then
+        local s_x, tx = a_safe_call(self._ticker_panel, "x")
+        local s_y, ty = a_safe_call(self._ticker_panel, "y")
+        local s_w, tw = a_safe_call(self._ticker_panel, "w")
+        local s_h, th = a_safe_call(self._ticker_panel, "h")
+        if s_x == a_call_ok and s_y == a_call_ok and s_w == a_call_ok and s_h == a_call_ok
+            and a_is_finite(tx) and a_is_finite(ty) and a_is_finite(tw) and a_is_finite(th) then
+            if math.abs(tx - layout.ticker.x) > 0.5 or math.abs(ty - layout.ticker.y) > 0.5
+                or math.abs(tw - layout.ticker.w) > 0.5 or math.abs(th - layout.ticker.h) > 0.5 then
+                a_safe_call(self._ticker_panel, "set_shape", layout.ticker.x, layout.ticker.y, layout.ticker.w, layout.ticker.h)
+            end
+        end
+    end
+    if self._glyph_prim and a_panel_alive(self._glyph_prim) and layout.status then
+        local s_x, gx = a_safe_call(self._glyph_prim, "x")
+        local s_y, gy = a_safe_call(self._glyph_prim, "y")
+        local s_w, gw = a_safe_call(self._glyph_prim, "w")
+        local s_h, gh = a_safe_call(self._glyph_prim, "h")
+        if s_x == a_call_ok and s_y == a_call_ok and s_w == a_call_ok and s_h == a_call_ok
+            and a_is_finite(gx) and a_is_finite(gy) and a_is_finite(gw) and a_is_finite(gh) then
+            if math.abs(gx - layout.status.x) > 0.5 or math.abs(gy - layout.status.y) > 0.5
+                or math.abs(gw - layout.status.w) > 0.5 or math.abs(gh - layout.status.h) > 0.5 then
+                a_safe_call(self._glyph_prim, "set_shape", layout.status.x, layout.status.y, layout.status.w, layout.status.h)
+            end
+        end
+    end
+    local ticker_h = layout.ticker.h
+    local mw = self._ticker_measured_w or 0
+    if self._ticker_a and a_panel_alive(self._ticker_a) then
+        local s_y, ay = a_safe_call(self._ticker_a, "y")
+        local s_h, ah = a_safe_call(self._ticker_a, "h")
+        local s_w, aw = a_safe_call(self._ticker_a, "w")
+        if s_y == a_call_ok and s_h == a_call_ok and a_is_finite(ay) and a_is_finite(ah) then
+            if math.abs(ay - 0) > 0.5 or math.abs(ah - ticker_h) > 0.5
+                or (mw > 0 and a_is_finite(aw) and math.abs(aw - mw) > 0.5) then
+                local s_x, ax = a_safe_call(self._ticker_a, "x")
+                local cax = (s_x == a_call_ok and a_is_finite(ax)) and ax or (self._ticker_x_a or 0)
+                a_safe_call(self._ticker_a, "set_shape", cax, 0, mw > 0 and mw or (a_is_finite(aw) and aw or layout.ticker.w), ticker_h)
+            end
+        end
+    end
+    if self._ticker_b and a_panel_alive(self._ticker_b) then
+        local s_y, by = a_safe_call(self._ticker_b, "y")
+        local s_h, bh = a_safe_call(self._ticker_b, "h")
+        local s_w, bw = a_safe_call(self._ticker_b, "w")
+        if s_y == a_call_ok and s_h == a_call_ok and a_is_finite(by) and a_is_finite(bh) then
+            if math.abs(by - 0) > 0.5 or math.abs(bh - ticker_h) > 0.5
+                or (mw > 0 and a_is_finite(bw) and math.abs(bw - mw) > 0.5) then
+                local desired_bx = self._ticker_x_b or 0
+                a_safe_call(self._ticker_b, "set_shape", desired_bx, 0, mw > 0 and mw or (a_is_finite(bw) and bw or layout.ticker.w), ticker_h)
+            end
+        end
+    end
 end
 
 function A:_verify_render()
@@ -865,15 +1305,24 @@ function A:_verify_render()
         return false
     end
     local geom = self._layout_cache
-    if not a_is_finite(geom.root_w) or not a_is_finite(geom.root_h) or not a_is_finite(geom.font_size) then
+    if not a_is_finite(geom.root_w) or not a_is_finite(geom.root_h) then
         self._render_verified = false
         return false
     end
-    if geom.root_w <= 0 or geom.root_h <= 0 or geom.font_size <= 0 then
+    if not a_is_finite(geom.ticker_font) or not a_is_finite(geom.counter_font) then
+        self._render_verified = false
+        return false
+    end
+    if geom.root_w <= 0 or geom.root_h <= 0 or geom.ticker_font <= 0 or geom.counter_font <= 0 then
         self._render_verified = false
         return false
     end
     if not self._root_panel or not a_panel_alive(self._root_panel) then
+        self._render_verified = false
+        return false
+    end
+    local ok_parent, owned_parent = pcall(function() return self._root_panel:parent() end)
+    if not ok_parent or owned_parent~=self._parent_panel then
         self._render_verified = false
         return false
     end
@@ -905,6 +1354,22 @@ function A:_verify_render()
         self._render_verified = false
         return false
     end
+    if not self._hostages_bg or not a_panel_alive(self._hostages_bg) then
+        self._render_verified = false
+        return false
+    end
+    if not self._converted_bg or not a_panel_alive(self._converted_bg) then
+        self._render_verified = false
+        return false
+    end
+    if not self._hostages_icon or not a_panel_alive(self._hostages_icon) then
+        self._render_verified = false
+        return false
+    end
+    if not self._converted_icon or not a_panel_alive(self._converted_icon) then
+        self._render_verified = false
+        return false
+    end
     local tol = 0.5
     local ox_s, ox = a_safe_call(self._root_panel, "x")
     local oy_s, oy = a_safe_call(self._root_panel, "y")
@@ -928,6 +1393,7 @@ function A:_verify_render()
         self._render_verified = false
         return false
     end
+    local bg_geom = geom.bg or geom.ticker
     local bg_x_s, bg_x = a_safe_call(self._bg_rect, "x")
     local bg_y_s, bg_y = a_safe_call(self._bg_rect, "y")
     local bg_w_s, bg_w = a_safe_call(self._bg_rect, "w")
@@ -940,8 +1406,8 @@ function A:_verify_render()
         self._render_verified = false
         return false
     end
-    if math.abs(bg_x) > tol or math.abs(bg_y) > tol
-        or math.abs(bg_w - geom.root_w) > tol or math.abs(bg_h - geom.root_h) > tol then
+    if math.abs(bg_x - bg_geom.x) > tol or math.abs(bg_y - bg_geom.y) > tol
+        or math.abs(bg_w - bg_geom.w) > tol or math.abs(bg_h - bg_geom.h) > tol then
         self._render_verified = false
         return false
     end
@@ -977,7 +1443,7 @@ function A:_verify_render()
         self._render_verified = false
         return false
     end
-    local function check_text(prim, desired, region, skip_x, width_override)
+    local function check_text(prim, desired, expected_fs, skip_x, skip_y, region_y, region_h)
         local ok_v, v = pcall(function() return prim:visible() end)
         if not ok_v or v ~= true then return false end
         local ok_t, t = pcall(function() return prim:text() end)
@@ -985,7 +1451,7 @@ function A:_verify_render()
         if t ~= desired then return false end
         local ok_fs, fs = pcall(function() return prim:font_size() end)
         if not ok_fs or not a_is_finite(fs) or fs <= 0 then return false end
-        if math.abs(fs - geom.font_size) > 0.5 then return false end
+        if math.abs(fs - expected_fs) > 0.5 then return false end
         local s_px, px = a_safe_call(prim, "x")
         local s_py, py = a_safe_call(prim, "y")
         local s_pw, pw = a_safe_call(prim, "w")
@@ -996,11 +1462,10 @@ function A:_verify_render()
         if not a_is_finite(px) or not a_is_finite(py) or not a_is_finite(pw) or not a_is_finite(ph) then
             return false
         end
-        if not skip_x and math.abs(px - region.x) > tol then return false end
-        if math.abs(py - region.y) > tol then return false end
-        local expected_w = width_override or region.w
-        if math.abs(pw - expected_w) > tol then return false end
-        if math.abs(ph - region.h) > tol then return false end
+        if not skip_y and region_y then
+            if math.abs(py - region_y) > tol then return false end
+        end
+        if region_h and math.abs(ph - region_h) > tol then return false end
         local ok_mr, mr_x, mr_y, mw, mh = pcall(function() return prim:text_rect() end)
         if not ok_mr then return false end
         if not a_is_finite(mw) or not a_is_finite(mh) then return false end
@@ -1008,7 +1473,7 @@ function A:_verify_render()
         if mh > ph + tol then return false end
         return true
     end
-    if not check_text(self._ticker_a, desired_ticker, geom.ticker, true, self._ticker_measured_w) then
+    if not check_text(self._ticker_a, desired_ticker, geom.ticker_font, true, false, 0, geom.ticker.h) then
         self._render_verified = false
         return false
     end
@@ -1017,7 +1482,26 @@ function A:_verify_render()
         self._render_verified = false
         return false
     end
-    if not check_text(self._ticker_b, desired_ticker, geom.ticker, true, self._ticker_measured_w) then
+    local s_taw, taw = a_safe_call(self._ticker_a, "w")
+    if s_taw == a_call_ok and a_is_finite(taw) and (self._ticker_measured_w or 0) > 0 then
+        if math.abs(taw - self._ticker_measured_w) > 1.5 then
+            self._render_verified = false
+            return false
+        end
+    end
+    local cycle = (self._ticker_measured_w or 0) + (self._ticker_gap or (REF_TICKER_GAP * (geom.es or 1)))
+    if cycle > 0 then
+        local tracked_ax = self._ticker_x_a or 0
+        if math.abs(tax - tracked_ax) > 1.5 then
+            self._render_verified = false
+            return false
+        end
+        if tax > 0.5 or tax < -cycle - 0.5 then
+            self._render_verified = false
+            return false
+        end
+    end
+    if not check_text(self._ticker_b, desired_ticker, geom.ticker_font, true, false, 0, geom.ticker.h) then
         self._render_verified = false
         return false
     end
@@ -1026,12 +1510,60 @@ function A:_verify_render()
         self._render_verified = false
         return false
     end
-    local desired_glyph = self._cached_glyph_text
-    if type(desired_glyph) ~= "string" or desired_glyph == "" then
+    local s_tbw, tbw = a_safe_call(self._ticker_b, "w")
+    if s_tbw == a_call_ok and a_is_finite(tbw) and (self._ticker_measured_w or 0) > 0 then
+        if math.abs(tbw - self._ticker_measured_w) > 1.5 then
+            self._render_verified = false
+            return false
+        end
+    end
+    if cycle > 0 then
+        local tracked_bx = self._ticker_x_b or 0
+        if math.abs(tbx - tracked_bx) > 1.5 then
+            self._render_verified = false
+            return false
+        end
+        local expected_bx = tax + cycle
+        if math.abs(tbx - expected_bx) > tol then
+            self._render_verified = false
+            return false
+        end
+    end
+    local desired_tex = self._cached_status_texture
+    if type(desired_tex) ~= "string" or desired_tex == "" then
         self._render_verified = false
         return false
     end
-    if not check_text(self._glyph_prim, desired_glyph, geom.glyph, false) then
+    local ok_gv, gv = pcall(function() return self._glyph_prim:visible() end)
+    if not ok_gv or gv ~= true then
+        self._render_verified = false
+        return false
+    end
+    if geom.status then
+        local gx_s, gx = a_safe_call(self._glyph_prim, "x")
+        local gy_s, gy = a_safe_call(self._glyph_prim, "y")
+        local gw_s, gw = a_safe_call(self._glyph_prim, "w")
+        local gh_s, gh = a_safe_call(self._glyph_prim, "h")
+        if gx_s ~= a_call_ok or gy_s ~= a_call_ok or gw_s ~= a_call_ok or gh_s ~= a_call_ok then
+            self._render_verified = false
+            return false
+        end
+        if not a_is_finite(gx) or not a_is_finite(gy) or not a_is_finite(gw) or not a_is_finite(gh) then
+            self._render_verified = false
+            return false
+        end
+        if math.abs(gx - geom.status.x) > tol or math.abs(gy - geom.status.y) > tol
+            or math.abs(gw - geom.status.w) > tol or math.abs(gh - geom.status.h) > tol then
+            self._render_verified = false
+            return false
+        end
+    end
+    local ok_gt, gt = pcall(function() return self._glyph_prim:texture_name() end)
+    if not ok_gt or gt == nil then
+        self._render_verified = false
+        return false
+    end
+    if not a_texture_matches(gt, desired_tex) then
         self._render_verified = false
         return false
     end
@@ -1040,7 +1572,7 @@ function A:_verify_render()
         self._render_verified = false
         return false
     end
-    if not check_text(self._hostages_prim, desired_hostages, geom.hostages, false) then
+    if not check_text(self._hostages_prim, desired_hostages, geom.counter_font, true, false, geom.counter_y, geom.counter_h) then
         self._render_verified = false
         return false
     end
@@ -1049,7 +1581,300 @@ function A:_verify_render()
         self._render_verified = false
         return false
     end
-    if not check_text(self._converted_prim, desired_converted, geom.converted, false) then
+    if not check_text(self._converted_prim, desired_converted, geom.counter_font, true, false, geom.counter_y, geom.counter_h) then
+        self._render_verified = false
+        return false
+    end
+    a_init_colors()
+    local function check_color_rgba(prim, exp_r, exp_g, exp_b, exp_a)
+        if not prim or not a_panel_alive(prim) then return false end
+        local r, g, b, a = a_read_color(prim)
+        if not r then return false end
+        if math.abs(r - exp_r) > 0.01 then return false end
+        if math.abs(g - exp_g) > 0.01 then return false end
+        if math.abs(b - exp_b) > 0.01 then return false end
+        if math.abs(a - exp_a) > 0.02 then return false end
+        return true
+    end
+    local endless = self._state.endless == true
+    local exp_bg_r = endless and 1.0 or 0.949
+    local exp_bg_g = endless and 0.165 or 0.890
+    local exp_bg_b = endless and 0.333 or 0.106
+    if not check_color_rgba(self._bg_rect, exp_bg_r, exp_bg_g, exp_bg_b, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_color_rgba(self._hostages_bg, 0.043, 0.051, 0.067, 0.75) then
+        self._render_verified = false
+        return false
+    end
+    if not check_color_rgba(self._converted_bg, 0.043, 0.051, 0.067, 0.75) then
+        self._render_verified = false
+        return false
+    end
+    local exp_ticker_r = endless and 1 or 0.067
+    local exp_ticker_g = endless and 1 or 0.067
+    local exp_ticker_b = endless and 1 or 0.067
+    local exp_ticker_a = endless and 1 or 1
+    if not check_color_rgba(self._ticker_a, exp_ticker_r, exp_ticker_g, exp_ticker_b, exp_ticker_a) then
+        self._render_verified = false
+        return false
+    end
+    if not check_color_rgba(self._ticker_b, exp_ticker_r, exp_ticker_g, exp_ticker_b, exp_ticker_a) then
+        self._render_verified = false
+        return false
+    end
+    if not check_color_rgba(self._hostages_prim, 0.788, 0.820, 0.847, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_color_rgba(self._converted_prim, 0.788, 0.820, 0.847, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_color_rgba(self._glyph_prim,1,1,1,1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_color_rgba(self._hostages_icon,1,1,1,1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_color_rgba(self._converted_icon,1,1,1,1) then
+        self._render_verified = false
+        return false
+    end
+    local function check_visible_explicit(prim)
+        if not prim or not a_panel_alive(prim) then return false end
+        local ok_v, v = pcall(function() return prim:visible() end)
+        if not ok_v or v ~= true then return false end
+        return true
+    end
+    if not check_visible_explicit(self._hostages_bg) then
+        self._render_verified = false
+        return false
+    end
+    if not check_visible_explicit(self._converted_bg) then
+        self._render_verified = false
+        return false
+    end
+    if not check_visible_explicit(self._hostages_icon) then
+        self._render_verified = false
+        return false
+    end
+    if not check_visible_explicit(self._converted_icon) then
+        self._render_verified = false
+        return false
+    end
+    local hbg_x_s, hbg_x = a_safe_call(self._hostages_bg, "x")
+    local hbg_y_s, hbg_y = a_safe_call(self._hostages_bg, "y")
+    local hbg_w_s, hbg_w = a_safe_call(self._hostages_bg, "w")
+    local hbg_h_s, hbg_h = a_safe_call(self._hostages_bg, "h")
+    if hbg_x_s ~= a_call_ok or hbg_y_s ~= a_call_ok or hbg_w_s ~= a_call_ok or hbg_h_s ~= a_call_ok then
+        self._render_verified = false
+        return false
+    end
+    if not a_is_finite(hbg_x) or not a_is_finite(hbg_y) or not a_is_finite(hbg_w) or not a_is_finite(hbg_h) then
+        self._render_verified = false
+        return false
+    end
+    local cbg_x_s, cbg_x = a_safe_call(self._converted_bg, "x")
+    local cbg_y_s, cbg_y = a_safe_call(self._converted_bg, "y")
+    local cbg_w_s, cbg_w = a_safe_call(self._converted_bg, "w")
+    local cbg_h_s, cbg_h = a_safe_call(self._converted_bg, "h")
+    if cbg_x_s ~= a_call_ok or cbg_y_s ~= a_call_ok or cbg_w_s ~= a_call_ok or cbg_h_s ~= a_call_ok then
+        self._render_verified = false
+        return false
+    end
+    if not a_is_finite(cbg_x) or not a_is_finite(cbg_y) or not a_is_finite(cbg_w) or not a_is_finite(cbg_h) then
+        self._render_verified = false
+        return false
+    end
+    local h_tw = self:_measure_text_w(self._hostages_prim)
+    local c_tw = self:_measure_text_w(self._converted_prim)
+    local h_cw = self:_cell_width(h_tw)
+    local c_cw = self:_cell_width(c_tw)
+    local cg = geom.cell_gap or REF_CELL_GAP
+    local rw = geom.root_w
+    local expected_c_x = rw - c_cw
+    local expected_h_x = expected_c_x - cg - h_cw
+    local expected_counter_y = geom.counter_y
+    local expected_cell_h = geom.counter_h
+    if math.abs(cbg_x - expected_c_x) > 1.5 then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(cbg_y - expected_counter_y) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(cbg_w - c_cw) > 1.5 then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(cbg_h - expected_cell_h) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(hbg_x - expected_h_x) > 1.5 then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(hbg_y - expected_counter_y) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(hbg_w - h_cw) > 1.5 then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(hbg_h - expected_cell_h) > tol then
+        self._render_verified = false
+        return false
+    end
+    local hi_x_s, hi_x = a_safe_call(self._hostages_icon, "x")
+    local hi_y_s, hi_y = a_safe_call(self._hostages_icon, "y")
+    local hi_w_s, hi_w = a_safe_call(self._hostages_icon, "w")
+    local hi_h_s, hi_h = a_safe_call(self._hostages_icon, "h")
+    if hi_x_s ~= a_call_ok or hi_y_s ~= a_call_ok or hi_w_s ~= a_call_ok or hi_h_s ~= a_call_ok then
+        self._render_verified = false
+        return false
+    end
+    if not a_is_finite(hi_x) or not a_is_finite(hi_y) or not a_is_finite(hi_w) or not a_is_finite(hi_h) then
+        self._render_verified = false
+        return false
+    end
+    local ci_x_s, ci_x = a_safe_call(self._converted_icon, "x")
+    local ci_y_s, ci_y = a_safe_call(self._converted_icon, "y")
+    local ci_w_s, ci_w = a_safe_call(self._converted_icon, "w")
+    local ci_h_s, ci_h = a_safe_call(self._converted_icon, "h")
+    if ci_x_s ~= a_call_ok or ci_y_s ~= a_call_ok or ci_w_s ~= a_call_ok or ci_h_s ~= a_call_ok then
+        self._render_verified = false
+        return false
+    end
+    if not a_is_finite(ci_x) or not a_is_finite(ci_y) or not a_is_finite(ci_w) or not a_is_finite(ci_h) then
+        self._render_verified = false
+        return false
+    end
+    local pad = geom.cell_pad or REF_CELL_PAD
+    local isz = geom.icon_size or REF_ICON_SIZE
+    local expected_icon_y = expected_counter_y + math.floor((expected_cell_h - isz) / 2)
+    if expected_icon_y < expected_counter_y then expected_icon_y = expected_counter_y end
+    local expected_hi_x = expected_h_x + pad
+    local expected_ci_x = expected_c_x + pad
+    local function counter_geometry(p, expected_x, width)
+        local ok, same = pcall(function()
+            return math.abs(p:x()-expected_x)<=tol and math.abs(p:w()-width)<=tol
+                and p:parent()==self._root_panel
+        end)
+        return ok and same == true
+    end
+    if expected_h_x<0 or not counter_geometry(self._hostages_prim,
+        expected_h_x+pad+isz+(geom.icon_gap or REF_ICON_GAP),h_tw)
+        or not counter_geometry(self._converted_prim,
+        expected_c_x+pad+isz+(geom.icon_gap or REF_ICON_GAP),c_tw) then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(hi_x - expected_hi_x) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(hi_y - expected_icon_y) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(hi_w - isz) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(hi_h - isz) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(ci_x - expected_ci_x) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(ci_y - expected_icon_y) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(ci_w - isz) > tol then
+        self._render_verified = false
+        return false
+    end
+    if math.abs(ci_h - isz) > tol then
+        self._render_verified = false
+        return false
+    end
+    local ok_hi_tex, hi_tex = pcall(function() return self._hostages_icon:texture_name() end)
+    if not ok_hi_tex or hi_tex == nil then
+        self._render_verified = false
+        return false
+    end
+    if not a_texture_matches(hi_tex, TEX_HOSTAGE) then
+        self._render_verified = false
+        return false
+    end
+    local ok_ci_tex, ci_tex = pcall(function() return self._converted_icon:texture_name() end)
+    if not ok_ci_tex or ci_tex == nil then
+        self._render_verified = false
+        return false
+    end
+    if not a_texture_matches(ci_tex, TEX_CONVERTED) then
+        self._render_verified = false
+        return false
+    end
+
+    local function check_layer(prim, expected)
+        if not prim or not a_panel_alive(prim) then return false end
+        local ok_l, l = pcall(function() return prim:layer() end)
+        if not ok_l or not a_is_finite(l) then return false end
+        if math.abs(l - expected) > 0.001 then return false end
+        return true
+    end
+    if not check_layer(self._bg_rect, 0) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._ticker_panel, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._ticker_a, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._ticker_b, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._glyph_prim, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._hostages_bg, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._converted_bg, 1) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._hostages_prim, 2) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._converted_prim, 2) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._hostages_icon, 2) then
+        self._render_verified = false
+        return false
+    end
+    if not check_layer(self._converted_icon, 2) then
         self._render_verified = false
         return false
     end
@@ -1396,14 +2221,24 @@ function A:_take_initial_snapshot()
 end
 
 function A:mount(manager)
-    if kyohud.settings.enable_hud_foundation ~= true then return end
-    if kyohud.settings.enable_assault ~= true then return end
-    if a_is_vr() then return end
+    if kyohud.settings.enable_hud_foundation ~= true then
+        return
+    end
+    if kyohud.settings.enable_assault ~= true then
+        return
+    end
+    if a_is_vr() then
+        return
+    end
     local mgr = manager or self._manager
-    if not mgr then return end
+    if not mgr then
+        return
+    end
     self._manager = mgr
     local parent = a_get_runtime_root()
-    if not parent then return end
+    if not parent then
+        return
+    end
     if self._mounted and self._root_panel and a_panel_alive(self._root_panel) then
         if self._parent_panel == parent then
             self:_update_layout()
@@ -1420,6 +2255,10 @@ function A:mount(manager)
         self._glyph_prim = nil
         self._hostages_prim = nil
         self._converted_prim = nil
+        self._hostages_bg = nil
+        self._converted_bg = nil
+        self._hostages_icon = nil
+        self._converted_icon = nil
     end
     local status, existing = a_safe_call(parent, "child", ASSAULT_ROOT_NAME)
     if status == a_call_ok and existing ~= nil and a_panel_alive(existing) then
@@ -1434,9 +2273,13 @@ function A:mount(manager)
         end
         return
     end
-    if status ~= a_call_ok then return end
+    if status ~= a_call_ok then
+        return
+    end
     local cs, root = a_safe_call(parent, "panel", {name = ASSAULT_ROOT_NAME})
-    if cs ~= a_call_ok or root == nil then return end
+    if cs ~= a_call_ok or root == nil then
+        return
+    end
     self._root_panel = root
     self._parent_panel = parent
     self._mounted = true
@@ -1477,6 +2320,10 @@ function A:unmount()
     self._glyph_prim = nil
     self._hostages_prim = nil
     self._converted_prim = nil
+    self._hostages_bg = nil
+    self._converted_bg = nil
+    self._hostages_icon = nil
+    self._converted_icon = nil
     self._parent_panel = nil
     self._mounted = false
     self._layout_cache = nil
@@ -1490,6 +2337,7 @@ function A:unmount()
     self._cached_font_size = nil
     self._cached_bg_key = nil
     self._cached_text_color_key = nil
+    self._cached_status_texture = nil
     self._ticker_x_a = 0
     self._ticker_x_b = 0
     self._ticker_measured_w = 0
@@ -1542,6 +2390,10 @@ function A:update(manager, t, dt)
         self._glyph_prim = nil
         self._hostages_prim = nil
         self._converted_prim = nil
+        self._hostages_bg = nil
+        self._converted_bg = nil
+        self._hostages_icon = nil
+        self._converted_icon = nil
         self._mounted = false
         self._layout_cache = nil
         self._render_verified = false
@@ -1558,6 +2410,7 @@ function A:update(manager, t, dt)
     if do_refresh then
         self:_refresh_counters()
         self:_update_layout()
+        self:_ensure_primitives()
     end
     if do_refresh or self._data_dirty then
         self:_sync_primitives()

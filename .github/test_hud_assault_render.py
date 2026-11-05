@@ -57,6 +57,7 @@ function _make_panel_extended(name)
         _x = 0, _y = 0, _w = 1920, _h = 1080,
         _layer = 0,
         _layer_explicit = false,
+        _color = {r=1, g=1, b=1, a=1, [1]=1, [2]=1, [3]=1, [4]=1},
     }
     function p:x() return self._x end
     function p:y() return self._y end
@@ -67,11 +68,24 @@ function _make_panel_extended(name)
     function p:set_shape(x,y,w,h) self._x=x; self._y=y; self._w=w; self._h=h end
     function p:set_visible(v) self._visible = v end
     function p:visible() return self._visible end
-    function p:set_alpha(a) self._alpha = a end
+    function p:set_alpha(a)
+        self._alpha = a
+        if self._color then
+            self._color = {r=self._color.r, g=self._color.g, b=self._color.b, a=a,
+                          [1]=self._color.r, [2]=self._color.g, [3]=self._color.b, [4]=a}
+        end
+    end
     function p:alpha() return self._alpha end
     function p:set_layer(v) self._layer = v end
     function p:layer() return self._layer end
-    function p:set_color(c) self._color = c end
+    function p:set_color(c)
+        if c then
+            local a = c.a ~= nil and c.a or 1
+            self._color = {r=c.r, g=c.g, b=c.b, a=a, [1]=c.r, [2]=c.g, [3]=c.b, [4]=a}
+            self._alpha = a
+        end
+    end
+    function p:color() return self._color end
     function p:child(n) return self._children[n] end
     function p:parent() return self._parent end
     function p:remove(c)
@@ -109,8 +123,56 @@ function _make_panel_extended(name)
             if opts.clipping ~= nil then ch._clipping = opts.clipping end
             if opts.visible ~= nil then ch._visible = opts.visible end
             if opts.alpha ~= nil then ch._alpha = opts.alpha end
-            if opts and opts.color then ch._color = opts.color end
+            if opts and opts.color then
+                local c = opts.color
+                local a = c.a ~= nil and c.a or 1
+                ch._color = {r=c.r, g=c.g, b=c.b, a=a, [1]=c.r, [2]=c.g, [3]=c.b, [4]=a}
+                ch._alpha = a
+            end
             if opts.layer ~= nil then ch._layer = opts.layer; ch._layer_explicit = true end
+        end
+        self._children[ch._name] = ch
+        return ch
+    end
+    function p:bitmap(opts)
+        local ch = _make_panel_extended(opts and opts.name)
+        ch._parent = self
+        ch._is_bitmap = true
+        ch._texture = opts and opts.texture
+        if opts then
+            if opts.x then ch._x = opts.x end
+            if opts.y then ch._y = opts.y end
+            if opts.w then ch._w = opts.w end
+            if opts.h then ch._h = opts.h end
+            if opts.visible ~= nil then ch._visible = opts.visible end
+            if opts.alpha ~= nil then
+                ch._alpha = opts.alpha
+                ch._color = {r=1, g=1, b=1, a=opts.alpha, [1]=1, [2]=1, [3]=1, [4]=opts.alpha}
+            end
+            if opts.color then
+                local c = opts.color
+                local a = c.a ~= nil and c.a or 1
+                ch._color = {r=c.r, g=c.g, b=c.b, a=a, [1]=c.r, [2]=c.g, [3]=c.b, [4]=a}
+                ch._alpha = a
+            end
+            if opts.layer ~= nil then ch._layer = opts.layer; ch._layer_explicit = true end
+        end
+        local _tr_x, _tr_y, _tr_w, _tr_h = 0, 0, ch._w, ch._h
+        if opts and opts.texture_rect then
+            _tr_x = opts.texture_rect[1]
+            _tr_y = opts.texture_rect[2]
+            _tr_w = opts.texture_rect[3]
+            _tr_h = opts.texture_rect[4]
+        end
+        function ch:set_texture_rect(x, y, w, h)
+            _tr_x, _tr_y, _tr_w, _tr_h = x, y, w, h
+            self._texture_rect = {x,y,w,h}
+        end
+        ch._texture_rect = {_tr_x,_tr_y,_tr_w,_tr_h}
+        function ch:texture_name() return self._texture end
+        function ch:set_image(t,x,y,w,h)
+            self._texture = t
+            if x~=nil then self:set_texture_rect(x,y,w,h) end
         end
         self._children[ch._name] = ch
         return ch
@@ -128,7 +190,12 @@ function _make_panel_extended(name)
             if opts.h then t._h = opts.h end
             if opts.visible ~= nil then t._visible = opts.visible end
             if opts.alpha ~= nil then t._alpha = opts.alpha end
-            if opts and opts.color then t._color = opts.color end
+            if opts and opts.color then
+                local c = opts.color
+                local a = c.a ~= nil and c.a or 1
+                t._color = {r=c.r, g=c.g, b=c.b, a=a, [1]=c.r, [2]=c.g, [3]=c.b, [4]=a}
+                t._alpha = a
+            end
             if opts.layer ~= nil then t._layer = opts.layer; t._layer_explicit = true end
         end
         self._children[t._name] = t

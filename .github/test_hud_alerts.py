@@ -512,6 +512,18 @@ class AlertsStandardPnrReplacementTests(unittest.TestCase):
             managers.hud:show_point_of_no_return_timer("noreturn")
             managers.hud:feed_point_of_no_return_timer(65.9, false)
 
+            -- Capture native snapshot AFTER show/_update_noreturn set_color but BEFORE acquire
+            local post_show_snapshot = {
+                icon_noreturnbox_alpha = _na.icon_noreturnbox:alpha(),
+                pnr_text_alpha = _na.pnr_text:alpha(),
+                pnr_timer_alpha = _na.pnr_timer:alpha(),
+                pnr_bg_alpha = _na.pnr_bg:alpha(),
+                pnr_lt_alpha = _na.pnr_lt:alpha(),
+                pnr_lb_alpha = _na.pnr_lb:alpha(),
+                pnr_rt_alpha = _na.pnr_rt:alpha(),
+                pnr_rb_alpha = _na.pnr_rb:alpha(),
+            }
+
             RT:update(managers.hud, 1.0, 0.05)
 
             assert(type(AL._root_panel) == "table",
@@ -660,22 +672,22 @@ class AlertsStandardPnrReplacementTests(unittest.TestCase):
                 .. tostring(remaining_nv))
 
             -- Exact prior leaf visibilities (7 true, 1 false) and nonstandard alphas restored
-            assert(_na.icon_noreturnbox:visible() == true and math.abs(_na.icon_noreturnbox:alpha() - 0.63) < 0.001,
-                "RED: icon_noreturnbox must restore visible=true and alpha=0.63")
-            assert(_na.pnr_text:visible() == true and math.abs(_na.pnr_text:alpha() - 0.77) < 0.001,
-                "RED: point_of_no_return_text must restore visible=true and alpha=0.77")
-            assert(_na.pnr_timer:visible() == true and math.abs(_na.pnr_timer:alpha() - 0.81) < 0.001,
-                "RED: point_of_no_return_timer must restore visible=true and alpha=0.81")
-            assert(_na.pnr_bg:visible() == true and math.abs(_na.pnr_bg:alpha() - 0.41) < 0.001,
-                "RED: pnr_bg must restore visible=true and alpha=0.41")
-            assert(_na.pnr_lt:visible() == true and math.abs(_na.pnr_lt:alpha() - 0.42) < 0.001,
-                "RED: pnr_lt must restore visible=true and alpha=0.42")
-            assert(_na.pnr_lb:visible() == true and math.abs(_na.pnr_lb:alpha() - 0.43) < 0.001,
-                "RED: pnr_lb must restore visible=true and alpha=0.43")
-            assert(_na.pnr_rt:visible() == true and math.abs(_na.pnr_rt:alpha() - 0.44) < 0.001,
-                "RED: pnr_rt must restore visible=true and alpha=0.44")
-            assert(_na.pnr_rb:visible() == false and math.abs(_na.pnr_rb:alpha() - 0.45) < 0.001,
-                "RED: pnr_rb must restore exact prior visible=false and alpha=0.45")
+            assert(_na.icon_noreturnbox:visible() == true and math.abs(_na.icon_noreturnbox:alpha() - post_show_snapshot.icon_noreturnbox_alpha) < 0.001,
+                "RED: icon_noreturnbox must restore visible=true and alpha=" .. post_show_snapshot.icon_noreturnbox_alpha)
+            assert(_na.pnr_text:visible() == true and math.abs(_na.pnr_text:alpha() - post_show_snapshot.pnr_text_alpha) < 0.001,
+                "RED: point_of_no_return_text must restore visible=true and alpha=" .. post_show_snapshot.pnr_text_alpha)
+            assert(_na.pnr_timer:visible() == true and math.abs(_na.pnr_timer:alpha() - post_show_snapshot.pnr_timer_alpha) < 0.001,
+                "RED: point_of_no_return_timer must restore visible=true and alpha=" .. post_show_snapshot.pnr_timer_alpha)
+            assert(_na.pnr_bg:visible() == true and math.abs(_na.pnr_bg:alpha() - post_show_snapshot.pnr_bg_alpha) < 0.001,
+                "RED: pnr_bg must restore visible=true and alpha=" .. post_show_snapshot.pnr_bg_alpha)
+            assert(_na.pnr_lt:visible() == true and math.abs(_na.pnr_lt:alpha() - post_show_snapshot.pnr_lt_alpha) < 0.001,
+                "RED: pnr_lt must restore visible=true and alpha=" .. post_show_snapshot.pnr_lt_alpha)
+            assert(_na.pnr_lb:visible() == true and math.abs(_na.pnr_lb:alpha() - post_show_snapshot.pnr_lb_alpha) < 0.001,
+                "RED: pnr_lb must restore visible=true and alpha=" .. post_show_snapshot.pnr_lb_alpha)
+            assert(_na.pnr_rt:visible() == true and math.abs(_na.pnr_rt:alpha() - post_show_snapshot.pnr_rt_alpha) < 0.001,
+                "RED: pnr_rt must restore visible=true and alpha=" .. post_show_snapshot.pnr_rt_alpha)
+            assert(_na.pnr_rb:visible() == false and math.abs(_na.pnr_rb:alpha() - post_show_snapshot.pnr_rb_alpha) < 0.001,
+                "RED: pnr_rb must restore exact prior visible=false and alpha=" .. post_show_snapshot.pnr_rb_alpha)
 
             -- Native parents and combat sentinel preserved
             assert(_na.hud_panel:visible() == true, "hud_panel parent must remain visible")
@@ -711,6 +723,19 @@ class AlertsStandardPnrReplacementTests(unittest.TestCase):
             state._is_inside_point_of_no_return = false
             managers.hud:show_point_of_no_return_timer("noreturn")
             managers.hud:feed_point_of_no_return_timer(65.9, false)
+
+            -- Capture native snapshot AFTER show/_update_noreturn set_color but BEFORE acquire
+            local post_show_snapshot = {
+                icon_noreturnbox_alpha = _na.icon_noreturnbox:alpha(),
+                pnr_text_alpha = _na.pnr_text:alpha(),
+                pnr_timer_alpha = _na.pnr_timer:alpha(),
+                pnr_bg_alpha = _na.pnr_bg:alpha(),
+                pnr_lt_alpha = _na.pnr_lt:alpha(),
+                pnr_lb_alpha = _na.pnr_lb:alpha(),
+                pnr_rt_alpha = _na.pnr_rt:alpha(),
+                pnr_rb_alpha = _na.pnr_rb:alpha(),
+            }
+
             RT:update(managers.hud, 1.0, 0.05)
 
             assert(type(AL._root_panel) == "table" and AL._root_panel:visible() == true,
@@ -752,12 +777,12 @@ class AlertsStandardPnrReplacementTests(unittest.TestCase):
                 "Native pnr_panel must remain visible during unsupported PNR")
             assert(_na.noreturn_bg_box:visible() == true,
                 "Native noreturn_bg_box must remain visible during unsupported PNR")
-            assert(_na.icon_noreturnbox:visible() == true and math.abs(_na.icon_noreturnbox:alpha() - 0.63) < 0.001,
-                "Native icon_noreturnbox must be visible with alpha 0.63")
-            assert(_na.pnr_text:visible() == true and math.abs(_na.pnr_text:alpha() - 0.77) < 0.001,
-                "Native point_of_no_return_text must be visible with alpha 0.77")
-            assert(_na.pnr_timer:visible() == true and math.abs(_na.pnr_timer:alpha() - 0.81) < 0.001,
-                "Native point_of_no_return_timer must be visible with alpha 0.81")
+            assert(_na.icon_noreturnbox:visible() == true and math.abs(_na.icon_noreturnbox:alpha() - post_show_snapshot.icon_noreturnbox_alpha) < 0.001,
+                "Native icon_noreturnbox must be visible with alpha " .. post_show_snapshot.icon_noreturnbox_alpha)
+            assert(_na.pnr_text:visible() == true and math.abs(_na.pnr_text:alpha() - post_show_snapshot.pnr_text_alpha) < 0.001,
+                "Native point_of_no_return_text must be visible with alpha " .. post_show_snapshot.pnr_text_alpha)
+            assert(_na.pnr_timer:visible() == true and math.abs(_na.pnr_timer:alpha() - post_show_snapshot.pnr_timer_alpha) < 0.001,
+                "Native point_of_no_return_timer must be visible with alpha " .. post_show_snapshot.pnr_timer_alpha)
             assert(_na.pnr_bg:visible() == true and _na.pnr_lt:visible() == true
                 and _na.pnr_lb:visible() == true and _na.pnr_rt:visible() == true,
                 "Native PNR bg and 3 visible corners must be visible=true")
@@ -775,7 +800,12 @@ class AlertsOpeningCallbackBoundaryTests(unittest.TestCase):
     which yields once then calls done_cb. done_cb starts _animate_show_texts which
     sets text/timer visible=true BEFORE its first yield, then only alpha changes.
 
-    This test manually creates and resumes coroutines to verify boundary behavior.
+    Certified opening: at the exact _noreturn_bg_box opening, the module prepares
+    snapshot/layout/primitives, certifies owned presentation, and acquires NV
+    BEFORE the native coroutine starts. The owned root remains visible and all 8
+    PNR leaves remain suppressed throughout the native coroutine suspension and
+    after the done callback. Native done_cb writes to text/timer visible=true are
+    reconciled in the PostHook so no flash occurs.
     """
 
     def test_opening_callback_boundary_releases_and_reacquires_without_update_tick(self):
@@ -798,6 +828,19 @@ class AlertsOpeningCallbackBoundaryTests(unittest.TestCase):
             state._is_inside_point_of_no_return = false
             managers.hud:show_point_of_no_return_timer("noreturn")
             managers.hud:feed_point_of_no_return_timer(65.9, false)
+
+            -- Capture native snapshot AFTER show/_update_noreturn set_color but BEFORE acquire
+            local post_show_snapshot = {
+                icon_noreturnbox_alpha = _na.icon_noreturnbox:alpha(),
+                pnr_text_alpha = _na.pnr_text:alpha(),
+                pnr_timer_alpha = _na.pnr_timer:alpha(),
+                pnr_bg_alpha = _na.pnr_bg:alpha(),
+                pnr_lt_alpha = _na.pnr_lt:alpha(),
+                pnr_lb_alpha = _na.pnr_lb:alpha(),
+                pnr_rt_alpha = _na.pnr_rt:alpha(),
+                pnr_rb_alpha = _na.pnr_rb:alpha(),
+            }
+
             RT:update(managers.hud, 1.0, 0.05)
 
             assert(type(AL._root_panel) == "table" and AL._root_panel:visible() == true,
@@ -845,15 +888,35 @@ class AlertsOpeningCallbackBoundaryTests(unittest.TestCase):
                 "After first resume: open coroutine must be suspended, got "
                 .. tostring(coroutine.status(open_co)))
 
-            local nv_during_suspend = 0
-            for _ in ipairs(nv._entries or {}) do
-                nv_during_suspend = nv_during_suspend + 1
+            local alerts_nv_during_suspend = 0
+            local total_nv_during_suspend = 0
+            for _, e in ipairs(nv._entries or {}) do
+                total_nv_during_suspend = total_nv_during_suspend + 1
+                if e.owner == "alerts" then
+                    alerts_nv_during_suspend = alerts_nv_during_suspend + 1
+                end
             end
-            assert(nv_during_suspend == 0,
-                "After first resume: NV must be 0 before callback writes, got "
-                .. tostring(nv_during_suspend))
-            assert(AL._root_panel:visible() == false,
-                "After first resume: owned root must be hidden before callback writes")
+            assert(alerts_nv_during_suspend == 8,
+                "After first resume: certified opening must maintain 8 alerts NV entries, got "
+                .. tostring(alerts_nv_during_suspend))
+            assert(AL._root_panel:visible() == true,
+                "After first resume: owned root must remain visible during certified opening suspension")
+
+            local pnr_leaves = {
+                _na.icon_noreturnbox,
+                _na.pnr_text,
+                _na.pnr_timer,
+                _na.pnr_bg,
+                _na.pnr_lt,
+                _na.pnr_lb,
+                _na.pnr_rt,
+                _na.pnr_rb,
+            }
+            for i, leaf in ipairs(pnr_leaves) do
+                assert(leaf:visible() == false,
+                    "After first resume: PNR leaf #" .. tostring(i) .. " must remain visible=false, got "
+                    .. tostring(leaf:visible()))
+            end
 
             local ok2, status2 = coroutine.resume(open_co)
             assert(ok2, "open coroutine second resume failed: " .. tostring(status2))
@@ -868,24 +931,28 @@ class AlertsOpeningCallbackBoundaryTests(unittest.TestCase):
                 "Callback observation: timer must have been visible=true inside done_cb, got "
                 .. tostring(callback_timer_visible))
 
-            local nv_after_sync = 0
-            for _ in ipairs(nv._entries or {}) do
-                nv_after_sync = nv_after_sync + 1
+            local alerts_nv_after_sync = 0
+            local total_nv_after_sync = 0
+            for _, e in ipairs(nv._entries or {}) do
+                total_nv_after_sync = total_nv_after_sync + 1
+                if e.owner == "alerts" then
+                    alerts_nv_after_sync = alerts_nv_after_sync + 1
+                end
             end
-            assert(nv_after_sync == 8,
-                "After second resume: NV must be 8 after sync, got "
-                .. tostring(nv_after_sync))
+            assert(alerts_nv_after_sync == 8,
+                "After second resume: NV must be 8 after PostHook reconciliation, got "
+                .. tostring(alerts_nv_after_sync))
             assert(AL._root_panel:visible() == true,
-                "After second resume: owned root must be visible after sync")
+                "After second resume: owned root must be visible after reconciliation")
             assert(coroutine.status(text_co) == "suspended",
                 "After second resume: text coroutine must still be suspended, got "
                 .. tostring(coroutine.status(text_co)))
 
             assert(pnr_text:visible() == false,
-                "RED: actual text must be visible=false after NV acquire, got "
+                "RED: actual text must be visible=false after PostHook reconciliation, got "
                 .. tostring(pnr_text:visible()))
             assert(pnr_timer:visible() == false,
-                "RED: actual timer must be visible=false after NV acquire, got "
+                "RED: actual timer must be visible=false after PostHook reconciliation, got "
                 .. tostring(pnr_timer:visible()))
 
             local assault_bg_box = corner._bg_box
@@ -906,26 +973,30 @@ class AlertsOpeningCallbackBoundaryTests(unittest.TestCase):
             local ok_unrel1, err_unrel1 = coroutine.resume(unrelated_co)
             assert(ok_unrel1, "unrelated coroutine first resume failed: " .. tostring(err_unrel1))
 
-            local nv_after_unrel1 = 0
-            for _ in ipairs(nv._entries or {}) do
-                nv_after_unrel1 = nv_after_unrel1 + 1
+            local alerts_nv_after_unrel1 = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then
+                    alerts_nv_after_unrel1 = alerts_nv_after_unrel1 + 1
+                end
             end
-            assert(nv_after_unrel1 == 8,
+            assert(alerts_nv_after_unrel1 == 8,
                 "After unrelated first resume: NV must remain 8, got "
-                .. tostring(nv_after_unrel1))
+                .. tostring(alerts_nv_after_unrel1))
             assert(AL._root_panel:visible() == true,
                 "After unrelated first resume: owned root must remain visible")
 
             local ok_unrel2, err_unrel2 = coroutine.resume(unrelated_co)
             assert(ok_unrel2, "unrelated coroutine second resume failed: " .. tostring(err_unrel2))
 
-            local nv_after_unrel2 = 0
-            for _ in ipairs(nv._entries or {}) do
-                nv_after_unrel2 = nv_after_unrel2 + 1
+            local alerts_nv_after_unrel2 = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then
+                    alerts_nv_after_unrel2 = alerts_nv_after_unrel2 + 1
+                end
             end
-            assert(nv_after_unrel2 == 8,
+            assert(alerts_nv_after_unrel2 == 8,
                 "After unrelated second resume: NV must remain 8, got "
-                .. tostring(nv_after_unrel2))
+                .. tostring(alerts_nv_after_unrel2))
             assert(AL._root_panel:visible() == true,
                 "After unrelated second resume: owned root must remain visible")
 
@@ -939,18 +1010,18 @@ class AlertsOpeningCallbackBoundaryTests(unittest.TestCase):
                 "After disable: timer must be restored to visible=true, got "
                 .. tostring(pnr_timer:visible()))
 
-            assert(_na.icon_noreturnbox:visible() == true and math.abs(_na.icon_noreturnbox:alpha() - 0.63) < 0.001,
-                "RED: icon_noreturnbox must restore visible=true and alpha=0.63")
-            assert(_na.pnr_bg:visible() == true and math.abs(_na.pnr_bg:alpha() - 0.41) < 0.001,
-                "RED: pnr_bg must restore visible=true and alpha=0.41")
-            assert(_na.pnr_lt:visible() == true and math.abs(_na.pnr_lt:alpha() - 0.42) < 0.001,
-                "RED: pnr_lt must restore visible=true and alpha=0.42")
-            assert(_na.pnr_lb:visible() == true and math.abs(_na.pnr_lb:alpha() - 0.43) < 0.001,
-                "RED: pnr_lb must restore visible=true and alpha=0.43")
-            assert(_na.pnr_rt:visible() == true and math.abs(_na.pnr_rt:alpha() - 0.44) < 0.001,
-                "RED: pnr_rt must restore visible=true and alpha=0.44")
-            assert(_na.pnr_rb:visible() == false and math.abs(_na.pnr_rb:alpha() - 0.45) < 0.001,
-                "RED: pnr_rb must restore exact prior visible=false and alpha=0.45")
+            assert(_na.icon_noreturnbox:visible() == true and math.abs(_na.icon_noreturnbox:alpha() - post_show_snapshot.icon_noreturnbox_alpha) < 0.001,
+                "RED: icon_noreturnbox must restore visible=true and alpha=" .. post_show_snapshot.icon_noreturnbox_alpha)
+            assert(_na.pnr_bg:visible() == true and math.abs(_na.pnr_bg:alpha() - post_show_snapshot.pnr_bg_alpha) < 0.001,
+                "RED: pnr_bg must restore visible=true and alpha=" .. post_show_snapshot.pnr_bg_alpha)
+            assert(_na.pnr_lt:visible() == true and math.abs(_na.pnr_lt:alpha() - post_show_snapshot.pnr_lt_alpha) < 0.001,
+                "RED: pnr_lt must restore visible=true and alpha=" .. post_show_snapshot.pnr_lt_alpha)
+            assert(_na.pnr_lb:visible() == true and math.abs(_na.pnr_lb:alpha() - post_show_snapshot.pnr_lb_alpha) < 0.001,
+                "RED: pnr_lb must restore visible=true and alpha=" .. post_show_snapshot.pnr_lb_alpha)
+            assert(_na.pnr_rt:visible() == true and math.abs(_na.pnr_rt:alpha() - post_show_snapshot.pnr_rt_alpha) < 0.001,
+                "RED: pnr_rt must restore visible=true and alpha=" .. post_show_snapshot.pnr_rt_alpha)
+            assert(_na.pnr_rb:visible() == false and math.abs(_na.pnr_rb:alpha() - post_show_snapshot.pnr_rb_alpha) < 0.001,
+                "RED: pnr_rb must restore exact prior visible=false and alpha=" .. post_show_snapshot.pnr_rb_alpha)
 
             assert(_na.hud_panel:visible() == true, "hud_panel parent must remain visible")
             assert(_na.pnr_panel:visible() == true and math.abs(_na.pnr_panel:alpha() - 0.91) < 0.001,

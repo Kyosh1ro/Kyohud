@@ -148,4 +148,47 @@ function L.objectives_region(w, h)
     }
 end
 
+function L.assault_alerts(parent_w, parent_h, scale, variant)
+    local g = L.resolve(parent_w, parent_h, scale)
+    if not g.valid then return nil end
+    local es = g.uniform_scale * g.scale
+    local RIGHT_MARGIN = 40 * es
+    local TOP = 36 * es
+    local TICKER_W = 340 * es
+    local TICKER_H = 40 * es
+    local GAP = 3 * es
+    local STATUS_W = 40 * es
+    local STATUS_H = 40 * es
+    local COUNTER_VGAP = 4 * es
+    local COUNTER_H = 26 * es
+    local ROOT_W = TICKER_W + GAP + STATUS_W
+    local ROOT_H = (variant == "casing") and TICKER_H or (TICKER_H + COUNTER_VGAP + COUNTER_H)
+    local root_x = parent_w - RIGHT_MARGIN - ROOT_W
+    local root_y = TOP
+    if not finite(root_x) or not finite(root_y) then return nil end
+    if root_x < 0 or root_y < 0 then return nil end
+    if root_x + ROOT_W > parent_w or root_y + ROOT_H > parent_h then return nil end
+    local obj = L.objectives_region(parent_w, parent_h)
+    if obj and root_x < obj.w and root_y < obj.h then return nil end
+    return {
+        valid = true,
+        es = es,
+        root_x = root_x,
+        root_y = root_y,
+        root_w = ROOT_W,
+        root_h = ROOT_H,
+        ticker = { x = 0, y = 0, w = TICKER_W, h = TICKER_H },
+        bg = { x = 0, y = 0, w = TICKER_W, h = TICKER_H },
+        status = { x = TICKER_W + GAP, y = 0, w = STATUS_W, h = STATUS_H },
+        counter_y = TICKER_H + COUNTER_VGAP,
+        counter_h = COUNTER_H,
+        ticker_font = math.max(12, math.floor(20 * es)),
+        counter_font = math.max(10, math.floor(16 * es)),
+        cell_pad = 10 * es,
+        icon_size = 16 * es,
+        icon_gap = 6 * es,
+        cell_gap = 3 * es,
+    }
+end
+
 kyohud.hud.layout = L

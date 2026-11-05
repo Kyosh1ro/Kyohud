@@ -17,25 +17,28 @@ local ALERTS_ROOT_NAME = "kyohud_alerts_panel"
 local PNR_TIMER_NAME = "pnr_timer"
 local PNR_STATUS_NAME = "pnr_status"
 local PNR_TITLE_NAME = "pnr_title"
+local PNR_BG_NAME = "pnr_bg"
+local PNR_ICON_NAME = "pnr_icon"
+local PNR_STATUS_BG_NAME = "pnr_status_bg"
 
 local REF_MARGIN_RIGHT = 40
 local REF_TOP = 36
-local REF_WIDTH = 380
-local REF_HEIGHT = 76
-local REF_ROW_H = 38
-local REF_STATUS_W = 240
 local REF_FONT_SIZE = 20
 local MIN_FONT_SIZE = 12
 local POLL_INTERVAL = 0.5
+local REF_PNR_TITLE_X = 12
+local REF_PNR_TIMER_RIGHT = 328
+local REF_PNR_TITLE_GAP = 10
+local REF_PNR_STATUS_FONT = 16
+local REF_PNR_STATUS_PAD = 10
 
 local CASING_ROOT_NAME = "kyohud_casing_panel"
 local CASING_TICKER_NAME = "kyohud_casing_ticker"
 local CASING_A_NAME = "kyohud_casing_a"
 local CASING_B_NAME = "kyohud_casing_b"
-local REF_CASING_WIDTH = 380
-local REF_CASING_HEIGHT = 38
+local CASING_BG_NAME = "kyohud_casing_bg"
+local CASING_ICON_NAME = "kyohud_casing_icon"
 local REF_CASING_TICKER_W = 340
-local REF_CASING_TICKER_H = 38
 local REF_CASING_TICKER_SPEED = 60
 local REF_CASING_TICKER_GAP = 40
 
@@ -118,6 +121,25 @@ AL._casing_native_acquired = AL._casing_native_acquired or false
 AL._casing_native_generation = AL._casing_native_generation or 0
 AL._whisper_mode = AL._whisper_mode
 
+AL._casing_bg = AL._casing_bg
+AL._casing_icon = AL._casing_icon
+AL._pnr_bg = AL._pnr_bg
+AL._pnr_icon = AL._pnr_icon
+AL._pnr_status_bg = AL._pnr_status_bg
+AL._pnr_timer_measured_w = AL._pnr_timer_measured_w or 0
+
+AL._casing_closing = AL._casing_closing or false
+AL._casing_close_manager = AL._casing_close_manager
+AL._casing_close_corner = AL._casing_close_corner
+AL._casing_close_state = AL._casing_close_state
+AL._casing_close_bg_box = AL._casing_close_bg_box
+AL._casing_close_icon = AL._casing_close_icon
+AL._casing_close_bg_done = AL._casing_close_bg_done or false
+AL._casing_close_icon_done = AL._casing_close_icon_done or false
+AL._casing_close_exit_alpha = AL._casing_close_exit_alpha
+AL._casing_close_generation = AL._casing_close_generation
+AL._casing_hide_icon_observer = AL._casing_hide_icon_observer
+
 local function al_is_vr()
     return _G.IS_VR == true
 end
@@ -157,6 +179,106 @@ local function al_safe_call(obj, method_name, ...)
     if not ok_call then return CALL_ERROR, nil end
     return CALL_OK, result
 end
+
+local function al_create_bitmap(parent, opts)
+    if not parent or not al_panel_alive(parent) then return CALL_MISSING, nil end
+    local texture_path = opts and opts.texture
+    if texture_path and DB~=nil then
+        AL._presentation_textures = AL._presentation_textures or {}
+        local available = AL._presentation_textures[texture_path]
+        if available==nil then
+            local ok, found = pcall(function()
+                local has = DB.has
+                if type(has)~="function" then return false end
+                return has(DB,Idstring("texture"),Idstring(texture_path))
+            end)
+            available = ok and found==true
+            AL._presentation_textures[texture_path] = available
+        end
+        if not available then return CALL_ERROR,nil end
+    end
+    return al_safe_call(parent, "bitmap", opts)
+end
+
+local function al_read_color(prim)
+    if not prim or not al_panel_alive(prim) then return nil end
+    local ok_c, c = pcall(function() return prim:color() end)
+    if not ok_c or c == nil then return nil end
+    local ok_r, r = pcall(function() return c.r end)
+    local ok_g, g = pcall(function() return c.g end)
+    local ok_b, b = pcall(function() return c.b end)
+    local ok_a, a = pcall(function() return c.a end)
+    local ok_alpha, alpha = pcall(function() return prim:alpha() end)
+    if not ok_r or not ok_g or not ok_b or not ok_a or not ok_alpha
+        or not al_is_finite(r) or not al_is_finite(g) or not al_is_finite(b)
+        or not al_is_finite(a) or not al_is_finite(alpha) then return nil end
+    return c
+end
+
+local function al_texture_matches(actual, expected)
+    if type(actual) == "string" then return actual == expected end
+    local ok, same = pcall(function() return actual:key() == Idstring(expected):key() end)
+    return ok and same == true
+end
+
+local function al_shape(p, x, y, w, h)
+    if not p or not al_panel_alive(p) then return end
+    local ok, same = pcall(function()
+        return p:x() == x and p:y() == y and p:w() == w and p:h() == h
+    end)
+    if not ok or not same then al_safe_call(p, "set_shape", x, y, w, h) end
+end
+
+local function al_style_matches(p, r, g, b, a, layer, expected_color_alpha)
+    local c = al_read_color(p)
+    if not c then return false end
+    local color_a_expected = expected_color_alpha
+    if color_a_expected == nil then color_a_expected = a end
+    local ok, same = pcall(function()
+        return math.abs(c.r-r)<.01 and math.abs(c.g-g)<.01 and math.abs(c.b-b)<.01
+            and math.abs(c.a-color_a_expected)<.01 and math.abs(p:alpha()-a)<.01
+            and p:layer()==layer and p:visible()==true
+    end)
+    return ok and same == true
+end
+
+local function al_style(p, r, g, b, a, layer)
+    if not p or not al_panel_alive(p) then return end
+    if not al_style_matches(p, r, g, b, a, layer) then
+        -- Opaque tint avoids multiplying opacity twice in Diesel (a*a observed otherwise).
+        al_safe_call(p, "set_color", Color(1, r, g, b))
+        al_safe_call(p, "set_alpha", a)
+        al_safe_call(p, "set_layer", layer)
+        al_safe_call(p, "set_visible", true)
+    end
+end
+
+local function al_font_size(p, size)
+    if not p or not al_panel_alive(p) then return end
+    local status, actual = al_safe_call(p, "font_size")
+    if status ~= CALL_OK or actual ~= size then al_safe_call(p, "set_font_size", size) end
+end
+
+local function al_text_width(p)
+    if not p or not al_panel_alive(p) then return nil end
+    local ok, _, _, w, h = pcall(function() return p:text_rect() end)
+    if ok and al_is_finite(w) and al_is_finite(h) and w>0 and h>0 then
+        return math.ceil(w)+1
+    end
+end
+
+local DARK_R = 0x0B / 255
+local DARK_G = 0x0D / 255
+local DARK_B = 0x11 / 255
+local CYAN_R = 0x7F / 255
+local CYAN_G = 0xCD / 255
+local CYAN_B = 0xE3 / 255
+local AMBER_R = 0.8
+local AMBER_G = 0.6
+local AMBER_B = 0.2
+
+local CASING_TEXTURE_STEALTH = "guis/textures/pd2/hud_icon_stealthbox"
+local PNR_TEXTURE_NORETURN = "guis/textures/pd2/hud_icon_noreturnbox"
 
 local function al_get_runtime_root()
     local rt = kyohud.hud.runtime
@@ -469,42 +591,33 @@ function AL:_compute_layout(parent_w, parent_h)
     if not al_is_finite(parent_w) or not al_is_finite(parent_h) then return nil end
     if parent_w <= 0 or parent_h <= 0 then return nil end
     local layout = kyohud.hud.layout
-    if not layout or type(layout.resolve) ~= "function" then return nil end
+    if not layout or type(layout.assault_alerts) ~= "function" then return nil end
     local scale = (kyohud.settings and kyohud.settings.hud_scale) or 1
-    local geom = layout.resolve(parent_w, parent_h, scale)
+    local geom = layout.assault_alerts(parent_w, parent_h, scale)
     if not geom or not geom.valid then return nil end
-    local us = geom.uniform_scale or 1
-    local s = geom.scale or 1
-    local es = us * s
-    local root_w = REF_WIDTH * es
-    local root_h = REF_HEIGHT * es
-    local margin_right = REF_MARGIN_RIGHT * es
-    local top = REF_TOP * es
-    local root_x = parent_w - margin_right - root_w
-    local root_y = top
-    if root_x < 0 or root_y < 0 then return nil end
-    if root_x + root_w > parent_w or root_y + root_h > parent_h then return nil end
+    local es = geom.es or 1
     if type(layout.objectives_region) == "function" then
         local obj = layout.objectives_region(parent_w, parent_h)
-        if obj and root_x < obj.w and root_y < obj.h then return nil end
+        if obj and geom.root_x < obj.w and geom.root_y < obj.h then return nil end
     end
-    local row_h = REF_ROW_H * es
-    local bottom_h = root_h - row_h
-    if bottom_h <= 0 then return nil end
-    local status_w = REF_STATUS_W * es
-    local timer_w = root_w - status_w
-    if status_w <= 0 or timer_w <= 0 then return nil end
-    local font_size = math.max(MIN_FONT_SIZE, math.floor(REF_FONT_SIZE * es))
+    local title_x = REF_PNR_TITLE_X * es
+    local timer_right = REF_PNR_TIMER_RIGHT * es
+    local status_font = math.max(MIN_FONT_SIZE, math.floor(REF_PNR_STATUS_FONT * es))
     return {
         es = es,
-        root_x = root_x,
-        root_y = root_y,
-        root_w = root_w,
-        root_h = root_h,
-        font_size = font_size,
-        title = { x = 0, y = 0, w = root_w, h = row_h },
-        status = { x = 0, y = row_h, w = status_w, h = bottom_h },
-        timer = { x = status_w, y = row_h, w = timer_w, h = bottom_h },
+        root_x = geom.root_x,
+        root_y = geom.root_y,
+        root_w = geom.root_w,
+        root_h = geom.root_h,
+        font_size = geom.ticker_font,
+        bg = geom.bg,
+        icon = geom.status,
+        title_x = title_x,
+        timer_right = timer_right,
+        title = { x = title_x, y = 0, w = 0, h = geom.ticker.h },
+        timer = { x = 0, y = 0, w = 0, h = geom.ticker.h },
+        status_font = status_font,
+        status = { x = 0, y = geom.counter_y, w = geom.root_w, h = geom.counter_h },
     }
 end
 
@@ -534,6 +647,75 @@ function AL:_resolve_timer_text()
     return format_pnr_timer(self._state.timer) or "00:00"
 end
 
+function AL:_ensure_pnr_bg()
+    if self._pnr_bg and al_panel_alive(self._pnr_bg) then return end
+    if not self._root_panel or not al_panel_alive(self._root_panel) then return end
+    if not self._layout_cache then return end
+    local layout = self._layout_cache
+    local bg = layout.bg
+    if not bg then return end
+    local status, prim = al_safe_call(self._root_panel, "rect", {
+        name = PNR_BG_NAME,
+        x = bg.x, y = bg.y, w = bg.w, h = bg.h,
+        color = Color(1, CYAN_R, CYAN_G, CYAN_B),
+        visible = true,
+        layer = 0,
+    })
+    if status == CALL_OK and prim then
+        self._pnr_bg = prim
+    end
+end
+
+function AL:_ensure_pnr_icon()
+    if self._pnr_icon and al_panel_alive(self._pnr_icon) then return end
+    if not self._root_panel or not al_panel_alive(self._root_panel) then return end
+    if not self._layout_cache then return end
+    local layout = self._layout_cache
+    local icon = layout.icon
+    if not icon then return end
+    local status, prim = al_create_bitmap(self._root_panel, {
+        name = PNR_ICON_NAME,
+        texture = PNR_TEXTURE_NORETURN,
+        x = icon.x, y = icon.y, w = icon.w, h = icon.h,
+        visible = true,
+        layer = 1,
+    })
+    if status == CALL_OK and prim then
+        self._pnr_icon = prim
+    end
+end
+
+function AL:_measure_and_place_timer()
+    if not self._timer_prim or not al_panel_alive(self._timer_prim) then return end
+    if not self._layout_cache then return end
+    local layout = self._layout_cache
+    local ok_mr, _, _, mw, mh = pcall(function() return self._timer_prim:text_rect() end)
+    if not ok_mr or not al_is_finite(mw) or mw <= 0 then return end
+    local measured_w = math.ceil(mw)
+    local timer_x = layout.timer_right - measured_w
+    if timer_x < 0 then timer_x = 0 end
+    al_safe_call(self._timer_prim, "set_shape", timer_x, 0, measured_w, layout.timer.h)
+    self._pnr_timer_measured_w = measured_w
+end
+
+function AL:_compute_title_available_w()
+    if not self._layout_cache then return 0 end
+    local layout = self._layout_cache
+    local timer_x = 0
+    if self._timer_prim and al_panel_alive(self._timer_prim) then
+        local ok_tx, tx = al_safe_call(self._timer_prim, "x")
+        if ok_tx == CALL_OK and al_is_finite(tx) then
+            timer_x = tx
+        end
+    end
+    if timer_x <= 0 then
+        timer_x = layout.timer_right - (self._pnr_timer_measured_w or 0)
+    end
+    local available = timer_x - REF_PNR_TITLE_GAP * (layout.es or 1) - layout.title_x
+    if available < 0 then available = 0 end
+    return available
+end
+
 function AL:_ensure_title_prim()
     if self._title_prim and al_panel_alive(self._title_prim) then return end
     if not self._root_panel or not al_panel_alive(self._root_panel) then return end
@@ -541,14 +723,16 @@ function AL:_ensure_title_prim()
     local font = self:_get_font()
     local layout = self._layout_cache
     local text = self:_resolve_title_text()
+    local available_w = self:_compute_title_available_w()
+    if available_w <= 0 then available_w = layout.root_w end
     local status, prim = al_safe_call(self._root_panel, "text", {
         name = PNR_TITLE_NAME,
         text = text,
         font = font,
         font_size = layout.font_size,
         color = Color(1, 1, 0, 0),
-        x = layout.title.x, y = layout.title.y,
-        w = layout.title.w, h = layout.title.h,
+        x = layout.title_x, y = 0,
+        w = available_w, h = layout.timer.h,
         align = "left", vertical = "center",
         wrap = false, word_wrap = false,
         visible = true,
@@ -562,6 +746,23 @@ function AL:_ensure_title_prim()
     end
 end
 
+function AL:_ensure_status_bg_prim()
+    if self._pnr_status_bg and al_panel_alive(self._pnr_status_bg) then return end
+    if not self._root_panel or not al_panel_alive(self._root_panel) then return end
+    if not self._layout_cache then return end
+    local layout = self._layout_cache
+    local status, prim = al_safe_call(self._root_panel, "rect", {
+        name = PNR_STATUS_BG_NAME,
+        x = 0, y = layout.status.y, w = layout.root_w, h = layout.status.h,
+        color = Color(0.75, DARK_R, DARK_G, DARK_B),
+        visible = true,
+        layer = 0,
+    })
+    if status == CALL_OK and prim then
+        self._pnr_status_bg = prim
+    end
+end
+
 function AL:_ensure_status_prim()
     if self._status_prim and al_panel_alive(self._status_prim) then return end
     if not self._root_panel or not al_panel_alive(self._root_panel) then return end
@@ -569,15 +770,16 @@ function AL:_ensure_status_prim()
     local font = self:_get_font()
     local layout = self._layout_cache
     local text = self:_resolve_status_text()
+    local status_x = layout.root_w - REF_PNR_STATUS_PAD * (layout.es or 1)
     local status, prim = al_safe_call(self._root_panel, "text", {
         name = PNR_STATUS_NAME,
         text = text,
         font = font,
-        font_size = layout.font_size,
+        font_size = layout.status_font,
         color = Color(1, 1, 1, 1),
-        x = layout.status.x, y = layout.status.y,
-        w = layout.status.w, h = layout.status.h,
-        align = "left", vertical = "center",
+        x = 0, y = layout.status.y,
+        w = status_x, h = layout.status.h,
+        align = "right", vertical = "center",
         wrap = false, word_wrap = false,
         visible = true,
         layer = 1,
@@ -601,8 +803,8 @@ function AL:_ensure_timer_prim()
         font = font,
         font_size = layout.font_size,
         color = Color(1, 1, 0, 0),
-        x = layout.timer.x, y = layout.timer.y,
-        w = layout.timer.w, h = layout.timer.h,
+        x = 0, y = 0,
+        w = layout.root_w, h = layout.timer.h,
         align = "right", vertical = "center",
         wrap = false, word_wrap = false,
         visible = true,
@@ -611,40 +813,94 @@ function AL:_ensure_timer_prim()
     if status == CALL_OK and prim then
         self._timer_prim = prim
         self._cached_timer_text = text
+        self:_measure_and_place_timer()
     end
 end
 
 function AL:_ensure_primitives()
-    self:_ensure_title_prim()
-    self:_ensure_status_prim()
+    self:_ensure_pnr_bg()
+    self:_ensure_pnr_icon()
     self:_ensure_timer_prim()
+    self:_ensure_title_prim()
+    self:_ensure_status_bg_prim()
+    self:_ensure_status_prim()
 end
 
 local function sync_text_prim(prim, new_text, cached_text)
-    if not prim or not al_panel_alive(prim) then return cached_text end
+    if not prim or not al_panel_alive(prim) then return cached_text, false end
+    local changed = false
     if new_text ~= cached_text then
         al_safe_call(prim, "set_text", new_text)
         local ok_r, r = pcall(function() return prim:text() end)
         if ok_r and r == new_text then
             cached_text = new_text
+            changed = true
         end
     else
         local ok_a, actual = pcall(function() return prim:text() end)
         if ok_a and type(actual) == "string" and actual ~= new_text then
             al_safe_call(prim, "set_text", new_text)
+            changed = true
         end
     end
     local ok_v, v = pcall(function() return prim:visible() end)
     if ok_v and v ~= true then
         al_safe_call(prim, "set_visible", true)
     end
-    return cached_text
+    return cached_text, changed
 end
 
 function AL:_sync_primitives()
-    self._cached_title_text = sync_text_prim(self._title_prim, self:_resolve_title_text(), self._cached_title_text)
-    self._cached_status_text = sync_text_prim(self._status_prim, self:_resolve_status_text(), self._cached_status_text)
+    local g = self._layout_cache
+    if not g then return end
+    al_font_size(self._timer_prim, g.font_size)
+    al_font_size(self._title_prim, g.font_size)
+    al_font_size(self._status_prim, g.status_font)
     self._cached_timer_text = sync_text_prim(self._timer_prim, self:_resolve_timer_text(), self._cached_timer_text)
+    self._cached_status_text = sync_text_prim(self._status_prim, self:_resolve_status_text(), self._cached_status_text)
+    local timer_w, status_w = al_text_width(self._timer_prim), al_text_width(self._status_prim)
+    if not timer_w or not status_w then return end
+    local pad, gap = REF_PNR_STATUS_PAD*g.es, REF_PNR_TITLE_GAP*g.es
+    local budget = g.timer_right-timer_w-gap-g.title_x
+    if budget<=0 or status_w+2*pad>g.root_w then return end
+    local source = self:_resolve_title_text()
+    local _, actual_title = al_safe_call(self._title_prim,"text")
+    local actual_width = al_text_width(self._title_prim)
+    if self._pnr_title_source~=source or self._pnr_title_budget~=budget
+        or self._pnr_title_font~=g.font_size or not self._cached_title_text
+        or actual_title~=self._cached_title_text or not actual_width or actual_width>budget then
+        local fitted, display = source, source
+        al_safe_call(self._title_prim, "set_text", display)
+        local width = al_text_width(self._title_prim)
+        while width and width>budget and #fitted>0 do
+            -- Remove a complete UTF-8 codepoint, including continuation bytes.
+            local cut = #fitted
+            while cut>1 and fitted:byte(cut)>=128 and fitted:byte(cut)<192 do cut=cut-1 end
+            fitted = fitted:sub(1, cut-1)
+            display = fitted .. "..."
+            al_safe_call(self._title_prim, "set_text", display)
+            width = al_text_width(self._title_prim)
+        end
+        if not width or width>budget or fitted=="" then return end
+        self._cached_title_text = display
+        self._pnr_title_source, self._pnr_title_budget, self._pnr_title_font = source, budget, g.font_size
+    end
+    sync_text_prim(self._title_prim, self._cached_title_text, self._cached_title_text)
+    self._pnr_timer_region = {x=g.timer_right-timer_w,y=0,w=timer_w,h=g.timer.h}
+    self._pnr_title_region = {x=g.title_x,y=0,w=budget,h=g.timer.h}
+    self._pnr_status_region = {x=g.root_w-status_w-pad,y=g.status.y,w=status_w,h=g.status.h}
+    self._pnr_status_bg_region = {x=g.root_w-status_w-2*pad,y=g.status.y,w=status_w+2*pad,h=g.status.h}
+    local t, title, s, bg = self._pnr_timer_region, self._pnr_title_region, self._pnr_status_region, self._pnr_status_bg_region
+    al_shape(self._timer_prim, t.x,t.y,t.w,t.h)
+    al_shape(self._title_prim, title.x,title.y,title.w,title.h)
+    al_shape(self._status_prim, s.x,s.y,s.w,s.h)
+    al_shape(self._pnr_status_bg, bg.x,bg.y,bg.w,bg.h)
+    al_style(self._pnr_bg, CYAN_R,CYAN_G,CYAN_B,1,0)
+    al_style(self._pnr_status_bg, DARK_R,DARK_G,DARK_B,.75,0)
+    al_style(self._title_prim, 17/255,17/255,17/255,1,1)
+    al_style(self._timer_prim, 17/255,17/255,17/255,1,1)
+    al_style(self._status_prim, 201/255,209/255,216/255,1,1)
+    al_style(self._pnr_icon, 1,1,1,1,1)
 end
 
 function AL:_update_layout()
@@ -666,23 +922,43 @@ function AL:_update_layout()
         or self._layout_cache.root_w ~= new_layout.root_w
         or self._layout_cache.root_h ~= new_layout.root_h
         or self._layout_cache.font_size ~= new_layout.font_size
-    if not changed then return end
+    self._layout_cache = new_layout
+    if not changed then
+        al_shape(self._root_panel, new_layout.root_x,new_layout.root_y,new_layout.root_w,new_layout.root_h)
+        al_shape(self._pnr_bg, new_layout.bg.x,new_layout.bg.y,new_layout.bg.w,new_layout.bg.h)
+        al_shape(self._pnr_icon, new_layout.icon.x,new_layout.icon.y,new_layout.icon.w,new_layout.icon.h)
+        return
+    end
     local rs = al_safe_call(self._root_panel, "set_shape", new_layout.root_x, new_layout.root_y, new_layout.root_w, new_layout.root_h)
     if rs ~= CALL_OK then
         self._layout_cache = nil
         return
     end
+    if self._pnr_bg and al_panel_alive(self._pnr_bg) and new_layout.bg then
+        al_safe_call(self._pnr_bg, "set_shape", new_layout.bg.x, new_layout.bg.y, new_layout.bg.w, new_layout.bg.h)
+    end
+    if self._pnr_icon and al_panel_alive(self._pnr_icon) and new_layout.icon then
+        al_safe_call(self._pnr_icon, "set_shape", new_layout.icon.x, new_layout.icon.y, new_layout.icon.w, new_layout.icon.h)
+    end
+    if self._pnr_status_bg and al_panel_alive(self._pnr_status_bg) then
+        al_safe_call(self._pnr_status_bg, "set_shape", 0, new_layout.status.y, new_layout.root_w, new_layout.status.h)
+    end
     if self._title_prim and al_panel_alive(self._title_prim) then
-        al_safe_call(self._title_prim, "set_shape", new_layout.title.x, new_layout.title.y, new_layout.title.w, new_layout.title.h)
         al_safe_call(self._title_prim, "set_font_size", new_layout.font_size)
     end
+    if self._timer_prim and al_panel_alive(self._timer_prim) then
+        al_safe_call(self._timer_prim, "set_font_size", new_layout.font_size)
+        self:_measure_and_place_timer()
+    end
     if self._status_prim and al_panel_alive(self._status_prim) then
-        al_safe_call(self._status_prim, "set_shape", new_layout.status.x, new_layout.status.y, new_layout.status.w, new_layout.status.h)
-        al_safe_call(self._status_prim, "set_font_size", new_layout.font_size)
+        al_safe_call(self._status_prim, "set_shape", 0, new_layout.status.y, new_layout.root_w - REF_PNR_STATUS_PAD * (new_layout.es or 1), new_layout.status.h)
+        al_safe_call(self._status_prim, "set_font_size", new_layout.status_font)
     end
     if self._timer_prim and al_panel_alive(self._timer_prim) then
-        al_safe_call(self._timer_prim, "set_shape", new_layout.timer.x, new_layout.timer.y, new_layout.timer.w, new_layout.timer.h)
-        al_safe_call(self._timer_prim, "set_font_size", new_layout.font_size)
+        local available_w = self:_compute_title_available_w()
+        if self._title_prim and al_panel_alive(self._title_prim) and available_w > 0 then
+            al_safe_call(self._title_prim, "set_shape", new_layout.title_x, 0, available_w, new_layout.timer.h)
+        end
     end
     self._cached_font_size = new_layout.font_size
     self._layout_cache = new_layout
@@ -692,7 +968,7 @@ function AL:_verify_render()
     local mode = self:_determine_active_mode()
     if mode == "pnr" then
         return self:_verify_pnr_render()
-    elseif mode == "casing" then
+    elseif mode == "casing" or mode == "casing_closing" then
         return self:_verify_casing_render()
     end
     self._render_verified = false
@@ -749,7 +1025,23 @@ function AL:_verify_pnr_render()
         return false
     end
 
-    local function check_leaf(prim, child_name, desired_text, region)
+    if not self:_verify_decoration(self._pnr_bg, PNR_BG_NAME, geom.bg, CYAN_R, CYAN_G, CYAN_B, 1)
+        or not al_style_matches(self._pnr_bg,CYAN_R,CYAN_G,CYAN_B,1,0) then
+        self._render_verified = false
+        return false
+    end
+    if not self:_verify_icon(self._pnr_icon, PNR_ICON_NAME, geom.icon, PNR_TEXTURE_NORETURN)
+        or not al_style_matches(self._pnr_icon,1,1,1,1,1) then
+        self._render_verified = false
+        return false
+    end
+    if not self._pnr_status_bg_region or not self:_verify_decoration(self._pnr_status_bg, PNR_STATUS_BG_NAME, self._pnr_status_bg_region, DARK_R, DARK_G, DARK_B, 0.75)
+        or not al_style_matches(self._pnr_status_bg,DARK_R,DARK_G,DARK_B,.75,0) then
+        self._render_verified = false
+        return false
+    end
+
+    local function check_leaf(prim, child_name, desired_text, region, expected_font_size)
         if not prim or not al_panel_alive(prim) then return false end
         if type(desired_text) ~= "string" or desired_text == "" or desired_text:find("^LOC:") then
             return false
@@ -764,7 +1056,8 @@ function AL:_verify_pnr_render()
         if not ok_t or type(t) ~= "string" or t ~= desired_text then return false end
         local ok_fs, fs = pcall(function() return prim:font_size() end)
         if not ok_fs or not al_is_finite(fs) or fs <= 0 then return false end
-        if math.abs(fs - geom.font_size) > tol then return false end
+        local ref_fs = expected_font_size or geom.font_size
+        if math.abs(fs - ref_fs) > tol then return false end
         local s_px, px = al_safe_call(prim, "x")
         local s_py, py = al_safe_call(prim, "y")
         local s_pw, pw = al_safe_call(prim, "w")
@@ -776,8 +1069,8 @@ function AL:_verify_pnr_render()
             return false
         end
         if pw <= 0 or ph <= 0 then return false end
-        if math.abs(px - region.x) > tol or math.abs(py - region.y) > tol
-            or math.abs(pw - region.w) > tol or math.abs(ph - region.h) > tol then
+        if not region or math.abs(px-region.x)>tol or math.abs(pw-region.w)>tol
+            or math.abs(py - region.y) > tol or math.abs(ph - region.h) > tol then
             return false
         end
         local ok_mr, _, _, mw, mh = pcall(function() return prim:text_rect() end)
@@ -787,20 +1080,116 @@ function AL:_verify_pnr_render()
         return true
     end
 
-    if not check_leaf(self._title_prim, PNR_TITLE_NAME, self._cached_title_text, geom.title) then
+    if not check_leaf(self._title_prim, PNR_TITLE_NAME, self._cached_title_text, self._pnr_title_region)
+        or not al_style_matches(self._title_prim,17/255,17/255,17/255,1,1) then
         self._render_verified = false
         return false
     end
-    if not check_leaf(self._status_prim, PNR_STATUS_NAME, self._cached_status_text, geom.status) then
+    if not check_leaf(self._status_prim, PNR_STATUS_NAME, self._cached_status_text, self._pnr_status_region, geom.status_font)
+        or not al_style_matches(self._status_prim,201/255,209/255,216/255,1,1) then
         self._render_verified = false
         return false
     end
-    if not check_leaf(self._timer_prim, PNR_TIMER_NAME, self._cached_timer_text, geom.timer) then
+    if not self._timer_prim or not al_panel_alive(self._timer_prim) then
+        self._render_verified = false
+        return false
+    end
+    local ok_tc, tc = pcall(function() return self._root_panel:child(PNR_TIMER_NAME) end)
+    if not ok_tc or tc ~= self._timer_prim then
+        self._render_verified = false
+        return false
+    end
+    if not check_leaf(self._timer_prim, PNR_TIMER_NAME, self._cached_timer_text, self._pnr_timer_region)
+        or not al_style_matches(self._timer_prim,17/255,17/255,17/255,1,1) then
+        self._render_verified = false
+        return false
+    end
+    local ok_trx, trx = al_safe_call(self._timer_prim, "x")
+    local ok_trw, trw = al_safe_call(self._timer_prim, "w")
+    if ok_trx ~= CALL_OK or ok_trw ~= CALL_OK then
+        self._render_verified = false
+        return false
+    end
+    if not al_is_finite(trx) or not al_is_finite(trw) then
+        self._render_verified = false
+        return false
+    end
+    if math.abs((trx + trw) - geom.timer_right) > tol then
         self._render_verified = false
         return false
     end
 
     self._render_verified = true
+    return true
+end
+
+function AL:_verify_decoration(prim, child_name, region, er, eg, eb, ea)
+    if not prim or not al_panel_alive(prim) then return false end
+    local ok_ch, ch = pcall(function() return self._root_panel:child(child_name) end)
+    if not ok_ch or ch ~= prim then return false end
+    local ok_pr, pr = pcall(function() return prim:parent() end)
+    if not ok_pr or pr ~= self._root_panel then return false end
+    local ok_v, v = pcall(function() return prim:visible() end)
+    if not ok_v or v ~= true then return false end
+    local tol = 0.5
+    local s_px, px = al_safe_call(prim, "x")
+    local s_py, py = al_safe_call(prim, "y")
+    local s_pw, pw = al_safe_call(prim, "w")
+    local s_ph, ph = al_safe_call(prim, "h")
+    if s_px ~= CALL_OK or s_py ~= CALL_OK or s_pw ~= CALL_OK or s_ph ~= CALL_OK then
+        return false
+    end
+    if not al_is_finite(px) or not al_is_finite(py) or not al_is_finite(pw) or not al_is_finite(ph) then
+        return false
+    end
+    if region then
+        if math.abs(px - region.x) > tol or math.abs(py - region.y) > tol
+            or math.abs(pw - region.w) > tol or math.abs(ph - region.h) > tol then
+            return false
+        end
+    end
+    if er then
+        local c = al_read_color(prim)
+        if not c then return false end
+        if math.abs(c.r - er) > 0.02 or math.abs(c.g - eg) > 0.02 or math.abs(c.b - eb) > 0.02 then
+            return false
+        end
+        if ea ~= nil and math.abs(c.a - ea) > 0.05 then
+            return false
+        end
+    end
+    return true
+end
+
+function AL:_verify_icon(prim, child_name, region, expected_texture)
+    if not prim or not al_panel_alive(prim) then return false end
+    local ok_ch, ch = pcall(function() return self._root_panel:child(child_name) end)
+    if not ok_ch or ch ~= prim then return false end
+    local ok_pr, pr = pcall(function() return prim:parent() end)
+    if not ok_pr or pr ~= self._root_panel then return false end
+    local ok_v, v = pcall(function() return prim:visible() end)
+    if not ok_v or v ~= true then return false end
+    local ok_tex, tex = pcall(function() return prim:texture_name() end)
+    if not ok_tex or not al_texture_matches(tex, expected_texture) then
+        return false
+    end
+    local tol = 0.5
+    local s_px, px = al_safe_call(prim, "x")
+    local s_py, py = al_safe_call(prim, "y")
+    local s_pw, pw = al_safe_call(prim, "w")
+    local s_ph, ph = al_safe_call(prim, "h")
+    if s_px ~= CALL_OK or s_py ~= CALL_OK or s_pw ~= CALL_OK or s_ph ~= CALL_OK then
+        return false
+    end
+    if not al_is_finite(px) or not al_is_finite(py) or not al_is_finite(pw) or not al_is_finite(ph) then
+        return false
+    end
+    if region then
+        if math.abs(px - region.x) > tol or math.abs(py - region.y) > tol
+            or math.abs(pw - region.w) > tol or math.abs(ph - region.h) > tol then
+            return false
+        end
+    end
     return true
 end
 
@@ -916,7 +1305,6 @@ function AL:_resolve_native_targets()
 end
 
 function AL:_should_fallback_native()
-    if self._opening_identity then return true end
     if not self._manager then return true end
     local ok_corner, corner = pcall(function() return self._manager._hud_assault_corner end)
     if not ok_corner or not corner then return true end
@@ -1073,6 +1461,8 @@ function AL:_sync_native_visibility()
         return self:_sync_pnr_native_visibility()
     elseif mode == "casing" then
         return self:_sync_casing_native_visibility()
+    elseif mode == "casing_closing" then
+        return self:_sync_casing_closing()
     else
         if self._native_acquired or self._native_corner or self._native_targets then
             self:_release_native()
@@ -1093,6 +1483,9 @@ function AL:_sync_native_visibility()
 end
 
 function AL:_determine_active_mode()
+    if self._casing_closing then
+        return "casing_closing"
+    end
     if self._casing_active and self:_is_supported_casing_mode(self._casing_mode) then
         local ok_corner, corner = pcall(function() return self._manager._hud_assault_corner end)
         if ok_corner and corner then
@@ -1351,34 +1744,26 @@ function AL:_compute_casing_layout(parent_w, parent_h)
     if not al_is_finite(parent_w) or not al_is_finite(parent_h) then return nil end
     if parent_w <= 0 or parent_h <= 0 then return nil end
     local layout = kyohud.hud.layout
-    if not layout or type(layout.resolve) ~= "function" then return nil end
+    if not layout or type(layout.assault_alerts) ~= "function" then return nil end
     local scale = (kyohud.settings and kyohud.settings.hud_scale) or 1
-    local geom = layout.resolve(parent_w, parent_h, scale)
+    local geom = layout.assault_alerts(parent_w, parent_h, scale, "casing")
     if not geom or not geom.valid then return nil end
-    local us = geom.uniform_scale or 1
-    local s = geom.scale or 1
-    local es = us * s
-    local root_w = REF_CASING_WIDTH * es
-    local root_h = REF_CASING_HEIGHT * es
-    local margin_right = REF_MARGIN_RIGHT * es
-    local top = REF_TOP * es
-    local root_x = parent_w - margin_right - root_w
-    local root_y = top
-    if root_x < 0 or root_y < 0 then return nil end
-    if root_x + root_w > parent_w or root_y + root_h > parent_h then return nil end
+    local es = geom.es or 1
     if type(layout.objectives_region) == "function" then
         local obj = layout.objectives_region(parent_w, parent_h)
-        if obj and root_x < obj.w and root_y < obj.h then return nil end
+        if obj and geom.root_x < obj.w and geom.root_y < obj.h then return nil end
     end
     local ticker_w = REF_CASING_TICKER_W * es
-    local ticker_h = REF_CASING_TICKER_H * es
-    local font_size = math.max(MIN_FONT_SIZE, math.floor(REF_FONT_SIZE * es))
+    local ticker_h = geom.ticker.h
+    local font_size = geom.ticker_font
     return {
         es = es,
-        root_x = root_x, root_y = root_y,
-        root_w = root_w, root_h = root_h,
+        root_x = geom.root_x, root_y = geom.root_y,
+        root_w = geom.root_w, root_h = geom.root_h,
         font_size = font_size,
         ticker = { x = 0, y = 0, w = ticker_w, h = ticker_h },
+        bg = geom.bg,
+        icon = geom.status,
     }
 end
 
@@ -1405,6 +1790,12 @@ function AL:_update_casing_layout()
     al_safe_call(self._casing_root_panel, "set_shape", new_layout.root_x, new_layout.root_y, new_layout.root_w, new_layout.root_h)
     if self._casing_ticker_panel and al_panel_alive(self._casing_ticker_panel) then
         al_safe_call(self._casing_ticker_panel, "set_shape", new_layout.ticker.x, new_layout.ticker.y, new_layout.ticker.w, new_layout.ticker.h)
+    end
+    if self._casing_bg and al_panel_alive(self._casing_bg) and new_layout.bg then
+        al_safe_call(self._casing_bg, "set_shape", new_layout.bg.x, new_layout.bg.y, new_layout.bg.w, new_layout.bg.h)
+    end
+    if self._casing_icon and al_panel_alive(self._casing_icon) and new_layout.icon then
+        al_safe_call(self._casing_icon, "set_shape", new_layout.icon.x, new_layout.icon.y, new_layout.icon.w, new_layout.icon.h)
     end
     if self._casing_a and al_panel_alive(self._casing_a) then
         al_safe_call(self._casing_a, "set_font_size", new_layout.font_size)
@@ -1451,7 +1842,7 @@ function AL:_ensure_casing_ticker_texts()
     if not self._casing_layout_cache then return end
     local font = self:_get_font()
     local layout = self._casing_layout_cache
-    local text_color = Color(1, 0.8, 0.6, 0.2)
+    local text_color = Color(1, AMBER_R, AMBER_G, AMBER_B)
     local ticker_text = self:_resolve_casing_ticker_text()
     local sa, pa = al_safe_call(self._casing_ticker_panel, "text", {
         name = CASING_A_NAME,
@@ -1500,7 +1891,47 @@ function AL:_ensure_casing_ticker_texts()
     end
 end
 
+function AL:_ensure_casing_bg()
+    if self._casing_bg and al_panel_alive(self._casing_bg) then return end
+    if not self._casing_root_panel or not al_panel_alive(self._casing_root_panel) then return end
+    if not self._casing_layout_cache then return end
+    local layout = self._casing_layout_cache
+    local bg = layout.bg
+    if not bg then return end
+    local status, prim = al_safe_call(self._casing_root_panel, "rect", {
+        name = CASING_BG_NAME,
+        x = bg.x, y = bg.y, w = bg.w, h = bg.h,
+        color = Color(0.80, DARK_R, DARK_G, DARK_B),
+        visible = true,
+        layer = 0,
+    })
+    if status == CALL_OK and prim then
+        self._casing_bg = prim
+    end
+end
+
+function AL:_ensure_casing_icon()
+    if self._casing_icon and al_panel_alive(self._casing_icon) then return end
+    if not self._casing_root_panel or not al_panel_alive(self._casing_root_panel) then return end
+    if not self._casing_layout_cache then return end
+    local layout = self._casing_layout_cache
+    local icon = layout.icon
+    if not icon then return end
+    local status, prim = al_create_bitmap(self._casing_root_panel, {
+        name = CASING_ICON_NAME,
+        texture = CASING_TEXTURE_STEALTH,
+        x = icon.x, y = icon.y, w = icon.w, h = icon.h,
+        visible = true,
+        layer = 1,
+    })
+    if status == CALL_OK and prim then
+        self._casing_icon = prim
+    end
+end
+
 function AL:_ensure_casing_primitives()
+    self:_ensure_casing_bg()
+    self:_ensure_casing_icon()
     self:_ensure_casing_ticker_panel()
     self:_ensure_casing_ticker_texts()
 end
@@ -1546,6 +1977,28 @@ end
 
 function AL:_sync_casing_primitives()
     self:_sync_casing_ticker_text()
+    local g = self._casing_layout_cache
+    if not g then return end
+    al_shape(self._casing_root_panel,g.root_x,g.root_y,g.root_w,g.root_h)
+    al_shape(self._casing_ticker_panel,g.ticker.x,g.ticker.y,g.ticker.w,g.ticker.h)
+    al_shape(self._casing_bg,g.bg.x,g.bg.y,g.bg.w,g.bg.h)
+    al_shape(self._casing_icon,g.icon.x,g.icon.y,g.icon.w,g.icon.h)
+    al_font_size(self._casing_a,g.font_size)
+    al_font_size(self._casing_b,g.font_size)
+    local ok, _, _, w = pcall(function() return self._casing_a:text_rect() end)
+    if ok and al_is_finite(w) and w>0 then
+        self._casing_measured_w = w
+        self._casing_gap = REF_CASING_TICKER_GAP*g.es
+        local cycle = w+self._casing_gap
+        self._casing_x_a = -((-(self._casing_x_a or 0))%cycle)
+        self._casing_x_b = self._casing_x_a+cycle
+        al_shape(self._casing_a,self._casing_x_a,0,w,g.ticker.h)
+        al_shape(self._casing_b,self._casing_x_b,0,w,g.ticker.h)
+    end
+    al_style(self._casing_bg,DARK_R,DARK_G,DARK_B,.8,0)
+    al_style(self._casing_icon,1,1,1,1,1)
+    al_style(self._casing_a,AMBER_R,AMBER_G,AMBER_B,1,1)
+    al_style(self._casing_b,AMBER_R,AMBER_G,AMBER_B,1,1)
 end
 
 function AL:_update_casing_ticker(dt)
@@ -1621,6 +2074,32 @@ function AL:_verify_casing_render()
         self._casing_render_verified = false
         return false
     end
+    local expected_root_alpha = 1
+    if self._casing_closing and self._casing_close_exit_alpha ~= nil then
+        expected_root_alpha = self._casing_close_exit_alpha
+    end
+    local ok_ra, ra = pcall(function() return self._casing_root_panel:alpha() end)
+    if not ok_ra or not al_is_finite(ra) then
+        self._casing_render_verified = false
+        return false
+    end
+    local alpha_tol = 0.05
+    if math.abs(ra - expected_root_alpha) > alpha_tol then
+        self._casing_render_verified = false
+        return false
+    end
+    local closing_root_alpha = nil
+    if self._casing_closing and self._casing_close_exit_alpha ~= nil then
+        closing_root_alpha = self._casing_close_exit_alpha
+    end
+    local bg_eff_color_alpha = nil
+    local icon_eff_color_alpha = nil
+    local ticker_eff_color_alpha = nil
+    if closing_root_alpha ~= nil then
+        bg_eff_color_alpha = 0.80 * closing_root_alpha
+        icon_eff_color_alpha = closing_root_alpha
+        ticker_eff_color_alpha = closing_root_alpha
+    end
     local ok_pr, pr = pcall(function() return self._casing_root_panel:parent() end)
     local rt = kyohud.hud.runtime
     if not ok_pr or pr ~= (rt and rt._root_panel) then
@@ -1629,6 +2108,31 @@ function AL:_verify_casing_render()
     end
     local ok_cv, cv = pcall(function() return self._casing_ticker_panel:visible() end)
     if not ok_cv or cv ~= true then
+        self._casing_render_verified = false
+        return false
+    end
+    local ok_geometry, geometry = pcall(function()
+        local p, t = self._casing_ticker_panel, geom.ticker
+        if p:parent() ~= self._casing_root_panel then return false end
+        local px, py, pw, ph = p:x(), p:y(), p:w(), p:h()
+        if not al_is_finite(px) or not al_is_finite(py) or not al_is_finite(pw) or not al_is_finite(ph) then return false end
+        if math.abs(px - t.x) > tol or math.abs(py - t.y) > tol
+            or math.abs(pw - t.w) > tol or math.abs(ph - t.h) > tol then return false end
+        if p:alpha() ~= 1 then return false end
+        if p:layer() ~= 1 then return false end
+        return true
+    end)
+    if not ok_geometry or not geometry then
+        self._casing_render_verified = false
+        return false
+    end
+    if not self:_verify_casing_decoration(self._casing_bg, CASING_BG_NAME, geom.bg, DARK_R, DARK_G, DARK_B, 0.80, "_casing_bg", bg_eff_color_alpha)
+        or not al_style_matches(self._casing_bg,DARK_R,DARK_G,DARK_B,.8,0,bg_eff_color_alpha) then
+        self._casing_render_verified = false
+        return false
+    end
+    if not self:_verify_casing_icon(self._casing_icon, CASING_ICON_NAME, geom.icon, CASING_TEXTURE_STEALTH)
+        or not al_style_matches(self._casing_icon,1,1,1,1,1,icon_eff_color_alpha) then
         self._casing_render_verified = false
         return false
     end
@@ -1661,6 +2165,14 @@ function AL:_verify_casing_render()
         local expected_w = width_override or region.w
         if math.abs(pw - expected_w) > tol then return false end
         if math.abs(ph - region.h) > tol then return false end
+        if not al_style_matches(prim,AMBER_R,AMBER_G,AMBER_B,1,1,ticker_eff_color_alpha) then return false end
+        local ok_parent, parent = pcall(function() return prim:parent() end)
+        if not ok_parent or parent~=self._casing_ticker_panel then return false end
+        local expected_x = prim==self._casing_a and self._casing_x_a or self._casing_x_b
+        if not al_is_finite(expected_x) or math.abs(px-expected_x)>tol then return false end
+        local ok_measure, _, _, mw, mh = pcall(function() return prim:text_rect() end)
+        if not ok_measure or not al_is_finite(mw) or not al_is_finite(mh)
+            or mw<=0 or mh<=0 or mh>ph+tol or math.abs(mw-pw)>tol then return false end
         return true
     end
     if not check_text(self._casing_a, desired_ticker, geom.ticker, true, self._casing_measured_w) then
@@ -1672,6 +2184,78 @@ function AL:_verify_casing_render()
         return false
     end
     self._casing_render_verified = true
+    return true
+end
+
+function AL:_verify_casing_decoration(prim, child_name, region, er, eg, eb, ea, _, expected_color_alpha)
+    if not prim or not al_panel_alive(prim) then return false end
+    local ok_ch, ch = pcall(function() return self._casing_root_panel:child(child_name) end)
+    if not ok_ch or ch ~= prim then return false end
+    local ok_pr, pr = pcall(function() return prim:parent() end)
+    if not ok_pr or pr ~= self._casing_root_panel then return false end
+    local ok_v, v = pcall(function() return prim:visible() end)
+    if not ok_v or v ~= true then return false end
+    local tol = 0.5
+    local s_px, px = al_safe_call(prim, "x")
+    local s_py, py = al_safe_call(prim, "y")
+    local s_pw, pw = al_safe_call(prim, "w")
+    local s_ph, ph = al_safe_call(prim, "h")
+    if s_px ~= CALL_OK or s_py ~= CALL_OK or s_pw ~= CALL_OK or s_ph ~= CALL_OK then
+        return false
+    end
+    if not al_is_finite(px) or not al_is_finite(py) or not al_is_finite(pw) or not al_is_finite(ph) then
+        return false
+    end
+    if region then
+        if math.abs(px - region.x) > tol or math.abs(py - region.y) > tol
+            or math.abs(pw - region.w) > tol or math.abs(ph - region.h) > tol then
+            return false
+        end
+    end
+    if er then
+        local c = al_read_color(prim)
+        if not c then return false end
+        if math.abs(c.r - er) > 0.02 or math.abs(c.g - eg) > 0.02 or math.abs(c.b - eb) > 0.02 then
+            return false
+        end
+        local color_a_desired = expected_color_alpha
+        if color_a_desired == nil then color_a_desired = ea end
+        if color_a_desired ~= nil and math.abs(c.a - color_a_desired) > 0.05 then
+            return false
+        end
+    end
+    return true
+end
+
+function AL:_verify_casing_icon(prim, child_name, region, expected_texture)
+    if not prim or not al_panel_alive(prim) then return false end
+    local ok_ch, ch = pcall(function() return self._casing_root_panel:child(child_name) end)
+    if not ok_ch or ch ~= prim then return false end
+    local ok_pr, pr = pcall(function() return prim:parent() end)
+    if not ok_pr or pr ~= self._casing_root_panel then return false end
+    local ok_v, v = pcall(function() return prim:visible() end)
+    if not ok_v or v ~= true then return false end
+    local ok_tex, tex = pcall(function() return prim:texture_name() end)
+    if not ok_tex or not al_texture_matches(tex, expected_texture) then
+        return false
+    end
+    local tol = 0.5
+    local s_px, px = al_safe_call(prim, "x")
+    local s_py, py = al_safe_call(prim, "y")
+    local s_pw, pw = al_safe_call(prim, "w")
+    local s_ph, ph = al_safe_call(prim, "h")
+    if s_px ~= CALL_OK or s_py ~= CALL_OK or s_pw ~= CALL_OK or s_ph ~= CALL_OK then
+        return false
+    end
+    if not al_is_finite(px) or not al_is_finite(py) or not al_is_finite(pw) or not al_is_finite(ph) then
+        return false
+    end
+    if region then
+        if math.abs(px - region.x) > tol or math.abs(py - region.y) > tol
+            or math.abs(pw - region.w) > tol or math.abs(ph - region.h) > tol then
+            return false
+        end
+    end
     return true
 end
 
@@ -1723,6 +2307,171 @@ function AL:_sync_casing_native_visibility()
     return true
 end
 
+function AL:_begin_casing_close()
+    if self._casing_closing then return end
+    if not self._mounted then return end
+    if not kyohud.settings or kyohud.settings.enable_hud_foundation ~= true or kyohud.settings.enable_alerts ~= true then return end
+    if al_is_vr() then return end
+    if not self._manager then return end
+    if not self._casing_native_acquired then return end
+    if self:_should_fallback_casing_native() then return end
+    if not self:_verify_casing_render() then return end
+    local ok_corner, corner = pcall(function() return self._manager._hud_assault_corner end)
+    if not ok_corner or not corner then return end
+    local ok_pnr, pnr = pcall(function() return corner._point_of_no_return end)
+    if ok_pnr and pnr == true then return end
+    local ok_am, am = pcall(function() return corner._assault_mode end)
+    if ok_am and am == "phalanx" then return end
+    local ok_wfn, wfn = pcall(function() return corner.should_display_waves end)
+    if ok_wfn and type(wfn) == "function" then
+        local ok_waves, waves = pcall(wfn, corner)
+        if ok_waves and waves == true then return end
+    end
+    local ok_state, state = pcall(function() return managers.groupai and managers.groupai:state() end)
+    if not ok_state then state = nil end
+    if state == nil then return end
+    local bg, icon
+    local ok_bg, bg_val = pcall(function() return corner._casing_bg_box end)
+    if ok_bg and bg_val and al_panel_alive(bg_val) then bg = bg_val end
+    local ok_hp, hp = pcall(function() return corner._hud_panel end)
+    if ok_hp and hp and al_panel_alive(hp) then
+        local ok_cp, cp = pcall(function() return hp:child("casing_panel") end)
+        if ok_cp and cp and al_panel_alive(cp) then
+            local ok_ic, ic = pcall(function() return cp:child("icon_casingbox") end)
+            if ok_ic and ic and al_panel_alive(ic) then icon = ic end
+        end
+    end
+    if not bg or not icon then return end
+    if not self._casing_root_panel or not al_panel_alive(self._casing_root_panel) then return end
+    local rt = kyohud.hud.runtime
+    if not rt then return end
+    local gen = rt._generation or 0
+    self._casing_closing = true
+    self._casing_close_manager = self._manager
+    self._casing_close_corner = corner
+    self._casing_close_state = state
+    self._casing_close_bg_box = bg
+    self._casing_close_icon = icon
+    self._casing_close_bg_done = false
+    self._casing_close_icon_done = false
+    self._casing_close_exit_alpha = 1
+    self._casing_close_generation = gen
+end
+
+function AL:_check_casing_close_complete()
+    return self._casing_close_bg_done == true
+        and self._casing_close_icon_done == true
+end
+
+function AL:_complete_casing_close()
+    self:_release_casing_native()
+    if self._casing_root_panel and al_panel_alive(self._casing_root_panel) then
+        al_safe_call(self._casing_root_panel, "set_alpha", 1)
+        al_safe_call(self._casing_root_panel, "set_visible", false)
+    end
+    self._casing_closing = false
+    self._casing_close_manager = nil
+    self._casing_close_corner = nil
+    self._casing_close_state = nil
+    self._casing_close_bg_box = nil
+    self._casing_close_icon = nil
+    self._casing_close_bg_done = false
+    self._casing_close_icon_done = false
+    self._casing_close_exit_alpha = nil
+    self._casing_close_generation = nil
+    self._casing_mode = nil
+    self._casing_active = false
+    self._casing_render_verified = false
+end
+
+function AL:_validate_casing_close_identity()
+    if not self._casing_closing then return false end
+    if not self._mounted then return false end
+    if not kyohud.settings or kyohud.settings.enable_hud_foundation ~= true or kyohud.settings.enable_alerts ~= true then return false end
+    if al_is_vr() then return false end
+    local ok_manager, current_manager = pcall(function() return self._manager end)
+    if not ok_manager or current_manager ~= self._casing_close_manager then return false end
+    local rt = kyohud.hud.runtime
+    if not rt or not rt._mounted then return false end
+    local current_gen = rt._generation or 0
+    if self._casing_close_generation ~= nil and current_gen ~= self._casing_close_generation then return false end
+    if not self._casing_root_panel or not al_panel_alive(self._casing_root_panel) then return false end
+    local ok_corner, current_corner = pcall(function() return self._manager._hud_assault_corner end)
+    if not ok_corner or current_corner ~= self._casing_close_corner then return false end
+    local ok_pnr, pnr = pcall(function() return current_corner._point_of_no_return end)
+    if ok_pnr and pnr == true then return false end
+    local ok_am, am = pcall(function() return current_corner._assault_mode end)
+    if ok_am and am == "phalanx" then return false end
+    local ok_wfn, wfn = pcall(function() return current_corner.should_display_waves end)
+    if ok_wfn and type(wfn) == "function" then
+        local ok_waves, waves = pcall(wfn, current_corner)
+        if ok_waves and waves == true then return false end
+    end
+    local ok_state, current_state = pcall(function() return managers.groupai and managers.groupai:state() end)
+    if not ok_state then current_state = nil end
+    if self._casing_close_state ~= nil and current_state ~= self._casing_close_state then return false end
+    if self._casing_close_state == nil then return false end
+    local ok_bg, current_bg = pcall(function() return self._casing_close_corner._casing_bg_box end)
+    if not ok_bg or current_bg ~= self._casing_close_bg_box then return false end
+    local ok_icon, current_icon = pcall(function()
+        local hp = self._casing_close_corner._hud_panel
+        if not hp then return nil end
+        local cp = hp:child("casing_panel")
+        if not cp then return nil end
+        return cp:child("icon_casingbox")
+    end)
+    if not ok_icon or current_icon ~= self._casing_close_icon then return false end
+    return true
+end
+
+function AL:_sync_casing_closing()
+    if not self:_validate_casing_close_identity() then
+        self:_complete_casing_close()
+        return false
+    end
+    if self._casing_native_acquired and self._casing_native_requests then
+        local nv = kyohud.hud.native_visibility
+        if nv then
+            for _, req in ipairs(self._casing_native_requests) do
+                local actual, err = nv:_read_value(req.id, req.property)
+                if err or actual == nil or actual ~= req.value then
+                    self:_complete_casing_close()
+                    return false
+                end
+            end
+        end
+    end
+    if self:_check_casing_close_complete() then
+        self:_complete_casing_close()
+        return false
+    end
+    if self._casing_root_panel and al_panel_alive(self._casing_root_panel) then
+        al_safe_call(self._casing_root_panel, "set_visible", true)
+    end
+    if self._casing_close_exit_alpha ~= nil
+        and self._casing_root_panel and al_panel_alive(self._casing_root_panel) then
+        al_safe_call(self._casing_root_panel, "set_alpha", self._casing_close_exit_alpha)
+    end
+    if not self:_verify_casing_render() then
+        self:_complete_casing_close()
+        return false
+    end
+    return true
+end
+
+function AL:_update_casing_close_exit(dt)
+    if not self._casing_closing then return end
+    if not al_is_finite(dt) or dt <= 0 then return end
+    local exit_alpha = self._casing_close_exit_alpha
+    if exit_alpha == nil then exit_alpha = 1 end
+    exit_alpha = exit_alpha - dt * 3
+    if exit_alpha < 0 then exit_alpha = 0 end
+    self._casing_close_exit_alpha = exit_alpha
+    if self._casing_root_panel and al_panel_alive(self._casing_root_panel) then
+        al_safe_call(self._casing_root_panel, "set_alpha", exit_alpha)
+    end
+end
+
 function AL:_ensure_casing_root()
     if not self._parent_panel or not al_panel_alive(self._parent_panel) then return end
     if self._casing_root_panel and al_panel_alive(self._casing_root_panel) then return end
@@ -1755,6 +2504,8 @@ function AL:_destroy_casing_root()
     self._casing_ticker_panel = nil
     self._casing_a = nil
     self._casing_b = nil
+    self._casing_bg = nil
+    self._casing_icon = nil
     self._casing_layout_cache = nil
     self._casing_render_verified = false
     self._casing_render_failed = false
@@ -1776,14 +2527,24 @@ function AL:_take_initial_snapshot()
 end
 
 function AL:mount(manager)
-    if not kyohud.settings or kyohud.settings.enable_hud_foundation ~= true then return end
-    if kyohud.settings.enable_alerts ~= true then return end
-    if al_is_vr() then return end
+    if not kyohud.settings or kyohud.settings.enable_hud_foundation ~= true then
+        return
+    end
+    if kyohud.settings.enable_alerts ~= true then
+        return
+    end
+    if al_is_vr() then
+        return
+    end
     local mgr = manager or self._manager
-    if not mgr then return end
+    if not mgr then
+        return
+    end
     self._manager = mgr
     local parent = al_get_runtime_root()
-    if not parent then return end
+    if not parent then
+        return
+    end
 
     if self._mounted and self._root_panel and al_panel_alive(self._root_panel) then
         if self._parent_panel == parent then
@@ -1799,6 +2560,10 @@ function AL:mount(manager)
         self._title_prim = nil
         self._status_prim = nil
         self._timer_prim = nil
+        self._pnr_bg = nil
+        self._pnr_icon = nil
+        self._pnr_status_bg = nil
+        self._pnr_timer_measured_w = 0
     end
 
     local status, existing = al_safe_call(parent, "child", ALERTS_ROOT_NAME)
@@ -1816,10 +2581,14 @@ function AL:mount(manager)
         end
         return
     end
-    if status ~= CALL_OK then return end
+    if status ~= CALL_OK then
+        return
+    end
 
     local cs, root = al_safe_call(parent, "panel", { name = ALERTS_ROOT_NAME, visible = false })
-    if cs ~= CALL_OK or root == nil then return end
+    if cs ~= CALL_OK or root == nil then
+        return
+    end
     self._root_panel = root
     self._parent_panel = parent
     self._mounted = true
@@ -1835,6 +2604,18 @@ function AL:unmount()
     local released = self:_release_native()
     if released then
         self._conflict_corner = nil
+    end
+    if self._casing_closing then
+        self._casing_closing = false
+        self._casing_close_manager = nil
+        self._casing_close_corner = nil
+        self._casing_close_state = nil
+        self._casing_close_bg_box = nil
+        self._casing_close_icon = nil
+        self._casing_close_bg_done = false
+        self._casing_close_icon_done = false
+        self._casing_close_exit_alpha = nil
+        self._casing_close_generation = nil
     end
     self:_release_casing_native()
     self._casing_conflict_corner = nil
@@ -1862,6 +2643,10 @@ function AL:unmount()
     self._title_prim = nil
     self._status_prim = nil
     self._timer_prim = nil
+    self._pnr_bg = nil
+    self._pnr_icon = nil
+    self._pnr_status_bg = nil
+    self._pnr_timer_measured_w = 0
     self._parent_panel = nil
     self._mounted = false
     self._layout_cache = nil
@@ -1928,6 +2713,10 @@ function AL:update(manager, t, dt)
         self._title_prim = nil
         self._status_prim = nil
         self._timer_prim = nil
+        self._pnr_bg = nil
+        self._pnr_icon = nil
+        self._pnr_status_bg = nil
+        self._pnr_timer_measured_w = 0
         self._mounted = false
         self._layout_cache = nil
         self._render_verified = false
@@ -1938,12 +2727,30 @@ function AL:update(manager, t, dt)
         self._casing_ticker_panel = nil
         self._casing_a = nil
         self._casing_b = nil
+        self._casing_bg = nil
+        self._casing_icon = nil
         self._casing_layout_cache = nil
         self._casing_render_verified = false
+        if self._casing_closing then
+            self._casing_closing = false
+            self._casing_close_manager = nil
+            self._casing_close_corner = nil
+            self._casing_close_state = nil
+            self._casing_close_bg_box = nil
+            self._casing_close_icon = nil
+            self._casing_close_bg_done = false
+            self._casing_close_icon_done = false
+            self._casing_close_exit_alpha = nil
+            self._casing_close_generation = nil
+        end
     end
     if not self._mounted then
         self:mount(manager or self._manager)
         if not self._mounted then return end
+    end
+
+    if self._casing_closing then
+        self:_update_casing_close_exit(dt)
     end
 
     local do_poll = false
@@ -2000,15 +2807,21 @@ function AL:update(manager, t, dt)
     end
     if mode == "casing" then
         self._casing_render_failed = false
+    elseif mode == "casing_closing" then
+        self._casing_render_failed = false
     else
         self._render_failed = false
     end
     if mode == "casing" and al_is_finite(dt) and dt > 0 then
         self:_update_casing_ticker(dt)
     end
-    if mode == "casing" then
+    if mode == "casing" or mode == "casing_closing" then
         if not self:_verify_casing_render() then
-            self:_handle_casing_render_failure()
+            if mode == "casing_closing" then
+                self:_complete_casing_close()
+            else
+                self:_handle_casing_render_failure()
+            end
         end
     elseif not self:_verify_render() then
         self:_handle_render_failure()
@@ -2081,8 +2894,21 @@ if RequiredScript == REQUIRED_CONTEXT then
             al_safe_call(AL._root_panel, "set_visible", false)
         end
         AL._render_verified = false
+        if AL._casing_closing then
+            AL._casing_closing = false
+            AL._casing_close_manager = nil
+            AL._casing_close_corner = nil
+            AL._casing_close_state = nil
+            AL._casing_close_bg_box = nil
+            AL._casing_close_icon = nil
+            AL._casing_close_bg_done = false
+            AL._casing_close_icon_done = false
+            AL._casing_close_exit_alpha = nil
+            AL._casing_close_generation = nil
+        end
         AL:_release_casing_native()
         if AL._casing_root_panel and al_panel_alive(AL._casing_root_panel) then
+            al_safe_call(AL._casing_root_panel, "set_alpha", 1)
             al_safe_call(AL._casing_root_panel, "set_visible", false)
         end
         AL._casing_render_verified = false
@@ -2193,11 +3019,40 @@ if RequiredScript == REQUIRED_CONTEXT then
     local function cb_pre_open_left(panel, wait_t, target_w, done_cb, config)
         local identity = resolve_open_identity(panel)
         if not identity then return end
-        AL:_release_native()
-        if AL._root_panel and al_panel_alive(AL._root_panel) then
-            al_safe_call(AL._root_panel, "set_visible", false)
+        if AL._opening_identity then
+            if AL._opening_identity.bg_box ~= identity.bg_box then
+                AL:_release_native()
+                AL._opening_identity = nil
+            end
         end
-        AL._render_verified = false
+        local certified = false
+        if kyohud.settings and kyohud.settings.enable_hud_foundation == true
+           and kyohud.settings.enable_alerts == true
+           and AL._mounted
+           and AL._manager == identity.manager then
+            local ok_cc, current_corner = pcall(function() return AL._manager._hud_assault_corner end)
+            if ok_cc and current_corner == identity.corner then
+                AL:snapshot(AL._manager)
+                AL:_update_layout()
+                AL:_ensure_primitives()
+                AL:_sync_primitives()
+                if AL._root_panel and al_panel_alive(AL._root_panel) then
+                    al_safe_call(AL._root_panel, "set_visible", true)
+                end
+                if AL:_verify_pnr_render() then
+                    if AL:_try_acquire_native() then
+                        certified = true
+                    end
+                end
+            end
+        end
+        if not certified then
+            AL:_release_native()
+            if AL._root_panel and al_panel_alive(AL._root_panel) then
+                al_safe_call(AL._root_panel, "set_visible", false)
+            end
+            AL._render_verified = false
+        end
         AL._opening_identity = identity
     end
 
@@ -2207,17 +3062,70 @@ if RequiredScript == REQUIRED_CONTEXT then
         if panel ~= identity.bg_box then return end
         AL._opening_identity = nil
         if not kyohud.settings or kyohud.settings.enable_hud_foundation ~= true or kyohud.settings.enable_alerts ~= true then
+            AL:_release_native()
+            if AL._root_panel and al_panel_alive(AL._root_panel) then
+                al_safe_call(AL._root_panel, "set_visible", false)
+            end
             return
         end
-        if AL._manager ~= identity.manager then return end
+        if AL._manager ~= identity.manager then
+            AL:_release_native()
+            if AL._root_panel and al_panel_alive(AL._root_panel) then
+                al_safe_call(AL._root_panel, "set_visible", false)
+            end
+            return
+        end
         local ok_current_corner, current_corner = pcall(function() return AL._manager._hud_assault_corner end)
-        if not ok_current_corner or current_corner ~= identity.corner then return end
-        if not AL._mounted then return end
-        if not AL._root_panel or not al_panel_alive(AL._root_panel) then return end
-        if not AL._layout_cache then return end
-        AL:_ensure_primitives()
-        AL:_sync_primitives()
-        AL:_sync_native_visibility()
+        if not ok_current_corner or current_corner ~= identity.corner then
+            AL:_release_native()
+            if AL._root_panel and al_panel_alive(AL._root_panel) then
+                al_safe_call(AL._root_panel, "set_visible", false)
+            end
+            return
+        end
+        if not AL._mounted then
+            AL:_release_native()
+            if AL._root_panel and al_panel_alive(AL._root_panel) then
+                al_safe_call(AL._root_panel, "set_visible", false)
+            end
+            return
+        end
+        if not AL._root_panel or not al_panel_alive(AL._root_panel) then
+            AL:_release_native()
+            return
+        end
+        if not AL._layout_cache then
+            AL:_release_native()
+            if AL._root_panel and al_panel_alive(AL._root_panel) then
+                al_safe_call(AL._root_panel, "set_visible", false)
+            end
+            return
+        end
+        if AL._native_acquired then
+            AL:_release_native()
+            if AL._root_panel and al_panel_alive(AL._root_panel) then
+                al_safe_call(AL._root_panel, "set_visible", true)
+            end
+            if AL:_verify_pnr_render() then
+                if not AL:_try_acquire_native() then
+                    AL:_release_native()
+                    if AL._root_panel and al_panel_alive(AL._root_panel) then
+                        al_safe_call(AL._root_panel, "set_visible", false)
+                    end
+                    AL._render_verified = false
+                end
+            else
+                AL:_release_native()
+                if AL._root_panel and al_panel_alive(AL._root_panel) then
+                    al_safe_call(AL._root_panel, "set_visible", false)
+                end
+                AL._render_verified = false
+            end
+        else
+            AL:_ensure_primitives()
+            AL:_sync_primitives()
+            AL:_sync_native_visibility()
+        end
     end
 
     local function safe_global_prehook(global_name, id, fn)
@@ -2270,14 +3178,52 @@ if RequiredScript == REQUIRED_CONTEXT then
         AL._data_dirty = true
     end
 
+    local ensure_hide_icon_observer
+
     local function cb_pre_hide_casing(self)
-        al_release_all_owned()
+        local ensured = ensure_hide_icon_observer and ensure_hide_icon_observer()
+        if ensured and AL._casing_native_acquired and AL._casing_render_verified then
+            AL:_begin_casing_close()
+        end
+        if not AL._casing_closing then
+            al_release_all_owned()
+        end
     end
 
     local function cb_post_hide_casing(self)
         AL:_bind_event_context(self)
-        AL._casing_mode = nil
-        AL._casing_active = false
+        if not AL._casing_closing then
+            AL._casing_mode = nil
+            AL._casing_active = false
+        else
+            local close_left_installed = kyohud.hud._installed_hooks["KyohUD_Alerts_PostCloseLeft"] == true
+            local hide_icon_installed = kyohud.hud._installed_hooks["KyohUD_Alerts_PostHideIconAssaultbox"] == true
+            if not close_left_installed and not hide_icon_installed then
+                if AL:_validate_casing_close_identity() then
+                    local bg = AL._casing_close_bg_box
+                    local icon = AL._casing_close_icon
+                    local bg_ok = false
+                    local icon_ok = false
+                    if bg and al_panel_alive(bg) then
+                        local ok_v, v = pcall(function() return bg:visible() end)
+                        if ok_v and v == false then bg_ok = true end
+                    end
+                    if icon and al_panel_alive(icon) then
+                        local ok_a, a = pcall(function() return icon:alpha() end)
+                        if ok_a and al_is_finite(a) and a <= 0.001 then icon_ok = true end
+                    end
+                    if bg_ok then AL._casing_close_bg_done = true end
+                    if icon_ok then AL._casing_close_icon_done = true end
+                    if AL:_check_casing_close_complete() then
+                        AL:_complete_casing_close()
+                    end
+                end
+            else
+                if AL:_validate_casing_close_identity() and AL:_check_casing_close_complete() then
+                    AL:_complete_casing_close()
+                end
+            end
+        end
         AL._data_dirty = true
     end
 
@@ -2305,4 +3251,64 @@ if RequiredScript == REQUIRED_CONTEXT then
         "KyohUD_Alerts_PostHideCasing",
         cb_post_hide_casing
     )
+
+    local function cb_post_close_left(panel, done_cb)
+        if not AL._casing_closing then return end
+        if AL._casing_close_bg_box and panel == AL._casing_close_bg_box then
+            AL._casing_close_bg_done = true
+            if AL:_validate_casing_close_identity() and AL:_check_casing_close_complete() then
+                AL:_complete_casing_close()
+            end
+        end
+    end
+
+    local function cb_post_hide_icon_assaultbox(self_corner, icon_assaultbox)
+        if not AL._casing_closing then return end
+        if AL._casing_close_corner and self_corner == AL._casing_close_corner
+            and AL._casing_close_icon and icon_assaultbox == AL._casing_close_icon then
+            local ok_a, a = pcall(function() return icon_assaultbox:alpha() end)
+            if ok_a and al_is_finite(a) and a <= 0.001 then
+                AL._casing_close_icon_done = true
+                if AL:_validate_casing_close_identity() and AL:_check_casing_close_complete() then
+                    AL:_complete_casing_close()
+                end
+            end
+        end
+    end
+
+    ensure_hide_icon_observer = function()
+        if type(HUDAssaultCorner) ~= "table" then return false end
+        local current = HUDAssaultCorner._hide_icon_assaultbox
+        if type(current) ~= "function" then return false end
+        if current == AL._casing_hide_icon_observer then return true end
+        local wrapped = current
+        local function wrapper(self, icon, ...)
+            local function after(...)
+                cb_post_hide_icon_assaultbox(self, icon)
+                return ...
+            end
+            return after(wrapped(self, icon, ...))
+        end
+        HUDAssaultCorner._hide_icon_assaultbox = wrapper -- direct late reassignment bypasses SuperBLT cached hook tables; rebind only on hide event
+        AL._casing_hide_icon_observer = wrapper
+        return true
+    end
+
+    safe_global_posthook(
+        "HUDBGBox_animate_close_left",
+        "KyohUD_Alerts_PostCloseLeft",
+        cb_post_close_left
+    )
+
+    if type(HUDAssaultCorner) == "table" and type(HUDAssaultCorner._hide_icon_assaultbox) == "function" then
+        safe_posthook(
+            HUDAssaultCorner,
+            "_hide_icon_assaultbox",
+            "KyohUD_Alerts_PostHideIconAssaultbox",
+            cb_post_hide_icon_assaultbox
+        )
+        if AL._casing_hide_icon_observer == nil then
+            AL._casing_hide_icon_observer = HUDAssaultCorner._hide_icon_assaultbox
+        end
+    end
 end

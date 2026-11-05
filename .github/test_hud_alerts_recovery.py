@@ -146,15 +146,15 @@ class AlertsCoroutineAbortAndRecoveryTests(unittest.TestCase):
             assert(coroutine.status(open_co) == "suspended",
                 "After first resume: open coroutine must be suspended")
 
-            local nv_during_suspend = 0
+            local nv_after_first_resume = 0
             for _ in ipairs(nv._entries or {}) do
-                nv_during_suspend = nv_during_suspend + 1
+                nv_after_first_resume = nv_after_first_resume + 1
             end
-            assert(nv_during_suspend == 0,
-                "After first resume: NV must be 0 before callback writes, got "
-                .. tostring(nv_during_suspend))
-            assert(AL._root_panel:visible() == false,
-                "After first resume: owned root must be hidden before callback writes")
+            assert(nv_after_first_resume == 8,
+                "After first resume: NV must be 8 (certified opening), got "
+                .. tostring(nv_after_first_resume))
+            assert(AL._root_panel:visible() == true,
+                "After first resume: owned root must be visible (certified opening)")
 
             RT:update(managers.hud, 1.05, 0.05)
 
@@ -162,11 +162,11 @@ class AlertsCoroutineAbortAndRecoveryTests(unittest.TestCase):
             for _ in ipairs(nv._entries or {}) do
                 nv_during_update = nv_during_update + 1
             end
-            assert(nv_during_update == 0,
-                "During suspension: RT:update must keep NV=0, not repair, got "
+            assert(nv_during_update == 8,
+                "During suspension: RT:update must keep NV=8, not repair, got "
                 .. tostring(nv_during_update))
-            assert(AL._root_panel:visible() == false,
-                "During suspension: RT:update must keep owned root hidden, not repair")
+            assert(AL._root_panel:visible() == true,
+                "During suspension: RT:update must keep owned root visible, not repair")
 
             managers.hud:hide_point_of_no_return_timer()
 
@@ -215,3 +215,335 @@ class AlertsCoroutineAbortAndRecoveryTests(unittest.TestCase):
             assert(kyohud.killstreak == _sentinel_before,
                 "RED: sentinel preserved through abort and recovery")
         ''')
+
+
+class AlertsOpeningEdgeCaseTests(unittest.TestCase):
+    """Parameterized edge cases for PNR opening coroutine."""
+
+    def test_disabled_alerts(self):
+        """Disabled alerts must fall back to native with empty ownership."""
+        lua, ok = _lua_with_assault_and_alerts_slice()
+        self.assertTrue(ok, "assault.lua fixture prerequisite must exist")
+
+        lua.execute('''
+            kyohud.settings.enable_alerts = false
+
+            local RT = kyohud.hud.runtime
+            local AL = kyohud.hud.alerts
+            local nv = kyohud.hud.native_visibility
+            local state = managers.groupai:state()
+
+            RT:mount(managers.hud)
+
+            state._point_of_no_return_timer = 65.9
+            state._point_of_no_return_id = 101
+            state._point_of_no_return_tweak_id = "noreturn"
+            state._is_inside_point_of_no_return = false
+            managers.hud:show_point_of_no_return_timer("noreturn")
+            managers.hud:feed_point_of_no_return_timer(65.9, false)
+            RT:update(managers.hud, 1.0, 0.05)
+
+            local alerts_nv = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then alerts_nv = alerts_nv + 1 end
+            end
+            assert(alerts_nv == 0,
+                "Disabled alerts: expected 0 NV entries (native fallback), got " .. tostring(alerts_nv))
+
+            if AL._root_panel and al_panel_alive(AL._root_panel) then
+                assert(AL._root_panel:visible() == false,
+                    "Disabled alerts: owned root must be hidden (native fallback)")
+            end
+        ''')
+
+    def test_unsupported_tweak(self):
+        """Unsupported tweak_id must fall back to native with empty ownership."""
+        lua, ok = _lua_with_assault_and_alerts_slice()
+        self.assertTrue(ok, "assault.lua fixture prerequisite must exist")
+
+        lua.execute('''
+            kyohud.settings.enable_alerts = true
+
+            local RT = kyohud.hud.runtime
+            local AL = kyohud.hud.alerts
+            local nv = kyohud.hud.native_visibility
+            local state = managers.groupai:state()
+
+            RT:mount(managers.hud)
+
+            state._point_of_no_return_timer = 65.9
+            state._point_of_no_return_id = 101
+            state._point_of_no_return_tweak_id = "unsupported_tweak"
+            state._is_inside_point_of_no_return = false
+            managers.hud:show_point_of_no_return_timer("unsupported_tweak")
+            managers.hud:feed_point_of_no_return_timer(65.9, false)
+            RT:update(managers.hud, 1.0, 0.05)
+
+            local alerts_nv = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then alerts_nv = alerts_nv + 1 end
+            end
+            assert(alerts_nv == 0,
+                "Unsupported tweak: expected 0 NV entries (native fallback), got " .. tostring(alerts_nv))
+
+            if AL._root_panel then
+                assert(AL._root_panel:visible() == false,
+                    "Unsupported tweak: owned root must be hidden (native fallback)")
+            end
+        ''')
+
+    def test_missing_timer(self):
+        """Missing timer must fall back to native with empty ownership."""
+        lua, ok = _lua_with_assault_and_alerts_slice()
+        self.assertTrue(ok, "assault.lua fixture prerequisite must exist")
+
+        lua.execute('''
+            kyohud.settings.enable_alerts = true
+
+            local RT = kyohud.hud.runtime
+            local AL = kyohud.hud.alerts
+            local nv = kyohud.hud.native_visibility
+            local state = managers.groupai:state()
+
+            RT:mount(managers.hud)
+
+            state._point_of_no_return_timer = nil
+            state._point_of_no_return_id = 101
+            state._point_of_no_return_tweak_id = "noreturn"
+            state._is_inside_point_of_no_return = false
+            managers.hud:show_point_of_no_return_timer("noreturn")
+            RT:update(managers.hud, 1.0, 0.05)
+
+            local alerts_nv = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then alerts_nv = alerts_nv + 1 end
+            end
+            assert(alerts_nv == 0,
+                "Missing timer: expected 0 NV entries (native fallback), got " .. tostring(alerts_nv))
+
+            if AL._root_panel then
+                assert(AL._root_panel:visible() == false,
+                    "Missing timer: owned root must be hidden (native fallback)")
+            end
+        ''')
+
+    def test_missing_inside(self):
+        """Missing inside must fall back to native with empty ownership."""
+        lua, ok = _lua_with_assault_and_alerts_slice()
+        self.assertTrue(ok, "assault.lua fixture prerequisite must exist")
+
+        lua.execute('''
+            kyohud.settings.enable_alerts = true
+
+            local RT = kyohud.hud.runtime
+            local AL = kyohud.hud.alerts
+            local nv = kyohud.hud.native_visibility
+            local state = managers.groupai:state()
+
+            RT:mount(managers.hud)
+
+            state._point_of_no_return_timer = 65.9
+            state._point_of_no_return_id = 101
+            state._point_of_no_return_tweak_id = "noreturn"
+            state._is_inside_point_of_no_return = nil
+            managers.hud:show_point_of_no_return_timer("noreturn")
+            managers.hud:feed_point_of_no_return_timer(65.9, nil)
+            RT:update(managers.hud, 1.0, 0.05)
+
+            local alerts_nv = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then alerts_nv = alerts_nv + 1 end
+            end
+            assert(alerts_nv == 0,
+                "Missing inside: expected 0 NV entries (native fallback), got " .. tostring(alerts_nv))
+
+            if AL._root_panel then
+                assert(AL._root_panel:visible() == false,
+                    "Missing inside: owned root must be hidden (native fallback)")
+            end
+        ''')
+
+    def test_disable_during_suspended_opening_then_recover(self):
+        """Disable during suspended opening, finish native, recover via normal update."""
+        lua, ok = _lua_with_assault_and_alerts_slice()
+        self.assertTrue(ok, "assault.lua fixture prerequisite must exist")
+
+        lua.execute('''
+            kyohud.settings.enable_alerts = true
+
+            local RT = kyohud.hud.runtime
+            local AL = kyohud.hud.alerts
+            local nv = kyohud.hud.native_visibility
+            local state = managers.groupai:state()
+
+            RT:mount(managers.hud)
+
+            state._point_of_no_return_timer = 65.9
+            state._point_of_no_return_id = 101
+            state._point_of_no_return_tweak_id = "noreturn"
+            state._is_inside_point_of_no_return = false
+            managers.hud:show_point_of_no_return_timer("noreturn")
+            managers.hud:feed_point_of_no_return_timer(65.9, false)
+            RT:update(managers.hud, 1.0, 0.05)
+
+            assert(type(AL._root_panel) == "table" and AL._root_panel:visible() == true,
+                "RED: initial PNR must show visible AL._root_panel")
+            assert(AL:_verify_render() == true,
+                "RED: initial PNR must verify render")
+
+            local corner = managers.hud._hud_assault_corner
+            local noreturn_bg_box = corner._noreturn_bg_box
+            local pnr_text = noreturn_bg_box:child("point_of_no_return_text")
+            local pnr_timer_native = noreturn_bg_box:child("point_of_no_return_timer")
+
+            local done_cb = function()
+                local text_co = coroutine.create(function()
+                    corner:_animate_show_texts(noreturn_bg_box, {pnr_text, pnr_timer_native})
+                end)
+                coroutine.resume(text_co)
+            end
+
+            local open_co = coroutine.create(function()
+                HUDBGBox_animate_open_left(noreturn_bg_box, 0, 242, done_cb, {})
+            end)
+
+            local ok1, err1 = coroutine.resume(open_co)
+            assert(ok1, "open coroutine first resume failed: " .. tostring(err1))
+            assert(coroutine.status(open_co) == "suspended",
+                "After first resume: open coroutine must be suspended")
+
+            kyohud.settings.enable_alerts = false
+            RT:refresh_settings(managers.hud)
+
+            local alerts_nv_after_disable = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then alerts_nv_after_disable = alerts_nv_after_disable + 1 end
+            end
+            assert(alerts_nv_after_disable == 0,
+                "After disable: expected 0 NV entries, got " .. tostring(alerts_nv_after_disable))
+
+            while coroutine.status(open_co) == "suspended" do
+                coroutine.resume(open_co, 0.05)
+            end
+
+            kyohud.settings.enable_alerts = true
+            RT:refresh_settings(managers.hud)
+            RT:update(managers.hud, 1.10, 0.05)
+
+            assert(type(AL._root_panel) == "table" and AL._root_panel:visible() == true,
+                "RED: after recovery, PNR must show visible certified root")
+            assert(AL:_verify_render() == true,
+                "RED: after recovery, PNR must verify render")
+
+            local alerts_nv_after_recovery = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then alerts_nv_after_recovery = alerts_nv_after_recovery + 1 end
+            end
+            assert(alerts_nv_after_recovery == 8,
+                "RED: after recovery, expected 8 NV entries, got " .. tostring(alerts_nv_after_recovery))
+        ''')
+
+    def test_render_error_during_opening_recovers_after_restore(self):
+        """Corrupt retained primitive + no-op setter during opening -> owned hidden,
+        no native ownership. Restore + RT:update -> certified same primitive recovered."""
+        lua, ok = _lua_with_assault_and_alerts_slice()
+        self.assertTrue(ok, "assault.lua fixture prerequisite must exist")
+
+        lua.execute('''
+            kyohud.settings.enable_alerts = true
+
+            local RT = kyohud.hud.runtime
+            local AL = kyohud.hud.alerts
+            local nv = kyohud.hud.native_visibility
+            local state = managers.groupai:state()
+
+            RT:mount(managers.hud)
+
+            state._point_of_no_return_timer = 65.9
+            state._point_of_no_return_id = 101
+            state._point_of_no_return_tweak_id = "noreturn"
+            state._is_inside_point_of_no_return = false
+            managers.hud:show_point_of_no_return_timer("noreturn")
+            managers.hud:feed_point_of_no_return_timer(65.9, false)
+            RT:update(managers.hud, 1.0, 0.05)
+
+            assert(type(AL._root_panel) == "table" and AL._root_panel:visible() == true,
+                "RED: initial PNR must show visible AL._root_panel")
+            assert(AL:_verify_render() == true,
+                "RED: initial PNR must verify render")
+
+            local certified_timer_prim = AL._timer_prim
+            assert(type(certified_timer_prim) == "table",
+                "RED: must have certified timer_prim")
+
+            local corner = managers.hud._hud_assault_corner
+            local noreturn_bg_box = corner._noreturn_bg_box
+            local pnr_text = noreturn_bg_box:child("point_of_no_return_text")
+            local pnr_timer_native = noreturn_bg_box:child("point_of_no_return_timer")
+
+            local done_cb = function()
+                local text_co = coroutine.create(function()
+                    corner:_animate_show_texts(noreturn_bg_box, {pnr_text, pnr_timer_native})
+                end)
+                coroutine.resume(text_co)
+            end
+
+            local open_co = coroutine.create(function()
+                HUDBGBox_animate_open_left(noreturn_bg_box, 0, 242, done_cb, {})
+            end)
+
+            local ok1, err1 = coroutine.resume(open_co)
+            assert(ok1, "open coroutine first resume failed: " .. tostring(err1))
+            assert(coroutine.status(open_co) == "suspended",
+                "After first resume: open coroutine must be suspended")
+
+            local nv_after_certify = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then nv_after_certify = nv_after_certify + 1 end
+            end
+            assert(nv_after_certify == 8,
+                "After pre-hook certify: NV must be 8, got " .. tostring(nv_after_certify))
+            assert(AL._root_panel:visible() == true,
+                "After pre-hook certify: owned root must be visible")
+
+            local original_set_text = certified_timer_prim.set_text
+            certified_timer_prim:set_text("BROKEN")
+            certified_timer_prim.set_text = function() end
+
+            while coroutine.status(open_co) == "suspended" do
+                coroutine.resume(open_co, 0.05)
+            end
+
+            local nv_after_corrupt = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then nv_after_corrupt = nv_after_corrupt + 1 end
+            end
+            assert(nv_after_corrupt == 0,
+                "RED: after render error during opening: expected 0 NV entries for alerts, got "
+                .. tostring(nv_after_corrupt))
+            assert(AL._root_panel:visible() == false,
+                "RED: after render error during opening: owned root must be hidden")
+
+            certified_timer_prim.set_text = original_set_text
+
+            RT:update(managers.hud, 1.60, 0.60)
+
+            assert(type(AL._root_panel) == "table" and AL._root_panel:visible() == true,
+                "RED: after restore, PNR must show visible certified root")
+            assert(AL:_verify_render() == true,
+                "RED: after restore, PNR must verify render")
+
+            local nv_after_recovery = 0
+            for _, e in ipairs(nv._entries or {}) do
+                if e.owner == "alerts" then nv_after_recovery = nv_after_recovery + 1 end
+            end
+            assert(nv_after_recovery == 8,
+                "RED: after restore, expected 8 NV entries, got " .. tostring(nv_after_recovery))
+
+            assert(AL._timer_prim == certified_timer_prim,
+                "RED: after restore, timer_prim must be the same certified primitive")
+        ''')
+
+
+if __name__ == "__main__":
+    unittest.main()
