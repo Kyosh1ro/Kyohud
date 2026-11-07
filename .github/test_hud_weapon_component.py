@@ -84,7 +84,7 @@ class WeaponRealContentAndGeometryTests(unittest.TestCase):
             inst:render(snap, true, texts)
 
             _name_text = inst._name_text:text()
-            _ammo_text = inst._ammo_text:text()
+            _ammo_text = inst._clip_text:text() .. " / " .. inst._reserve_text:text()
             _mode_text = inst._mode_text:text()
 
             _nx = inst._name_text:x(); _ny = inst._name_text:y()
@@ -143,8 +143,8 @@ class WeaponIndependenceAndStabilityTests(unittest.TestCase):
             local snap_b = {current_clip = 30, reserve = 90, fire_mode = "auto", alt_fire = true}
             a:render(snap_a, true, texts_a)
             b:render(snap_b, true, texts_b)
-            _a_ammo = a._ammo_text:text()
-            _b_ammo = b._ammo_text:text()
+            _a_ammo = a._clip_text:text() .. " / " .. a._reserve_text:text()
+            _b_ammo = b._clip_text:text() .. " / " .. b._reserve_text:text()
             _a_mode = a._mode_text:text()
             _b_mode = b._mode_text:text()
 
@@ -167,7 +167,7 @@ class WeaponIndependenceAndStabilityTests(unittest.TestCase):
             _same_after_swap = (a._name_text == id_name_a) and
                                (a._ammo_text == id_ammo_a) and
                                (a._mode_text == id_mode_a)
-            _swapped_ammo = a._ammo_text:text()
+            _swapped_ammo = a._clip_text:text() .. " / " .. a._reserve_text:text()
             _swapped_mode = a._mode_text:text()
 
             -- layout A-B-A
@@ -183,17 +183,17 @@ class WeaponIndependenceAndStabilityTests(unittest.TestCase):
             -- zero current_clip -> "0 / 26" (zero is valid, not unknown)
             local snap_zero = {current_clip = 0, reserve = 26, fire_mode = "single"}
             a:render(snap_zero, true, texts_a)
-            _zero_ammo = a._ammo_text:text()
+            _zero_ammo = a._clip_text:text() .. " / " .. a._reserve_text:text()
 
             -- unknown (nil reserve) -> "6 / --" (per-side)
             local snap_unknown = {current_clip = 6, reserve = nil, fire_mode = "single"}
             a:render(snap_unknown, true, texts_a)
-            _unknown_ammo = a._ammo_text:text()
+            _unknown_ammo = a._clip_text:text() .. " / " .. a._reserve_text:text()
 
             -- unknown (nil current_clip) -> "-- / 26" (per-side)
             local snap_unknown2 = {current_clip = nil, reserve = 26, fire_mode = "single"}
             a:render(snap_unknown2, true, texts_a)
-            _unknown_ammo2 = a._ammo_text:text()
+            _unknown_ammo2 = a._clip_text:text() .. " / " .. a._reserve_text:text()
         ''')
         g = lua.globals()
         self.assertEqual(float(g._aw), 200.0)
@@ -261,7 +261,7 @@ class WeaponVerifyAndDestroyTests(unittest.TestCase):
             _same_after_repair = (inst._name_text == ref_name) and
                                  (inst._ammo_text == ref_ammo) and
                                  (inst._mode_text == ref_mode)
-            _repaired_ammo = inst._ammo_text:text()
+            _repaired_ammo = inst._clip_text:text() .. " / " .. inst._reserve_text:text()
 
             -- corrupt mode text
             if inst._mode_text then

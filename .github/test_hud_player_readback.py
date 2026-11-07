@@ -2,14 +2,14 @@
 
 Three bounded regressions:
 
-1. Labels _health_label/_armor_label/_downs_label exist as text primitives
-   created by the player module. Localization fixture via
+1. Health/armor labels are absent; _downs_label remains a localized primitive.
+   Localization fixture via
    managers.localization:text(key) returns distinguishable strings. With no
    local unit, downs text is exactly "--" and condition text is nonempty
    "unknown", not "normal". With alive local unit and missing revives,
    downs text is still "--". Assert labels use correct localization keys.
 
-2. Geometry: _health_label, _armor_label, _downs_label, _downs_text,
+2. Geometry: _downs_label, _downs_text,
    _condition_text and gauge texts must be pairwise non-overlapping in
    player root coordinates (walk :parent offsets). All rectangles must
    have positive dimensions and lie within root bounds.
@@ -18,7 +18,7 @@ Three bounded regressions:
    verify false -> restore via P:update(t1). Corrupt armor_text font_size
    -> verify false -> restore. Corrupt marker x -> verify false -> restore.
    Corrupt downs_text text -> verify false -> restore. Corrupt ROOT w ->
-   verify false -> restore. Corrupt _health_label geometry -> verify false
+   verify false   -> restore. Corrupt _downs_label geometry -> verify false
    -> restore. Actual readback must catch each, no manual caches.
    Monotonic t1,t2,... >= 0.1. Repair must not allocate new primitives.
 """
@@ -46,7 +46,7 @@ end
 
 
 class PlayerReadbackLabelsAndUnknownTextTests(unittest.TestCase):
-    """Labels _health_label/_armor_label/_downs_label exist; localization fixture
+    """Only downs label remains; health/armor words are removed. Localization fixture
     returns distinguishable strings. With no local unit, downs text is not fake0
     and condition text is nonempty unknown, not normal."""
 
@@ -89,24 +89,18 @@ class PlayerReadbackLabelsAndUnknownTextTests(unittest.TestCase):
         ''')
         g = lua.globals()
 
-        self.assertIsNotNone(g._hl,
-            "RED: P._health_label must exist as a text primitive")
-        self.assertIsNotNone(g._al,
-            "RED: P._armor_label must exist as a text primitive")
+        self.assertIsNone(g._hl, "health label removed in favor of colored numeric health")
+        self.assertIsNone(g._al, "armor label removed in the legibility refinement")
         self.assertIsNotNone(g._dl,
             "RED: P._downs_label must exist as a text primitive")
 
-        self.assertTrue(bool(g._hl_alive),
-            "RED: _health_label must be alive")
-        self.assertTrue(bool(g._al_alive),
-            "RED: _armor_label must be alive")
+        self.assertIsNone(g._hl_alive)
+        self.assertIsNone(g._al_alive)
         self.assertTrue(bool(g._dl_alive),
             "RED: _downs_label must be alive")
 
-        self.assertEqual(g._hl_text, "HP",
-            "RED: _health_label must use localization key ky_hud_player_health")
-        self.assertEqual(g._al_text, "ARMOR",
-            "RED: _armor_label must use localization key ky_hud_player_armor")
+        self.assertIsNone(g._hl_text)
+        self.assertIsNone(g._al_text)
         self.assertEqual(g._dl_text, "DOWNS",
             "RED: _downs_label must use localization key ky_hud_player_downs")
 
@@ -239,9 +233,8 @@ class PlayerReadbackLabelGeometryNonOverlapTests(unittest.TestCase):
                 end
             end
 
-            add_rect("_health_label", P._health_label)
-            add_rect("_armor_label", P._armor_label)
-            add_rect("_downs_label", P._downs_label)
+
+            assert(not P._downs_label:visible(),"number-only downs badge")
             add_rect("_downs_text", P._downs_text)
             add_rect("_condition_text", P._condition_text)
             if P._gauge then
@@ -253,8 +246,8 @@ class PlayerReadbackLabelGeometryNonOverlapTests(unittest.TestCase):
         n = int(g._geom_n)
         rw = float(g._geom_root_w)
         rh = float(g._geom_root_h)
-        self.assertGreaterEqual(n, 7,
-            "RED: must have at least 7 labeled/gauge text primitives")
+        self.assertEqual(n, 4,
+            "four visible texts: downs count, condition, health/armor numbers")
         rects = []
         for i in range(1, n + 1):
             r = g._geom_rects[i]
@@ -292,7 +285,7 @@ class PlayerReadbackLabelGeometryNonOverlapTests(unittest.TestCase):
 
 class PlayerReadbackCorruptionRecoveryTests(unittest.TestCase):
     """Corruption detection via verify(): ROOT x, armor_text font_size, marker x,
-    downs_text text, ROOT w, _health_label geometry. Each must be detected false,
+    downs_text text, ROOT w, _downs_label geometry. Each must be detected false,
     then restored true via P:update(mgr, monotonic_t, dt). Actual readback, no
     manual caches. Repair must not allocate new primitives."""
 
@@ -368,8 +361,8 @@ class PlayerReadbackCorruptionRecoveryTests(unittest.TestCase):
             P:update(mgr, 0.5, 0.1)
             _ok_root_w_restored = P:verify()
 
-            -- Corrupt _health_label geometry
-            P._health_label:set_shape(999, 999, 0, 0)
+            -- Corrupt the retained downs label geometry
+            P._downs_label:set_shape(999, 999, 0, 0)
             _ok_bad_label_geom = P:verify()
             P:update(mgr, 0.6, 0.1)
             _ok_label_geom_restored = P:verify()
@@ -400,9 +393,9 @@ class PlayerReadbackCorruptionRecoveryTests(unittest.TestCase):
         self.assertTrue(bool(g._ok_root_w_restored),
             "RED: verify() must be true after P:update restores ROOT w")
         self.assertFalse(bool(g._ok_bad_label_geom),
-            "RED: verify() must be false after corrupting _health_label geometry")
+            "verify() must be false after corrupting downs label geometry")
         self.assertTrue(bool(g._ok_label_geom_restored),
-            "RED: verify() must be true after P:update restores _health_label geometry")
+            "verify() must be true after P:update restores downs label geometry")
         self.assertEqual(int(g._alloc_before), int(g._alloc_after),
             "RED: repair must not allocate new primitives")
 

@@ -66,12 +66,17 @@ local function _apply(p, cfg)
     if cfg.h ~= nil then p._h = cfg.h end
     if cfg.text ~= nil then p._text = tostring(cfg.text) end
     if cfg.font_size ~= nil then p._font_size = cfg.font_size end
+    if cfg.align ~= nil then p._align = cfg.align end
+    if cfg.layer ~= nil then p._layer = cfg.layer end
     if cfg.visible ~= nil then p._visible = cfg.visible end
     if cfg.color ~= nil then p._color = cfg.color end
+    if cfg.texture ~= nil then p._texture = cfg.texture end
+    if cfg.texture_rect ~= nil then p._texture_rect = cfg.texture_rect end
 end
 
 local Panel = {}
 Panel.__index = Panel
+Vector3 = Vector3 or function(x,y,z) return {x=x,y=y,z=z} end
 
 local function _make(name, kind)
     _alloc = _alloc + 1
@@ -91,6 +96,15 @@ end
 
 function Panel:new(name) return _make(name) end
 
+function Panel:polygon(cfg)
+    local p=_make(cfg.name or _uniq('polygon'),'polygon')
+    p._parent=self
+    _apply(p,cfg)
+    p._triangles=cfg.triangles
+    self._children[p._name]=p
+    return p
+end
+
 function Panel:x() return self._x end
 function Panel:y() return self._y end
 function Panel:w() return self._w end
@@ -99,6 +113,10 @@ function Panel:name() return self._name end
 function Panel:parent() return self._parent end
 function Panel:visible() return self._visible end
 function Panel:font_size() return self._font_size end
+function Panel:layer() return self._layer or 0 end
+function Panel:text_rect() return 0, 0, #self._text * self._font_size * 0.5, self._font_size end
+function Panel:color() return self._color end
+function Panel:alpha() return self._color and self._color.a or 1 end
 
 -- text() overload: no args / non-table -> getter; table -> constructor creates child
 function Panel:text(cfg)
@@ -118,9 +136,19 @@ function Panel:set_shape(x, y, w, h)
 end
 function Panel:set_position(x, y) self._x = x; self._y = y end
 function Panel:set_text(t) self._text = tostring(t) end
+function Panel:set_image(texture,x,y,w,h)
+    self._texture=texture
+    if x~=nil then self._texture_rect={x,y,w,h} end
+end
+function Panel:texture_name() return self._texture end
 function Panel:set_font_size(s) self._font_size = s end
 function Panel:set_visible(v) self._visible = v end
-function Panel:set_color(c) self._color = c end
+function Panel:set_layer(l) self._layer = l end
+function Panel:set_color(c) self._color = {r=c.r, g=c.g, b=c.b, a=c.a or 1} end
+function Panel:set_alpha(a)
+    local c = self._color or {r=1,g=1,b=1}
+    self._color = {r=c.r,g=c.g,b=c.b,a=a}
+end
 
 function Panel:child(n) return self._children[n] end
 function Panel:children() return self._children end
@@ -191,8 +219,9 @@ function alive(p)
 end
 
 -- Color: callable mock only, returns a table
-Color = function(r, g, b)
-    return { r = r or 0, g = g or 0, b = b or 0 }
+Color = function(a, r, g, b)
+    if b == nil then return { a=1, r=a or 0, g=r or 0, b=g or 0 } end
+    return { a=a, r=r, g=g, b=b }
 end
 
 -- Expose global allocation counter (increments on every primitive allocation)
@@ -245,8 +274,9 @@ class GaugeCreationAndShapeTests(unittest.TestCase):
             inst:set_geometry(10, 20, 400, 60)
             _rx = inst.root:x(); _ry = inst.root:y()
             _rw = inst.root:w(); _rh = inst.root:h()
-            -- markers must be at 0.3/0.5/0.75 * w within health row
+            -- Markers are the three gaps between proportional inset segments.
             _mx1 = _m1:x(); _mx2 = _m2:x(); _mx3 = _m3:x()
+            _usable = inst.health_fill:w() - 6 * 400 / 440
         ''')
         g = lua.globals()
         self.assertIsNotNone(g._root, "instance.root required")
@@ -261,12 +291,11 @@ class GaugeCreationAndShapeTests(unittest.TestCase):
         self.assertEqual(float(g._ry), 20.0)
         self.assertEqual(float(g._rw), 400.0)
         self.assertEqual(float(g._rh), 60.0)
-        self.assertAlmostEqual(float(g._mx1), 400 * 0.3, places=3,
-            msg="marker 1 must be at 0.3 * w")
-        self.assertAlmostEqual(float(g._mx2), 400 * 0.5, places=3,
-            msg="marker 2 must be at 0.5 * w")
-        self.assertAlmostEqual(float(g._mx3), 400 * 0.75, places=3,
-            msg="marker 3 must be at 0.75 * w")
+        for actual, ratio, preceding_gaps in ((g._mx1, .3, 0), (g._mx2, .5, 1), (g._mx3, .75, 2)):
+            import math
+            scale = 400 / 440
+            expected = math.floor(float(g._usable) * ratio + preceding_gaps * 2 * scale + scale - math.ceil(3 * scale) / 2 + .5)
+            self.assertEqual(float(actual), expected)
 
 
 class GaugeRenderPercentageAndRealTests(unittest.TestCase):
@@ -410,41 +439,50 @@ class GaugeIndependenceAndStabilityTests(unittest.TestCase):
 
             local function hp(r) return {current=r*100, total=100, ratio=r, valid=true, provenance="local"} end
             local function ar(r) return {current=r*100, total=100, ratio=r, valid=true, provenance="local"} end
+            local function health_coverage()
+                local filled, usable = 0, 0
+                for _, s in ipairs(inst.health_segments) do
+                    filled = filled + s.fill:w()
+                    usable = usable + s.background:w()
+                end
+                return filled / usable * 200
+            end
+            local function armor_coverage() return inst.armor_fill:w() / inst._armor_bg:w() * 200 end
 
             -- ratio=0 -> fill w=0
             inst:render(hp(0), ar(0), "percentage", 10)
-            _hf0 = inst.health_fill:w()
-            _af0 = inst.armor_fill:w()
+            _hf0 = health_coverage()
+            _af0 = armor_coverage()
 
             -- ratio=0.5 -> fill w=100
             inst:render(hp(0.5), ar(0.5), "percentage", 10)
-            _hf50 = inst.health_fill:w()
-            _af50 = inst.armor_fill:w()
+            _hf50 = health_coverage()
+            _af50 = armor_coverage()
 
             -- ratio=1.0 -> fill w=200 (full width)
             inst:render(hp(1.0), ar(1.0), "percentage", 10)
-            _hf100 = inst.health_fill:w()
-            _af100 = inst.armor_fill:w()
+            _hf100 = health_coverage()
+            _af100 = armor_coverage()
 
             -- ratio>1.0 -> clamped to 200
             inst:render(hp(2.0), ar(1.0), "percentage", 10)
-            _hf_over = inst.health_fill:w()
+            _hf_over = health_coverage()
 
             -- health independent of armor: different ratios
             inst:render(hp(0.25), ar(0.75), "percentage", 10)
-            _hf25 = inst.health_fill:w()
-            _af75 = inst.armor_fill:w()
+            _hf25 = health_coverage()
+            _af75 = armor_coverage()
         ''')
         g = lua.globals()
         self.assertEqual(float(g._hf0), 0.0, "ratio=0 -> health fill w=0")
         self.assertEqual(float(g._af0), 0.0, "ratio=0 -> armor fill w=0")
-        self.assertEqual(float(g._hf50), 100.0, "ratio=0.5 -> health fill w=w/2")
-        self.assertEqual(float(g._af50), 100.0, "ratio=0.5 -> armor fill w=w/2")
-        self.assertEqual(float(g._hf100), 200.0, "ratio=1.0 -> health fill w=w")
-        self.assertEqual(float(g._af100), 200.0, "ratio=1.0 -> armor fill w=w")
-        self.assertEqual(float(g._hf_over), 200.0, "ratio>1.0 -> clamped to w")
-        self.assertEqual(float(g._hf25), 50.0, "health 25% -> fill w=50")
-        self.assertEqual(float(g._af75), 150.0, "armor 75% -> fill w=150")
+        self.assertAlmostEqual(float(g._hf50), 100.0, msg="health ink covers half of usable segment width")
+        self.assertAlmostEqual(float(g._af50), 100.0)
+        self.assertAlmostEqual(float(g._hf100), 200.0)
+        self.assertAlmostEqual(float(g._af100), 200.0)
+        self.assertAlmostEqual(float(g._hf_over), 200.0)
+        self.assertAlmostEqual(float(g._hf25), 50.0)
+        self.assertAlmostEqual(float(g._af75), 150.0)
 
     def test_geometry_aba_no_drift_and_creation_count_stable(self):
         """set_geometry A -> B -> A returns to A; render does not allocate new panels."""

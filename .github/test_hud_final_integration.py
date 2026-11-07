@@ -163,8 +163,8 @@ class LocalCrewCombinedIntegrationTests(unittest.TestCase):
             -- Real field names from components: gauge uses health_text (not _health_text)
             _p_gauge_text = P and P._gauge and P._gauge.health_text and P._gauge.health_text:text() or nil
             _p_gauge_armor_text = P and P._gauge and P._gauge.armor_text and P._gauge.armor_text:text() or nil
-            _weap_card1_ammo = WEAP and WEAP._cards and WEAP._cards[1] and WEAP._cards[1]._ammo_text and WEAP._cards[1]._ammo_text:text() or nil
-            _weap_card2_ammo = WEAP and WEAP._cards and WEAP._cards[2] and WEAP._cards[2]._ammo_text and WEAP._cards[2]._ammo_text:text() or nil
+            _weap_card1_ammo = WEAP and WEAP._cards and WEAP._cards[1] and (WEAP._cards[1]._clip_text:text() .. ' / ' .. WEAP._cards[1]._reserve_text:text()) or nil
+            _weap_card2_ammo = WEAP and WEAP._cards and WEAP._cards[2] and (WEAP._cards[2]._clip_text:text() .. ' / ' .. WEAP._cards[2]._reserve_text:text()) or nil
             _e_row1_value = E and E._rows and E._rows[1] and E._rows[1]._value and E._rows[1]._value:text() or nil
             _c_card1_name = C and C._cards and C._cards[1] and C._cards[1]._name_text and C._cards[1]._name_text:text() or nil
 
@@ -225,8 +225,8 @@ class LocalCrewCombinedIntegrationTests(unittest.TestCase):
             "weapons card 2 ammo must be '25 / 95'")
         self.assertIsNotNone(g._e_row1_value,
             "equipment row 1 value must have effective text rendering")
-        self.assertEqual(g._e_row1_value, "3 | 2",
-            "equipment row 1 value must be '3 | 2' (trip_mine quantities)")
+        self.assertEqual(g._e_row1_value, "3|2",
+            "equipment row 1 preserves ordered trip_mine quantities compactly")
         self.assertIsNotNone(g._c_card1_name,
             "crew card 1 name_text must have effective text rendering")
         self.assertEqual(g._c_card1_name, "Dallas IA",

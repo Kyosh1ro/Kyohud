@@ -156,16 +156,16 @@ class WeaponsRuntimeLifecycleTests(unittest.TestCase):
 
             _card1_ammo_ref = WEAP._cards and WEAP._cards[1] and WEAP._cards[1]._ammo_text or nil
             _card2_ammo_ref = WEAP._cards and WEAP._cards[2] and WEAP._cards[2]._ammo_text or nil
-            _ammo1_before = _card1_ammo_ref and _card1_ammo_ref:text() or nil
-            _ammo2_before = _card2_ammo_ref and _card2_ammo_ref:text() or nil
+            _ammo1_before = _card1_ammo_ref and (_card1_ammo_ref:text() .. ' / ' .. WEAP._cards[1]._reserve_text:text()) or nil
+            _ammo2_before = _card2_ammo_ref and (_card2_ammo_ref:text() .. ' / ' .. WEAP._cards[2]._reserve_text:text()) or nil
 
             base1:_native_set_ammo(8, 4, 30, 40)
             base2:_native_set_ammo(30, 20, 110, 150)
             -- This fixture mutates without a native event: exercise bounded rescue polling.
             RT:update(mgr, 1.66, 0.66)
 
-            _ammo1_after = _card1_ammo_ref and _card1_ammo_ref:text() or nil
-            _ammo2_after = _card2_ammo_ref and _card2_ammo_ref:text() or nil
+            _ammo1_after = _card1_ammo_ref and (_card1_ammo_ref:text() .. ' / ' .. WEAP._cards[1]._reserve_text:text()) or nil
+            _ammo2_after = _card2_ammo_ref and (_card2_ammo_ref:text() .. ' / ' .. WEAP._cards[2]._reserve_text:text()) or nil
             _same_refs = (_card1_ammo_ref == WEAP._cards[1]._ammo_text) and (_card2_ammo_ref == WEAP._cards[2]._ammo_text)
         ''')
         g = lua.globals()
@@ -235,7 +235,7 @@ class WeaponsTurretStateTests(unittest.TestCase):
             managers.player.current_state = function(self) return "standard" end
             RT:update(mgr, 2.0, 0.06)
             _root_vis_standard = WEAP._root and WEAP._root:visible() or nil
-            _ammo1_standard = WEAP._cards and WEAP._cards[1] and WEAP._cards[1]._ammo_text and WEAP._cards[1]._ammo_text:text() or nil
+            _ammo1_standard = WEAP._cards and WEAP._cards[1] and (WEAP._cards[1]._clip_text:text() .. ' / ' .. WEAP._cards[1]._reserve_text:text()) or nil
         ''')
         g = lua.globals()
         self.assertIsNotNone(g._root_owned_before,

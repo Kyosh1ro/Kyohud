@@ -44,9 +44,9 @@ class EquipmentPresentationTests(unittest.TestCase):
         l=presentation()
         l.execute(r'''
             assert(E._root and E:verify(),'runtime must mount verified equipment')
-            assert(E._rows[1]._value:text()=='3 | 2','subquantities must stay ordered')
+            assert(E._rows[1]._value:text()=='3|2','subquantities must stay ordered')
             assert(E._rows[3]._value:text()=='3','cables')
-            assert(E._rows[4]._value:text()=='1 / 2','charges')
+            assert(E._rows[4]._value:text()=='1','available charges')
             local primitive=E._rows[2]._value
             RT:update(managers.hud,1,0.06)
             managers.player:set_equipment_amount('doctor_bag',0,1)
@@ -100,7 +100,11 @@ class EquipmentPresentationTests(unittest.TestCase):
                     parent:set_shape(0,0,size[1],size[2]);kyohud.settings.hud_scale=scale
                     E:refresh_settings(managers.hud)
                     local p=kyohud.hud.player:_compute_layout(size[1],size[2])
-                    assert(E._root:x()+E._root:w()<p.x,'equipment must stay left of player/weapons region')
+                    local row=kyohud.hud.layout.local_loadout(size[1],size[2],scale)
+                    assert(E._root:x()>=row.x and E._root:x()+E._root:w()<=row.x+row.w,
+                        'equipment must stay inside compact loadout reservation')
+                    assert(E._root:y()+E._root:h()<=p.y+22*row.e,
+                        'equipment must remain above unchanged gauge content')
                     assert(E:verify())
                 end
             end

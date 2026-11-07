@@ -191,4 +191,19 @@ function L.assault_alerts(parent_w, parent_h, scale, variant)
     }
 end
 
+-- Compact E loadout above the unchanged, elevated local gauge. The 380-wide
+-- reference is the complete block target, not the width of either weapon column.
+function L.local_loadout(w,h,scale)
+    local g=L.resolve(w,h,scale)
+    if not g.valid then return nil end
+    local e=g.uniform_scale*g.scale
+    if e<.35 then return nil end
+    local rw,rh=380*e,102*e
+    local x=w-g.margin_x-rw
+    local player_y=h-g.margin_x-200*g.uniform_scale-120*e
+    local y=player_y+(22-6)*e-rh
+    if x<g.margin_x or y<g.margin_y or x+rw>w or y+rh>h then return nil end
+    return {x=x,y=y,w=rw,h=rh,e=e}
+end
+
 kyohud.hud.layout = L

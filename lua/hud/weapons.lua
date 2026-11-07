@@ -412,6 +412,7 @@ end
 local WROOT = "kyohud_weapons_panel"
 local CNAMES = {"weapon_card1", "weapon_card2"}
 local RW, RH = 360, 120
+local CARD_GAP = 8
 local UI = 0.05
 local LKEYS = {"ky_hud_weapon_secondary", "ky_hud_weapon_primary"}
 local MKEYS = {single="ky_hud_weapon_single", auto="ky_hud_weapon_auto", burst="ky_hud_weapon_burst", volley="ky_hud_weapon_volley"}
@@ -465,6 +466,9 @@ function weapons:mount(manager)
     local rs, root = pcall(function() return parent:panel({name=WROOT}) end)
     if not rs or not root then return end
     self._root = root; self._parent = parent; self._mounted = true
+    local sep_ok, separator=pcall(function() return root:rect({name="separator",layer=2,color=Color(1,1,1)}) end)
+    if not sep_ok or not separator then self:unmount();return end
+    self._separator=separator
     local cards = {}
     for i = 1, 2 do
         local c = wc.new(root, CNAMES[i])
@@ -491,6 +495,7 @@ function weapons:unmount()
         pcall(function() self._parent:remove(self._root) end)
     end
     self._root = nil; self._parent = nil; self._mounted = false; self._layout_cache = nil
+    self._separator=nil
     self._last_poll = nil
     self._last_mount_attempt = nil
     self._wua = 0
@@ -504,19 +509,7 @@ function weapons:_geom()
     if type(pw) ~= "number" or type(ph) ~= "number" or pw <= 0 or ph <= 0 then return nil end
     local L = kyohud.hud.layout
     if not L or type(L.resolve) ~= "function" then return nil end
-    local g = L.resolve(pw, ph, kyohud.settings.hud_scale or 1)
-    if not g or not g.valid then return nil end
-    local us, s = g.uniform_scale or 1, g.scale or 1
-    local eff = us * s
-    if eff < 0.35 then return nil end
-    local w, h = RW * eff, RH * eff
-    if w > (g.available_x or 0) or h > (g.available_y or 0) then return nil end
-    local x = pw - (g.margin_x or 0) - w
-    -- Reserve the accepted player block (200 bottom + 120 scaled height),
-    -- including its horizontal safe margin, with a 12-unit separation.
-    local y = ph - (g.margin_x or 0) - (200 + 120 * s + 12) * us - h
-    if x < (g.margin_x or 0) or y < (g.margin_y or 0) or x+w > pw or y+h > ph then return nil end
-    return {x=x, y=y, w=w, h=h, ch=h/2}
+    return L.local_loadout(pw,ph,kyohud.settings.hud_scale or 1)
 end
 
 function weapons:_apply()
@@ -530,10 +523,53 @@ function weapons:_apply()
     if not near(x, g.x) or not near(y, g.y) or not near(w, g.w) or not near(h, g.h) then
         pcall(function() self._root:set_shape(g.x, g.y, g.w, g.h) end)
     end
+    local snap=self._current_snapshot
+    if not snap or not snap.slots or not self._cards then self._layout_cache=nil;return end
+    local selected=snap.selected==2 and 2 or 1
+
+    local texts=self._texts or btexts()
+    local widths={}
+    for i=1,2 do
+        local t={}
+        for k,v in pairs(texts) do t[k]=v end
+        local slot=snap.slots[i] or {}
+        t.name=loc(LKEYS[i])
+        self._cards[i]._compact_selected=i==selected
+        self._cards[i]:preferred_width(slot,true,t,g.e)
+        self._cards[i]:preferred_width(slot,false,t,g.e)
+        widths[i]=self._cards[i]:preferred_width(slot,i==selected,t,g.e)
+        if not widths[i] then self._layout_cache=nil;return end
+    end
+    local eq=kyohud.hud.equipment
+    local reserve=kyohud.settings.enable_equipment and eq and eq._required_width or 0
+    if eq and eq._required_scale and eq._required_scale~=g.e then reserve=reserve*g.e/eq._required_scale end
+    local budget=g.w-(58+CARD_GAP)*g.e-reserve
+    local sum=widths[1]+widths[2]
+    if sum<=0 or budget<sum then self._layout_cache=nil;return end
+    local ratio=budget/sum
+    for i=1,2 do
+        widths[i]=widths[i]*ratio
+        local c=self._cards[i]
+        local min_w
+        if i==selected then
+            min_w=c._compact_clip_w+5*g.e+c._compact_reserve_w
+        else
+            min_w=math.max(c._compact_clip_w,c._compact_reserve_w)
+        end
+        if widths[i]<min_w then self._layout_cache=nil;return end
+    end
+    self._used_width=40*g.e+widths[1]+CARD_GAP*g.e+widths[2]
+    self._separator_x=40*g.e+widths[2]+(CARD_GAP-1)*g.e/2
     self._layout_cache = g
+    pcall(function()
+        self._separator:set_shape(self._separator_x,12*g.e,g.e,g.h-22*g.e)
+        self._separator:set_color(Color(1,1,1))
+        self._separator:set_alpha(.12)
+        self._separator:set_visible(true)
+    end)
     if self._cards then
         for i = 1, #self._cards do
-            if self._cards[i] then self._cards[i]:layout(0, (i-1)*g.ch, g.w, g.ch) end
+            if self._cards[i] then self._cards[i]:layout(i==2 and 40*g.e or ((40+CARD_GAP)*g.e+widths[2]),12*g.e,widths[i],g.h-22*g.e) end
         end
     end
 end
@@ -550,8 +586,7 @@ function weapons:_render()
         local card_texts = {}
         for k, v in pairs(texts) do card_texts[k] = v end
         local slot = snap.slots[i] or {present=false}
-        local name = slot.name_id and loc(slot.name_id) or nil
-        card_texts.name = (name and name ~= slot.name_id) and name or loc(LKEYS[i])
+        card_texts.name = loc(LKEYS[i])
         if self._cards[i] then self._cards[i]:render(slot, snap.selected==i, card_texts) end
     end
     local valid = self:verify()
@@ -570,6 +605,13 @@ function weapons:verify()
     local ok_h, ah = safe_method(self._root, "h")
     if not ok_x or not ok_y or not ok_w or not ok_h then return false end
     if not near(ax, lc.x) or not near(ay, lc.y) or not near(aw, lc.w) or not near(ah, lc.h) then return false end
+    local sep_ok,sep_valid=pcall(function()
+        local p=self._separator
+        return check_alive(p) and p:visible() and near(p:x(),self._separator_x)
+            and near(p:y(),12*lc.e) and near(p:w(),lc.e) and near(p:h(),lc.h-22*lc.e)
+            and near(p:alpha(),.12)
+    end)
+    if not sep_ok or not sep_valid then return false end
     if not self._cards or #self._cards ~= 2 then return false end
     for i = 1, 2 do
         if not self._cards[i] then return false end

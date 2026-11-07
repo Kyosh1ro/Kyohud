@@ -30,7 +30,8 @@ class WeaponsFinalizationTests(unittest.TestCase):
                     W._parent:set_shape(0,0,size[1],size[2])
                     W:refresh_settings(managers.hud)
                     local p=kyohud.hud.player:_compute_layout(size[1],size[2])
-                    if not p or W._root:y()+W._root:h()>p.y then disjoint=false end
+                    local e=math.min(size[1]/1920,size[2]/1080)*scale
+                    if not p or W._root:y()+W._root:h()>p.y+22*e-6*e+.05 then disjoint=false end
                 end
             end
         ''')
@@ -81,31 +82,35 @@ class WeaponsFinalizationTests(unittest.TestCase):
         lua = activated()
         lua.execute('''
             local card=W._cards[1]
-            local p=card._name_text
-            p.text_rect=function(self)
+            local name_p=card._name_text
+            name_p.text_rect=function(self)
                 return 0,0,#self:text()*self:font_size()*0.6,self:font_size()
             end
+            local ammo_p=card._ammo_text
             local source=string.rep("Équipement ",40)
             card:render({current_clip=6,reserve=26,fire_mode="single"},false,
                 {name=source,single="SEMI"})
-            fitted=p:text()
-            local _,_,tw=p:text_rect()
-            fits=tw<=p:w()+0.5
+            name_empty = name_p:text() == ''
+            name_hidden = not name_p:visible()
+            fitted=name_p:text()
+            local _,_,tw=ammo_p:text_rect()
+            fits=tw<=ammo_p:w()+0.5
             certified=card:verify()
-            local old=p.set_font_size
-            p:set_font_size(99)
-            p.set_font_size=function() end
+            local old=ammo_p.set_font_size
+            ammo_p:set_font_size(99)
+            ammo_p.set_font_size=function() end
             card:render({current_clip=6,reserve=26,fire_mode="single"},false,
                 {name=source,single="SEMI"})
             rejected=not card:verify()
-            p.set_font_size=old
+            ammo_p.set_font_size=old
         ''')
+        self.assertTrue(lua.globals().name_empty)
+        self.assertTrue(lua.globals().name_hidden)
         self.assertTrue(lua.globals().fits)
         self.assertTrue(lua.globals().certified)
         self.assertTrue(lua.globals().rejected)
-        self.assertTrue(lua.globals().fitted.endswith('...'))
 
-    def test_real_weapon_name_and_bounded_recovery_poll(self):
+    def test_slot_label_replaces_real_weapon_name_and_bounded_recovery_poll(self):
         lua = activated()
         lua.execute('''
             managers.localization = {text=function(self, key)
@@ -115,6 +120,7 @@ class WeaponsFinalizationTests(unittest.TestCase):
             base1._tweak = {name_id="test_weapon_name"}
             W:refresh_settings(managers.hud)
             observed_name = W._cards[1]._name_text:text()
+            observed_hidden = not W._cards[1]._name_text:visible()
             local original = base1.ammo_info
             polls = 0
             base1.ammo_info = function(self) polls=polls+1; return original(self) end
@@ -126,7 +132,8 @@ class WeaponsFinalizationTests(unittest.TestCase):
             third_polls = polls
         ''')
         g = lua.globals()
-        self.assertEqual(g.observed_name, "SHOTGUN")
+        self.assertEqual(g.observed_name, "")
+        self.assertTrue(bool(g.observed_hidden))
         self.assertEqual(g.second_polls, g.first_polls)
         self.assertGreater(g.third_polls, g.second_polls)
 
@@ -142,7 +149,7 @@ class WeaponsFinalizationTests(unittest.TestCase):
             base1:_native_set_ammo(8, 2, 28, 40)
             _KY_dispatch(HUDManager, "set_teammate_ammo_amount", managers.hud, 4, 1, 8, 2, 28, 40)
             RT:update(managers.hud, 1.06, 0.06)
-            result = card:text()
+            result = card:text() .. ' / ' .. W._cards[1]._reserve_text:text()
             same = card == W._cards[1]._ammo_text
         ''')
         self.assertEqual(lua.globals().result, '2 / 26')
@@ -215,7 +222,7 @@ class WeaponsFinalizationTests(unittest.TestCase):
             inventory:_native_set_slot(1,u)
             W:rebuild(managers.hud)
             snapshot_clip = W:get_snapshot().slots[1].current_clip
-            rendered = W._cards[1]._ammo_text:text()
+            rendered = W._cards[1]._clip_text:text() .. ' / ' .. W._cards[1]._reserve_text:text()
         ''')
         self.assertEqual(lua.globals().snapshot_clip, 3)
         self.assertEqual(lua.globals().rendered, '3 / 12')

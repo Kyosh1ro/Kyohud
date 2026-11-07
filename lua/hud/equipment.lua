@@ -460,15 +460,17 @@ function M:_geometry()
     local b,ph = safe_call(self._parent,"h")
     local layout=kyohud.hud.layout
     if not a or not b or not layout then return nil end
-    local g=layout.resolve(pw,ph,kyohud.settings.hud_scale)
-    if not g or not g.valid then return nil end
-    local us,scale=g.uniform_scale,g.scale
-    if us*scale < .35 then return nil end
-    local w,h=320*us*scale,168*us*scale
-    local x=pw-g.margin_x-360*us*scale-12*us-w
-    local y=ph-g.margin_x-200*us-h
-    if x<g.margin_x or y<g.margin_y or x+w>pw-g.margin_x or y+h>ph-g.margin_y then return nil end
-    return {x=x,y=y,w=w,h=h}
+    local g=layout.local_loadout(pw,ph,kyohud.settings.hud_scale)
+    if not g then return nil end
+    local weapons=kyohud.hud.weapons
+    local used=0
+    if kyohud.settings.enable_weapons and weapons and weapons._mounted and weapons._layout_cache then
+        used=(weapons._used_width or 0)+4*g.e
+    end
+    local width=used>0 and g.w-used-14*g.e or (self._required_width or g.w-28*g.e)
+    if width<=0 or width+.5<(self._required_width or 0) then return nil end
+    local th=self._temporal_height or 0
+    return {x=g.x+g.w-14*g.e-width,y=g.y-th,w=width,h=g.h+th,e=g.e}
 end
 
 function M:mount(manager)
@@ -485,6 +487,7 @@ function M:mount(manager)
     local made,root=safe_call(parent,"panel",{name="kyohud_equipment_panel",layer=1})
     if not made or not root then return end
     self._root=root;self._parent=parent;self._manager=manager;self._rows={}
+
     for i=1,6 do
         local row=component.new(root,"equipment_row"..i)
         if not row then self:unmount();return end
@@ -510,8 +513,10 @@ function M:unmount()
         local ok,child=safe_call(self._parent,"child","kyohud_equipment_panel")
         if ok and child==self._root then safe_call(self._parent,"remove",self._root) end
     end
-    self._root=nil;self._rows=nil;self._parent=nil;self._mounted=false;self._layout=nil
+    self._root=nil;self._rows=nil;self._parent=nil;self._mounted=false;self._layout=nil;self._temporal_height=nil
     self._last_ui=nil;self._last_poll=nil
+    self._icon_cache=nil
+    self._required_width=nil;self._required_scale=nil
 end
 
 function M:_name(id, key, fallback)
@@ -523,21 +528,45 @@ function M:_name(id, key, fallback)
     return cached.text
 end
 
+-- Resource lookup is bounded to a new icon identifier, never repeated per draw.
+function M:_icon(id)
+    if type(id)~="string" then return nil end
+    self._icon_cache=self._icon_cache or {}
+    if self._icon_cache[id]~=nil then return self._icon_cache[id] or nil end
+    local ok,result=pcall(function()
+        local texture,rect=tweak_data.hud_icons:get_icon_data(id)
+        if type(texture)~="string" or type(rect)~="table" then return nil end
+        for i=1,4 do if type(rect[i])~="number" or rect[i]~=rect[i] or math.abs(rect[i])==math.huge then return nil end end
+        if rect[3]<=0 or rect[4]<=0 then return nil end
+        if not DB:has(Idstring("texture"),Idstring(texture)) then return nil end
+        return {texture=texture,rect={rect[1],rect[2],rect[3],rect[4]}}
+    end)
+    self._icon_cache[id]=ok and result or false
+    return ok and result or nil
+end
+
+local function temporal_eligible(channel, projectile_kind, channel_index)
+    if not channel then return false end
+    if channel.known ~= true then return false end
+    if channel.active ~= true then return false end
+    if not is_valid_positive_quantity(channel.remaining) then return false end
+    if projectile_kind == "ability" then return true end
+    if channel_index == 1 and projectile_kind == "throwable" then return true end
+    return false
+end
+
 function M:_present()
     if not live(self._root) or not self._rows then return end
-    local geom=self:_geometry()
-    self._layout=geom
+
     local snap=self:get_snapshot()
-    if not geom or not snap.source_known or snap.unsupported then
+    local _,pw=safe_call(self._parent,"w");local _,ph=safe_call(self._parent,"h")
+    local base=kyohud.hud.layout.local_loadout(pw,ph,kyohud.settings.hud_scale)
+    if not base or not snap.source_known or snap.unsupported then
         safe_call(self._root,"set_visible",false);return
     end
-    local _,x=safe_call(self._root,"x");local _,y=safe_call(self._root,"y")
-    local _,w=safe_call(self._root,"w");local _,h=safe_call(self._root,"h")
-    if x~=geom.x or y~=geom.y or w~=geom.w or h~=geom.h then
-        safe_call(self._root,"set_shape",geom.x,geom.y,geom.w,geom.h)
-    end
     local texts=self._texts
-    for i=1,6 do self._rows[i]:layout(0,(i-1)*geom.h/6,geom.w,geom.h/6) end
+    self._visible_rows={}
+    local cells={}
     local by_index={}
     for _,entry in pairs(snap.deployables) do by_index[entry.selection_index]=entry end
     for i=1,2 do
@@ -548,15 +577,53 @@ function M:_present()
             label=self:_name(entry.equipment_id,td and td.text_id,texts.deployable.." "..i)
             local counts={}
             for _,q in ipairs(entry.quantities) do counts[#counts+1]=count_text(q,texts.unlimited) end
-            value=entry.amount_text or (#counts>0 and table.concat(counts," | ") or "--")
+            value=entry.amount_text or (#counts>0 and table.concat(counts,"|") or "--")
         end
-        self._rows[i]:render(label,value,nil,entry~=nil and snap.selected_effective==entry.equipment_id)
+        if entry then
+            local td=tweak_data and tweak_data.equipments and tweak_data.equipments[entry.equipment_id]
+            cells[#cells+1]={i=i,label=label,value=value,selected=snap.selected_effective==entry.equipment_id,icon=self:_icon(td and td.icon)}
+        end
     end
-    self._rows[3]:render(texts.cables,count_text(snap.cables,texts.unlimited))
+    cells[#cells+1]={i=3,label=texts.cables,value=count_text(snap.cables,texts.unlimited),icon=self:_icon("equipment_cable_ties")}
     local projectile=snap.projectile
     local kind=projectile.kind=="ability" and texts.ability or projectile.kind=="throwable" and texts.throwable or "--"
     local label=self:_name(projectile.projectile_id,projectile.name_id,kind)
-    self._rows[4]:render(label,count_text(projectile.charges).." / "..count_text(projectile.maximum))
+    local td=tweak_data and tweak_data.blackmarket and tweak_data.blackmarket.projectiles and tweak_data.blackmarket.projectiles[projectile.projectile_id]
+    cells[#cells+1]={i=4,label=label,value=count_text(projectile.charges),icon=self:_icon(td and td.icon)}
+    local required=math.max(0,#cells-1)*2*base.e
+    for position,cell in ipairs(cells) do
+        cell.both=true
+        cell.w=self._rows[cell.i]:cell_width(cell.value,base.e,cell.both)
+        if not cell.w then safe_call(self._root,"set_visible",false);return end
+        required=required+cell.w
+    end
+    local changed=self._required_width~=required or self._required_scale~=base.e
+    self._required_width=required
+    self._required_scale=base.e
+    local weapons=kyohud.hud.weapons
+    if changed and kyohud.settings.enable_weapons and weapons and weapons._mounted then
+        weapons:_apply();weapons:_render()
+    end
+    local temporal_count=0
+    for i,ch in ipairs({snap.cooldown,snap.activity}) do
+        if temporal_eligible(ch,projectile.kind,i) then temporal_count=temporal_count+1 end
+    end
+    self._temporal_height=temporal_count*18*base.e
+    local geom=self:_geometry()
+    self._layout=geom
+    if not geom then safe_call(self._root,"set_visible",false);return end
+    safe_call(self._root,"set_shape",geom.x,geom.y,geom.w,geom.h)
+
+    local x=0
+    for _,cell in ipairs(cells) do
+        local row=self._rows[cell.i]
+        row:cell_layout(x,self._temporal_height+12*base.e,cell.w,base.h-22*base.e,geom.e,cell.both)
+        row:render(cell.label,cell.value,nil,cell.selected,cell.icon)
+        self._visible_rows[cell.i]=true
+        x=x+cell.w+2*geom.e
+    end
+    for i=1,4 do if not self._visible_rows[i] then safe_call(self._rows[i]._root,"set_visible",false) end end
+    local temporal_y=0
     for i,channel in ipairs({snap.cooldown,snap.activity}) do
         local text="--"
         local progress
@@ -564,7 +631,13 @@ function M:_present()
             text=channel.active and string.format("%ds",math.ceil(channel.remaining)) or ""
             if channel.active and is_valid_positive_quantity(channel.duration) then progress=channel.remaining/channel.duration end
         end
-        self._rows[4+i]:render(i==1 and texts.cooldown or texts.active,text,progress)
+        local shown=temporal_eligible(channel,projectile.kind,i)
+        self._visible_rows[4+i]=shown==true
+        if shown then
+            self._rows[4+i]:layout(0,temporal_y,geom.w,18*geom.e)
+            self._rows[4+i]:render(i==1 and texts.cooldown or texts.active,text,progress)
+            temporal_y=temporal_y+18*geom.e
+        else safe_call(self._rows[4+i]._root,"set_visible",false) end
     end
     safe_call(self._root,"set_visible",true)
     if not self:verify() then safe_call(self._root,"set_visible",false) end
@@ -575,11 +648,19 @@ function M:verify()
     local shown,visible=safe_call(self._root,"visible")
     if not shown or visible~=true then return false end
     local g=self._layout
+
     for _,key in ipairs({"x","y","w","h"}) do
         local ok,value=safe_call(self._root,key)
         if not ok or type(value)~="number" or value~=value or math.abs(value-g[key])>.05 then return false end
     end
-    for _,row in ipairs(self._rows) do if not row:verify() then return false end end
+    for i,row in ipairs(self._rows) do
+        if self._visible_rows and self._visible_rows[i] then
+            if not row:verify() then return false end
+        else
+            local ok,visible=safe_call(row._root,"visible")
+            if not ok or visible~=false then return false end
+        end
+    end
     return #self._rows==6
 end
 
