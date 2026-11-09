@@ -18,9 +18,9 @@ C._last_poll_time = nil
 C._last_present_time = nil
 
 local ROOT_NAME = "kyohud_crew_panel"
-local REF_CARD_W = 280
+local REF_CARD_W = 432
 local REF_CARD_H = 120
-local REF_GAP = 12
+local REF_GAP = 20
 local REF_BOTTOM_RESERVE = 200
 local MAX_CARDS = 3
 local CREW_POLL_INTERVAL = 0.5
@@ -91,14 +91,18 @@ function C:_compute_layout(parent_w, parent_h)
     local s = geom.scale or 1
     local eff = us * s
     if eff < MIN_EFF_SCALE then return nil end
-    local card_w = REF_CARD_W * eff
-    local card_h = REF_CARD_H * eff
-    local gap = REF_GAP * us
     local margin_x = geom.margin_x or 0
     local margin_y = margin_x
     local reserve = REF_BOTTOM_RESERVE * us
+    local gap = REF_GAP * us
+    local card_h = REF_CARD_H * eff
+    local state_h = 30 * eff
+    local equipment_left = parent_w - margin_x - (680 * s + 12) * us
+    -- Arithmetic rounding slack: tiny safety margin to prevent floating-point overflow of the reserved boundary.
+    local card_w = math.min(REF_CARD_W * eff, (equipment_left - margin_x - (MAX_CARDS - 1) * gap - 1e-6 * us) / MAX_CARDS)
+    if card_w <= 0 or card_h <= 0 then return nil end
     local total_w = MAX_CARDS * card_w + (MAX_CARDS - 1) * gap
-    if total_w <= 0 or card_h <= 0 then return nil end
+    if total_w <= 0 then return nil end
     local x = margin_x
     local y = parent_h - margin_y - reserve - card_h
     -- Stable upper-left band above midpoint; independent of transient combat/buff animations.
@@ -106,11 +110,12 @@ function C:_compute_layout(parent_w, parent_h)
     y = math.min(y, parent_h * 0.5 - margin_x - card_h)
     if y < margin_y then y = margin_y end
     if x + total_w > parent_w - margin_x then return nil end
+    if y - state_h < margin_y then y = margin_y + state_h end
     if y + card_h > parent_h - margin_y then return nil end
-    local equipment_left = parent_w - margin_x - (680 * s + 12) * us
     if x + total_w > equipment_left then return nil end
     return {
         x = x, y = y,
+        state_h = state_h,
         card_w = card_w, card_h = card_h,
         gap = gap, total_w = total_w,
         parent_w = parent_w, parent_h = parent_h,
@@ -119,6 +124,7 @@ end
 
 function C:_create_cards()
     if not self._root or not panel_alive(self._root) then return end
+    self:_refresh_pixel_mapping()
     local cc = kyohud.hud.crew_card
     if not cc or type(cc.new) ~= "function" then return end
     for i = 1, MAX_CARDS do
@@ -137,17 +143,46 @@ function C:_create_cards()
     end
 end
 
+function C:_refresh_pixel_mapping()
+    self._pixel_mapping = nil
+    -- Read only the native screen workspace that owns this script GUI.
+    -- Foreign/linked workspaces retain the approved logical gauge geometry.
+    local ok, mapping = pcall(function()
+        local mgr = self._manager
+        local ws = mgr:workspace("saferect")
+        local key = ws:key()
+        local gd = managers.gui_data
+        local cfg = gd._workspace_configuration[key]
+        local data = gd._ws_size_data[key]
+        if not cfg or cfg.workspace_object ~= "screen" or not data then return nil end
+        local script = mgr:script(PlayerBase.PLAYER_INFO_HUD_PD2)
+        local ws_root = ws:panel()
+        if not script or not panel_alive(script.panel) or not panel_alive(ws_root)
+            or script.panel:parent() ~= ws_root then return nil end
+        if not panel_alive(self._parent_panel) or self._parent_panel:parent() ~= script.panel then return nil end
+        if not finite(data.w) or data.w <= 0 or not finite(data.h) or data.h <= 0
+            or not finite(data.on_screen_width) or data.on_screen_width <= 0
+            or not finite(data.x) or not finite(data.y) then return nil end
+        if math.abs(ws_root:w() - data.w) > 0.5 or math.abs(ws_root:h() - data.h) > 0.5 then return nil end
+        local scale = data.on_screen_width / data.w
+        if not finite(scale) or scale <= 0 then return nil end
+        return {scale = scale, x = data.x, y = data.y}
+    end)
+    if ok then self._pixel_mapping = mapping end
+end
+
 function C:_apply_layout()
     if not self._layout_cache then return end
     local lc = self._layout_cache
+    local state_h = lc.state_h or 0
     if self._root and panel_alive(self._root) then
-        safe_call(self._root, "set_shape", lc.x, lc.y, lc.total_w, lc.card_h)
+        safe_call(self._root, "set_shape", lc.x, lc.y - state_h, lc.total_w, lc.card_h + state_h)
     end
     for i = 1, MAX_CARDS do
         local card = self._cards[i]
         if card then
             local cx = (i - 1) * (lc.card_w + lc.gap)
-            card:set_geometry(cx, 0, lc.card_w, lc.card_h)
+            card:set_geometry(cx, state_h, lc.card_w, lc.card_h, self._pixel_mapping)
         end
     end
 end
@@ -206,8 +241,9 @@ function C:_verify_render()
         if not lc or not panel_alive(self._root) or not self._expected_positions then return false end
         if not self._root:visible() or self._root:alpha() ~= 1 then return false end
         local function close(a, b) return finite(a) and math.abs(a - b) <= 0.5 end
-        if not close(self._root:x(), lc.x) or not close(self._root:y(), lc.y)
-            or not close(self._root:w(), lc.total_w) or not close(self._root:h(), lc.card_h) then return false end
+        local state_h = lc.state_h or 0
+        if not close(self._root:x(), lc.x) or not close(self._root:y(), lc.y - state_h)
+            or not close(self._root:w(), lc.total_w) or not close(self._root:h(), lc.card_h + state_h) then return false end
         local any = false
         for i = 1, MAX_CARDS do
             local card = self._cards[i]
@@ -230,6 +266,9 @@ function C:_combat_conflict()
     if not lc or not panel_alive(panel) then return false end
     local ok, conflict = pcall(function()
         if not panel:visible() then return false end
+        local state_h = lc.state_h or 0
+        local root_top = lc.y - state_h
+        local root_bottom = lc.y + lc.card_h
         local function overlaps(p)
             if not panel_alive(p) or not p:visible() then return false end
             if type(p.alpha) == "function" and p:alpha() <= 0 then return false end
@@ -239,7 +278,7 @@ function C:_combat_conflict()
                 y = p:world_y() - self._parent_panel:world_y()
             end
             local hit = p:w() > 0 and p:h() > 0 and x < lc.x + lc.total_w and x + p:w() > lc.x
-                and y < lc.y + lc.card_h and y + p:h() > lc.y
+                and y < root_bottom and y + p:h() > root_top
             return hit
         end
         -- Root placement container is never occupancy; only our direct drawn children, no native scan.
@@ -320,6 +359,7 @@ function C:unmount()
     self._parent_panel = nil
     self._mounted = false
     self._layout_cache = nil
+    self._pixel_mapping = nil
     self._render_verified = false
     return true
 end
@@ -330,6 +370,7 @@ function C:refresh_settings(manager)
             self:mount(manager)
             return
         end
+        self:_refresh_pixel_mapping()
         local parent = self._parent_panel
         if parent and panel_alive(parent) then
             local pw_s, pw = safe_call(parent, "w")

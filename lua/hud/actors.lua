@@ -1435,6 +1435,12 @@ function ACT:get_actor(slot)
     return snap
 end
 
+function ACT:get_local_peer_color()
+    local peer_id = resolve_local_peer_id()
+    if type(peer_id) ~= "number" then return nil end
+    return resolve_color_for_id(peer_id, false)
+end
+
 local function crew_owner_current(src)
     local session = safe_get(function() return managers.network:session() end)
     if session ~= ACT._crew_source_session then return false end

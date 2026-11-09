@@ -374,8 +374,13 @@ function P:render(snapshot, multiplier)
     local mode = (mode_num == 2) and "real" or "percentage"
     local health = snapshot and snapshot.health or nil
     local armor = snapshot and snapshot.armor or nil
+    local peer_color = nil
+    local actors = kyohud.hud.actors
+    if actors and type(actors.get_local_peer_color) == "function" then
+        peer_color = actors:get_local_peer_color()
+    end
     if self._gauge then
-        self._gauge:render(health, armor, mode, multiplier)
+        self._gauge:render(health, armor, mode, multiplier, peer_color)
     end
     if self._downs_text and panel_alive(self._downs_text) then
         local downs_str = self:_resolve_downs_str(snapshot)

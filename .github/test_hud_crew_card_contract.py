@@ -64,6 +64,7 @@ class CrewCardActualContractTests(unittest.TestCase):
                 equipment={deployable={name_id='dep_long',id='doctor_bag'},cable_ties={amount=-1}}}
             card:update(actor,0)
             _weapon=card._weapon_text:text()
+            _reserve=card._reserve_text:text()
             _dep=card._equipment_text:text()
             _cables=card._cables_text:text()
             _hp=card._health_text:text()
@@ -72,14 +73,18 @@ class CrewCardActualContractTests(unittest.TestCase):
             _phase=card._status_text:text()
         ''')
         g=lua.globals()
-        self.assertIn('Shotgun',g._weapon)
-        self.assertIn('--/40',g._weapon)
+        self.assertEqual(g._weapon,'---',
+            'weapon clip nil -> ---')
+        self.assertNotIn('Shotgun',g._weapon,
+            'weapon clip nil must not contain weapon name')
+        self.assertEqual(g._reserve,'/040',
+            'weapon reserve 40 with slash and padding')
         self.assertIn('Medic',g._dep)
         self.assertIn('--',g._dep)
         self.assertIn('∞',g._cables)
         self.assertEqual(g._hp,'66%')
-        self.assertEqual(g._bot,'Dallas AI')
-        self.assertIn('bleed',g._phase.lower())
+        self.assertEqual(g._bot,'Dallas')
+        self.assertEqual(g._phase,'', 'minimal bots have no condition row')
 
     def test_long_names_never_trim_numeric_suffix_and_readback_requires_measurement(self):
         lua, ok = _lua()
@@ -91,8 +96,10 @@ class CrewCardActualContractTests(unittest.TestCase):
                 equipment={deployable={name_id=string.rep('D',100),amount=123}}}
             card:update(actor,0)
             _good=card:verify()
-            _wp=card._weapon_text:text(); _dep=card._equipment_text:text()
-            _min_font=math.min(card._weapon_text:font_size(),card._equipment_text:font_size())
+            _wp=card._weapon_text:text()
+            _wp_reserve=card._reserve_text:text()
+            _dep=card._equipment_text:text()
+            _min_font=math.min(card._weapon_text:font_size(),card._equipment_text:font_size(),card._reserve_text:font_size())
             local mt=getmetatable(panel_double).__index
             local measure=mt.text_rect
             mt.text_rect=nil
@@ -102,7 +109,8 @@ class CrewCardActualContractTests(unittest.TestCase):
         ''')
         g=lua.globals()
         self.assertIs(g._good,True)
-        self.assertTrue(g._wp.endswith('123/4567'),g._wp)
+        self.assertEqual(g._wp,'123',g._wp)
+        self.assertEqual(g._wp_reserve,'/4567',g._wp_reserve)
         self.assertTrue(g._dep.endswith('x123'),g._dep)
         self.assertGreaterEqual(g._min_font,9.5)
         self.assertIs(g._no_measure,False)

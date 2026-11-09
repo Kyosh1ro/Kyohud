@@ -257,7 +257,7 @@ class CrewMountLayoutAndSourceTests(unittest.TestCase):
                 if C._cards[i] then
                     local r = C._cards[i].root or C._cards[i]._root
                     if r then
-                        if i == 1 then _pos1_x = r:x(); _pos1_y = r:y() end
+                        if i == 1 then _pos1_x = r:x(); _pos1_y = r:y(); _card1_w = r:w() end
                         if i == 2 then _pos2_x = r:x() end
                         if i == 3 then _pos3_x = r:x() end
                     end
@@ -304,9 +304,9 @@ class CrewMountLayoutAndSourceTests(unittest.TestCase):
             "RED: card positions must be ordered left to right")
         self.assertLess(float(g._pos2_x), float(g._pos3_x),
             "RED: card positions must be ordered left to right")
-        gap_12 = float(g._pos2_x) - float(g._pos1_x) - 280.0
-        self.assertAlmostEqual(gap_12, 12.0, places=1,
-            msg="RED: gap between cards must be 12")
+        gap_12 = float(g._pos2_x) - float(g._pos1_x) - float(g._card1_w)
+        self.assertAlmostEqual(gap_12, 20.0, places=1,
+            msg="RED: gap between cards must be 20")
         self.assertTrue(bool(g._has_unknown_source),
             "RED: at least one crew member must have unknown health (no posthook dispatch)")
         self.assertEqual(float(g._old_actors_len), float(g._new_actors_len),

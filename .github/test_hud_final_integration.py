@@ -229,8 +229,8 @@ class LocalCrewCombinedIntegrationTests(unittest.TestCase):
             "equipment row 1 preserves ordered trip_mine quantities compactly")
         self.assertIsNotNone(g._c_card1_name,
             "crew card 1 name_text must have effective text rendering")
-        self.assertEqual(g._c_card1_name, "Dallas IA",
-            "crew card 1 name must be 'Dallas IA' (russian AI)")
+        self.assertEqual(g._c_card1_name, "Dallas",
+            "crew card 1 name must be 'Dallas' without AI suffix")
 
 
 class FoundationOffOnPreservationTests(unittest.TestCase):

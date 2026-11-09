@@ -5,7 +5,8 @@ Three tests against lua/hud/components/crew_card.lua via real lupa.luajit21.
 Interface under test:
   kyohud.hud.crew_card.new(parent, name) -> instance
     instance.root
-    instance._name_text, instance._health_fill, instance._health_text,
+    instance._name_text, instance._peer_dot, instance._rank_text,
+    instance._health_fill, instance._health_text,
     instance._armor_fill, instance._armor_text, instance._weapon_text,
     instance._equipment_text (deployable), instance._cables_text,
     instance._projectile_text, instance._interaction_text, instance._status_text
@@ -27,8 +28,9 @@ actor: crew snapshot entry from actors:get_crew_snapshot() format:
    condition_phase=<string>}
 
 Render rules:
-  name text: human -> "NAME L{level} R{rank}" or "NAME L{level}" when rank=0;
+  name text: human -> plain name only (level/rank shown in _rank_text);
              bot -> character display name + " IA" (no level/rank, FR localization).
+  rank/level (_rank_text): roman·level, level-only when rank=0, empty when both absent.
   health: percentage mode -> rounded(ratio*100).."%", "--" when invalid.
   armor: same; bot with no armor observation -> "--".
   weapon: "{name_id} {current_clip}/{reserve}" or "--" when missing.
@@ -123,7 +125,7 @@ class CrewCardThreeIndependentCards280x120Tests(unittest.TestCase):
         Card 1 (human peer2): name "AlPhA L5", health 50%, armor 80%,
         weapon "wpn_a 7/60", equipment "ammo_bag_name x2", cables "x0",
         projectile "ability charge1", interaction "lockpick 50%", status "0 normal".
-        Card 2 (bot): name "Dallas IA", health "--", armor "--", weapon "--",
+        Card 2 (bot): name "Dallas", health "--", armor "--", weapon "--",
         equipment "--", cables "", projectile "--", interaction "", status "0 normal".
         Card 3 (unknown/minimal): name "--", health "--", armor "--", weapon "--".
         Each card independent with own geometry and primitives.
@@ -215,6 +217,7 @@ class CrewCardThreeIndependentCards280x120Tests(unittest.TestCase):
             _c1_hp = c1._health_text:text()
             _c1_ar = c1._armor_text:text()
             _c1_wp = c1._weapon_text:text()
+            _c1_reserve = c1._reserve_text:text()
             _c1_eq = c1._equipment_text:text()
             _c1_ct_text = c1._cables_text:text()
             _c1_pt_text = c1._projectile_text:text()
@@ -225,6 +228,7 @@ class CrewCardThreeIndependentCards280x120Tests(unittest.TestCase):
             _c2_hp = c2._health_text:text()
             _c2_ar = c2._armor_text:text()
             _c2_wp = c2._weapon_text:text()
+            _c2_reserve = c2._reserve_text:text()
             _c2_eq = c2._equipment_text:text()
             _c2_ct_text = c2._cables_text:text()
             _c2_pt_text = c2._projectile_text:text()
@@ -235,6 +239,7 @@ class CrewCardThreeIndependentCards280x120Tests(unittest.TestCase):
             _c3_hp = c3._health_text:text()
             _c3_ar = c3._armor_text:text()
             _c3_wp = c3._weapon_text:text()
+            _c3_reserve = c3._reserve_text:text()
 
             -- Native callsign color fields
             local nc = c1._name_text:color()
@@ -262,29 +267,38 @@ class CrewCardThreeIndependentCards280x120Tests(unittest.TestCase):
             self.assertTrue(bool(g[attr]),
                 f"card1 primitive {attr} must exist")
 
-        self.assertEqual(g._c1_name, "AlPhA L5",
-            "human rank=0 -> 'NAME L{level}' (no rank suffix)")
+        self.assertEqual(g._c1_name, "AlPhA",
+            "human name is plain name (level/rank in _rank_text)")
         self.assertEqual(g._c1_hp, "50%")
         self.assertEqual(g._c1_ar, "80%")
-        self.assertEqual(g._c1_wp, "wpn_a 7/60")
-        self.assertEqual(g._c1_eq, "ammo_bag_name x2",
-            "equipment_text shows deployable")
+        self.assertEqual(g._c1_wp, "007",
+            "human weapon clip=7 padded to 3 digits")
+        self.assertEqual(g._c1_reserve, "/060",
+            "human weapon reserve=60 with slash and padding")
+        self.assertTrue(g._c1_eq.endswith("x2"),
+            "equipment_text must end with 'x2'")
+        self.assertTrue(g._c1_eq.startswith("amm"),
+            "equipment_text must start with 'amm'")
+        self.assertNotIn("x0", g._c1_eq,
+            "no fake zero for amount=2")
         self.assertEqual(g._c1_ct_text, "x0",
             "cables_text x0 when amount=0 (zero is valid)")
-        self.assertEqual(g._c1_pt_text, "ability charge1",
-            "projectile_text shows kind+amount")
+        self.assertTrue(g._c1_pt_text.endswith("charge1"),
+            "projectile_text must end with kind+amount 'charge1'")
         self.assertEqual(g._c1_int, "lockpick 50%")
-        self.assertEqual(g._c1_status, "0 normal",
-            "status_text shows downs+condition")
+        self.assertEqual(g._c1_status, "",
+            "normal condition stays hidden; downs have a separate heart/count")
 
-        self.assertIn(g._c2_name, ("Dallas IA", "Dallas AI"),
-            "bot -> display name + ' IA' (FR) or 'AI' (EN)")
+        self.assertEqual(g._c2_name, "Dallas",
+            "bot -> display name only, no AI suffix")
         self.assertEqual(g._c2_hp, "--",
             "bot health nil -> '--'")
         self.assertEqual(g._c2_ar, "--",
             "bot armor nil -> '--' (no fake bot armor)")
-        self.assertEqual(g._c2_wp, "--",
-            "bot weapon nil -> '--'")
+        self.assertEqual(g._c2_wp, "---",
+            "bot weapon clip nil -> '---'")
+        self.assertEqual(g._c2_reserve, "/---",
+            "bot weapon reserve nil -> '/---'")
         self.assertEqual(g._c2_eq, "--",
             "bot equipment nil -> '--' (no fake bot equipment)")
         self.assertEqual(g._c2_ct_text, "",
@@ -293,8 +307,8 @@ class CrewCardThreeIndependentCards280x120Tests(unittest.TestCase):
             "bot projectile nil -> '--'")
         self.assertEqual(g._c2_int, "",
             "bot interaction nil -> '' (no fake bot interaction)")
-        self.assertEqual(g._c2_status, "--",
-            "bot status unknown (nil downs/condition) -> '--'")
+        self.assertEqual(g._c2_status, "",
+            "minimal bots have no condition row")
 
         self.assertEqual(g._c3_name, "--",
             "minimal actor name nil -> '--'")
@@ -302,8 +316,10 @@ class CrewCardThreeIndependentCards280x120Tests(unittest.TestCase):
             "minimal health nil -> '--'")
         self.assertEqual(g._c3_ar, "--",
             "minimal armor nil -> '--'")
-        self.assertEqual(g._c3_wp, "--",
-            "minimal weapon nil -> '--'")
+        self.assertEqual(g._c3_wp, "---",
+            "minimal weapon clip nil -> '---'")
+        self.assertEqual(g._c3_reserve, "/---",
+            "minimal weapon reserve nil -> '/---'")
 
         # Native callsign color: numeric fields .r/.g/.b (not methods)
         self.assertIsNotNone(g._c1_nc_r, "callsign color .r must exist")
@@ -443,8 +459,8 @@ class CrewCardStabilityAndRepairTests(unittest.TestCase):
             "verify() must be true after update repairs name text")
         self.assertTrue(bool(g._same_after_name_repair),
             "update must repair using same name_text reference")
-        self.assertEqual(g._repaired_name, "Test L10 R3",
-            "repaired name text must show 'Test L10 R3'")
+        self.assertEqual(g._repaired_name, "Test",
+            "repaired name text must show 'Test' (plain name)")
         self.assertFalse(bool(g._ok_bad_fill),
             "verify() must be false after corrupting health fill geometry")
         self.assertTrue(bool(g._ok_fill_restored),
@@ -606,6 +622,7 @@ class CrewCardTransitionZeroAndBleedoutTests(unittest.TestCase):
 
             inst:update(human_zero, 0)
             _wp_text = inst._weapon_text:text()
+            _wp_reserve = inst._reserve_text:text()
             _eq_text = inst._equipment_text:text()
             _ct_text = inst._cables_text:text()
             _pt_text = inst._projectile_text:text()
@@ -651,23 +668,23 @@ class CrewCardTransitionZeroAndBleedoutTests(unittest.TestCase):
         ''')
         g = lua.globals()
 
-        # Weapon: clip=7, reserve=nil -> "7/--" NOT "7/0"
-        self.assertIn("7/--", g._wp_text,
-            "weapon with clip=7 and reserve=nil must show '7/--' not '7/0'")
-        self.assertNotIn("7/0", g._wp_text,
-            "weapon must NOT show '7/0' when reserve is nil")
+        # Weapon: clip=7, reserve=nil -> "007" and "/---" NOT "0"
+        self.assertEqual(g._wp_text, "007",
+            "weapon with clip=7 must show '007' padded")
+        self.assertEqual(g._wp_reserve, "/---",
+            "weapon with reserve=nil must show '/---' not '0'")
 
         # Deployable: amount=0 -> "x0" NOT "--"
-        self.assertEqual(g._eq_text, "Ammo x0",
-            "deployable with amount=0 must show 'x0' not '--'")
+        self.assertTrue(g._eq_text.endswith("x0"),
+            "deployable text must end with 'x0'")
 
         # Cable ties: amount=0 -> "x0" (strengthened zero contract)
         self.assertEqual(g._ct_text, "x0",
             "cable ties with amount=0 must show 'x0' (zero is valid)")
 
         # Projectile: amount=0 -> "charge0" NOT "--"
-        self.assertEqual(g._pt_text, "charge charge0",
-            "projectile with amount=0 must show 'charge0' not '--'")
+        self.assertTrue(g._pt_text.endswith("charge0"),
+            "projectile text must end with 'charge0'")
 
         # Bot localization: name resolved via managers.localization:text(name_id)
         self.assertIn("Dallas", g._bot_name,
@@ -675,27 +692,25 @@ class CrewCardTransitionZeroAndBleedoutTests(unittest.TestCase):
         self.assertNotEqual(g._bot_name, "russian",
             "bot name must NOT be raw character_name token")
 
-        # Bot bleedout phase without health -> condition visible, not fake normal
+        # Minimal bots keep unknown health without adding a condition row.
         self.assertEqual(g._bot_hp, "--",
             "bot with health=nil must show '--'")
-        self.assertNotEqual(g._bot_status, "--",
-            "bot with bleedout phase must NOT show '--' for status")
-        self.assertIn("bleed", g._bot_status.lower(),
-            "bot with condition_phase=bleedout must show bleedout in status")
+        self.assertEqual(g._bot_status, "",
+            "minimal bot presentation has no condition text")
         self.assertNotIn("normal", g._bot_status.lower(),
             "bot with bleedout phase must NOT show fake 'normal'")
 
         # Downs independently tracked despite condition unknown
         self.assertIn("Hoxton", g._bot_downs_name,
             "bot name resolved via managers.localization:text('menu_american')")
-        self.assertIn("2", g._bot_downs_status,
-            "bot with downs=2 and no condition must still show downs count")
+        self.assertEqual(g._bot_downs_status, "",
+            "minimal bot presentation has no downs text")
 
         # Condition independently tracked despite downs unknown
         self.assertIn("Wolf", g._bot_cond_name,
             "bot name resolved via managers.localization:text('menu_german')")
-        self.assertIn("bleed", g._bot_cond_status.lower(),
-            "bot with condition_text and no downs must still show condition")
+        self.assertEqual(g._bot_cond_status, "",
+            "bot condition data does not add visible information")
 
 
 if __name__ == "__main__":

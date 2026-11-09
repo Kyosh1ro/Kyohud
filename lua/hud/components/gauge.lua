@@ -21,6 +21,12 @@ local INK_NUMERIC_FRAME = Color(1, 0.35, 0.38, 0.42)
 local GEOMETRY_KEYS = {"x", "y", "w", "h"}
 local RGB_KEYS = {"r", "g", "b"}
 
+local function safe_get(fn)
+    local ok, val = pcall(fn)
+    if ok then return val end
+    return nil
+end
+
 local function isfinite(v)
     if type(v) ~= "number" then return false end
     if v ~= v then return false end
@@ -189,13 +195,14 @@ function G:set_geometry(x, y, w, h, reference_scale)
 end
 
 function G:_layout()
-    self:render(self._health, self._armor, self._mode, self._multiplier)
+    self:render(self._health, self._armor, self._mode, self._multiplier, self._peer_color)
 end
 
-function G:render(health, armor, mode, multiplier)
+function G:render(health, armor, mode, multiplier, peer_color)
     if not self.root then return end
     self._health, self._armor = health, armor
     self._mode, self._multiplier = mode, multiplier
+    self._peer_color = peer_color
     local e = self._reference_scale or math.min(self._w / 440, self._h / 42)
     self._expected = self._expected or {}
     self._primitive_lost = false
@@ -205,6 +212,17 @@ function G:render(health, armor, mode, multiplier)
     local at = mode == "real" and fmt_real(armor, multiplier) or fmt_pct(armor)
     local hr = health and health.valid and clamp01(health.ratio) or 0
     local ar = armor and armor.valid and clamp01(armor.ratio) or 0
+    local hp_ink = INK_HEALTH
+    local pc = peer_color
+    if pc ~= nil then
+        local pr = safe_get(function() return pc.r end)
+        local pg = safe_get(function() return pc.g end)
+        local pb = safe_get(function() return pc.b end)
+        if isfinite(pr) and isfinite(pg) and isfinite(pb)
+            and pr >= 0 and pr <= 1 and pg >= 0 and pg <= 1 and pb >= 0 and pb <= 1 then
+            hp_ink = Color(pr, pg, pb)
+        end
+    end
     local expected, expected_index = self._expected, 0
     local function place(p, x, y, w, h, color, text, fs, layer, alpha)
         expected_index = expected_index + 1
@@ -279,7 +297,7 @@ function G:render(health, armor, mode, multiplier)
         local fill = clamp01((hr - lo) / SEGMENT_RATIOS[i])
         local s = self.health_segments[i]
         place(s.background, x, 0, sw, ih, INK_TRACK)
-        place(s.fill, x, 0, sw * fill, ih, INK_HEALTH)
+        place(s.fill, x, 0, sw * fill, ih, hp_ink)
         if i < 4 then
             -- Equal integer widths and a shared raster phase avoid alternating
             -- thin/thick dividers at fractional proportional segment boundaries.
@@ -293,7 +311,7 @@ function G:render(health, armor, mode, multiplier)
     end
     local htx = 14 * e
     local atx = bx + bw + 12 * e
-    place(self.health_text, htx, 4 * e, hw, 24 * e, INK_HEALTH, ht, hfs, 6)
+    place(self.health_text, htx, 4 * e, hw, 24 * e, hp_ink, ht, hfs, 6)
     place(self.armor_text, atx, 4 * e, aw, 24 * e, INK_ARMOR, at, afs, 6)
     local hbg_x = htx - 4 * e
     local hbg_w = hw + 8 * e
