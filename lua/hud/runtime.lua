@@ -13,39 +13,10 @@ RT._mounted = RT._mounted or false
 RT._disabled = RT._disabled or false
 RT._freeflight = RT._freeflight or false
 
--- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: session-wide line cap.
-RT._diag_lines = RT._diag_lines or 0
-
 RT._h5_owner = RT._h5_owner or "kyohud_h5"
 RT._h5_generation = RT._h5_generation or 0
 RT._h5_targets = RT._h5_targets
 RT._h5_source_id = RT._h5_source_id
--- TEMPORARY DIAGNOSTIC REMOVE BEFORE RELEASE: cumulative H5 phase costs, in
--- seconds, split per module. Mutated in place during a capture; allocated once
--- here, never per frame.
-local H5_PHASE_KEYS = {
-    "verify_p", "verify_w", "verify_e", "verify_c",
-    "collect_p", "collect_w", "collect_e", "collect_c",
-    "acq_p", "acq_w", "acq_e", "acq_c",
-    "vis",
-}
-
-local function h5_phase_reset(phase)
-    if type(phase) ~= "table" then return end
-    for i = 1, #H5_PHASE_KEYS do
-        phase[H5_PHASE_KEYS[i]] = 0
-    end
-end
-
-local function h5_phase_init(phase)
-    if type(phase) ~= "table" then phase = {} end
-    for i = 1, #H5_PHASE_KEYS do
-        if phase[H5_PHASE_KEYS[i]] == nil then phase[H5_PHASE_KEYS[i]] = 0 end
-    end
-    return phase
-end
-
-RT._h5_diag_phase = h5_phase_init(RT._h5_diag_phase)
 
 local ROOT_NAME = "kyohud_root_panel"
 local RECOVERY_INTERVAL = 0.5
@@ -85,309 +56,6 @@ end
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
-end
-
--- TEMPORARY, user-authorized diagnostic. No menu/persistence, native writes,
--- forced GC or per-frame logging. One capture per process; remove after diagnosis.
--- Application time is for update intervals only: it may be cached within a frame.
--- os.clock measures block durations, but its platform-dependent granularity means
--- that a zero duration is NOT proof of a free operation. Instrumentation is included.
-local PERF_KEYS = {
-    "other", "player", "weapons", "equipment", "crew",
-    "native_priority", "native_replace", "backdrop", "runtime",
-    "combat",
-}
-
-local function perf_heap()
-    if type(collectgarbage) ~= "function" then return nil end
-    local ok, value = pcall(collectgarbage, "count")
-    if ok and finite(value) then return value end
-end
-
-local function perf_wall_time()
-    return Application:time()
-end
-
-local function perf_player_unit()
-    return managers.player:player_unit()
-end
-
-local function perf_flags()
-    local s = kyohud.settings or {}
-    return string.format("player=%s crew=%s weapons=%s equipment=%s",
-        tostring(s.enable_player == true), tostring(s.enable_crew == true),
-        tostring(s.enable_weapons == true), tostring(s.enable_equipment == true))
-end
-
--- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE. Record-only helpers: no native
--- writes, no font access, and no allocation outside an actual emission.
-local DIAG_PREFIX = "[KyoHUD][H4Diag] "
-local DIAG_MAX_LINES = 60
-local DIAG_PERSIST_INTERVAL = 5.0
-local H4DIAG = "h4diag"
-
--- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: opt-in via sentinel file only.
--- Read once when this chunk loads. If the file is absent, every diagnostic stays
--- silent and neither the line counter nor the log is touched.
-if RT._diag_armed == nil then
-    RT._diag_armed = false
-    if type(ModPath) == "string" and type(io) == "table" and type(io.open) == "function" then
-        local ok, handle = pcall(io.open, ModPath .. H4DIAG, "r")
-        if ok and handle then
-            RT._diag_armed = true
-            pcall(handle.close, handle)
-        end
-    end
-end
-
-local function diag_emit(line)
-    if RT._diag_armed ~= true then return false end
-    local count = RT._diag_lines or 0
-    if count >= DIAG_MAX_LINES then return false end
-    RT._diag_lines = count + 1
-    if type(log) == "function" then pcall(log, DIAG_PREFIX .. line) end
-    return true
-end
-
-local function diag_panel_name(panel)
-    if not panel then return "nil" end
-    if not panel_alive(panel) then return "dead" end
-    local ok, name = pcall(function() return panel:name() end)
-    if ok and type(name) == "string" and name ~= "" then return name end
-    return "?"
-end
-
-local function diag_reason(leaf, parent, child_name)
-    if not leaf and not parent and not child_name then return "-" end
-    local child = child_name or diag_panel_name(leaf)
-    local par = parent
-    if not par and leaf then
-        local ok, value = pcall(function() return leaf:parent() end)
-        if ok then par = value end
-    end
-    return child .. "@" .. diag_panel_name(par)
-end
-
-local function diag_value(value)
-    return value == nil and "-" or tostring(value)
-end
-
-local function diag_now(t)
-    if finite(t) then return t end
-    local ok, now = pcall(perf_wall_time)
-    if ok and finite(now) then return now end
-    return nil
-end
-
--- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: H5 group state transitions only.
-local function h5_diag_local(state, p_ok, p_vis, targets, verify)
-    local record = RT._h5_diag_state
-    if not record then record = {}; RT._h5_diag_state = record end
-    if record.local_flag == state then return end
-    local first = record.local_flag == nil
-    record.local_flag = state
-    if first then return end
-    diag_emit(string.format("group=local_p state=%s p_ok=%s p_vis=%s targets=%d verify=%s",
-        state, tostring(p_ok == true), tostring(p_vis == true),
-        targets or 0, tostring(verify == true)))
-end
-
-local function h5_diag_crew(reason, c_ok, verify, c_vis, targets)
-    local record = RT._h5_diag_state
-    if not record then record = {}; RT._h5_diag_state = record end
-    targets = targets or 0
-    if record.crew_reason == reason and record.crew_targets == targets then return end
-    local first = record.crew_reason == nil
-    record.crew_reason = reason
-    record.crew_targets = targets
-    if first then return end
-    diag_emit(string.format("group=crew reason=%s c_ok=%s verify=%s c_vis=%s targets=%d",
-        reason, tostring(c_ok == true), tostring(verify == true),
-        tostring(c_vis == true), targets))
-end
-
-function RT:_perf_emit(s, reason)
-    self._perf_done = true
-    self._perf_diagnostic = nil
-    self._perf_result = s
-    local prefix = "[KyoHUD][Perf] "
-    local frames = s.frames or 0
-    local elapsed = s.started and ((s.now or s.started) - s.started) or 0
-    local intervals = math.max(0, frames - 1)
-    local lines = {
-        prefix .. string.format("%s capture=%.2fs frames=%d; clock=os.clock, quantifie: zero non concluant; overhead inclus",
-            reason, elapsed, frames),
-        prefix .. string.format("Intervalles HUD update (pas GPU): mean=%.3fms max=%.3fms >16.7=%d >33.3=%d >50=%d",
-            intervals > 0 and (s.gap_sum or 0) * 1000 / intervals or 0,
-            (s.gap_max or 0) * 1000, s.over16 or 0, s.over33 or 0, s.over50 or 0),
-        prefix .. "Debut: " .. (s.flags or "n/a") .. "; fin: " .. perf_flags(),
-    }
-    for _, key in ipairs(PERF_KEYS) do
-        local m = s.metrics and s.metrics[key]
-        if m then
-            lines[#lines + 1] = prefix .. string.format("%s calls=%d mean=%.3fms max=%.3fms sum=%.3fms",
-                key, m.calls, m.calls > 0 and m.total * 1000 / m.calls or 0,
-                m.peak * 1000, m.total * 1000)
-        end
-    end
-    -- TEMPORARY DIAGNOSTIC REMOVE BEFORE RELEASE: H5 phase breakdown in the
-    -- COMPLETE report only, as cumulative milliseconds over the capture.
-    if reason == "COMPLETE" then
-        local phase = self._h5_diag_phase
-        if type(phase) == "table" then
-            local function ms(key) return (tonumber(phase[key]) or 0) * 1000 end
-            lines[#lines + 1] = string.format(
-                "[KyoHUD][Perf][H5] verify P=%.3f W=%.3f E=%.3f C=%.3f collect P=%.3f W=%.3f E=%.3f C=%.3f acq P=%.3f W=%.3f E=%.3f C=%.3f vis=%.3f",
-                ms("verify_p"), ms("verify_w"), ms("verify_e"), ms("verify_c"),
-                ms("collect_p"), ms("collect_w"), ms("collect_e"), ms("collect_c"),
-                ms("acq_p"), ms("acq_w"), ms("acq_e"), ms("acq_c"), ms("vis"))
-        end
-    end
-    local heap_end = perf_heap()
-    local heap = s.heap_start and heap_end and string.format("%.1f -> %.1f KiB", s.heap_start, heap_end) or "n/a"
-    lines[#lines + 1] = prefix .. "Tas Lua=" .. heap .. "; instantanes, pas pauses GC. runtime inclusif; autres lignes exclusives. Combat/buffs: ligne dediee hors runtime; hooks acteurs non mesures. STOP."
-    self._perf_report = table.concat(lines, "\n")
-    if type(log) == "function" then pcall(log, self._perf_report) end
-    -- TEMPORARY DIAGNOSTIC REMOVE BEFORE RELEASE: zero the H5 phase sums once
-    -- the COMPLETE report has consumed them.
-    if reason == "COMPLETE" then
-        h5_phase_reset(self._h5_diag_phase)
-    end
-end
-
-local function perf_record(s, key, elapsed)
-    local m = s.metrics[key]
-    m.calls = m.calls + 1
-    m.total = m.total + elapsed
-    m.peak = math.max(m.peak, elapsed)
-end
-
--- TEMPORARY DIAGNOSTIC REMOVE BEFORE RELEASE: guarded phase clocks. A missing
--- os.clock or a negative delta is ignored, matching the existing perf clocks.
-local function h5_phase_begin(phase)
-    if not phase then return nil end
-    if type(os) ~= "table" or type(os.clock) ~= "function" then return nil end
-    local ok, now = pcall(os.clock)
-    if not ok or not finite(now) then return nil end
-    return now
-end
-
-local function h5_phase_end(phase, key, started)
-    if not phase or not started or not key then return end
-    local ok, now = pcall(os.clock)
-    if not ok or not finite(now) then return end
-    local delta = now - started
-    if delta < 0 then return end
-    phase[key] = (phase[key] or 0) + delta
-end
-
--- TEMPORARY DIAGNOSTIC REMOVE BEFORE RELEASE: map an H5 group key to the
--- owning module counter without allocating. Local groups end with _p/_w/_e;
--- crew groups are the only keys starting with "c".
-local function h5_phase_acq_key(group_key)
-    if type(group_key) ~= "string" then return nil end
-    local len = #group_key
-    if len < 2 then return nil end
-    if string.byte(group_key, 1) == 99 then return "acq_c" end
-    local last = string.byte(group_key, len)
-    if last == 112 then return "acq_p" end
-    if last == 119 then return "acq_w" end
-    if last == 101 then return "acq_e" end
-    return nil
-end
-
-function RT:_perf_begin()
-    if self._perf_done or self._perf_enabled == false then return nil end
-    if kyohud.settings.enable_hud_foundation ~= true or not self._mounted
-        or self._disabled or self._freeflight then
-        if self._perf_diagnostic and self._perf_diagnostic.started then
-            self:_perf_emit(self._perf_diagnostic, "INTERRUPTED (HUD inactive)")
-        else
-            self._perf_diagnostic = nil
-        end
-        return nil
-    end
-    if not Application or not os or type(os.clock) ~= "function" then return nil end
-    if not self._perf_diagnostic then
-        -- Do not spend the single capture in level loading before player spawn.
-        local unit_ok, unit = pcall(perf_player_unit)
-        if not unit_ok or not panel_alive(unit) then return nil end
-    end
-    local ok, now = pcall(perf_wall_time)
-    local s = self._perf_diagnostic or {born = now}
-    if not ok or not finite(now) or now < s.born or (s.now and now < s.now) then
-        self:_perf_emit(s, "ABORTED (Application clock invalid)")
-        return nil
-    end
-    self._perf_diagnostic = s
-    if not s.started then
-        if now - s.born < 5 then return nil end
-        s.started = now
-        s.frames, s.gap_sum, s.gap_max = 0, 0, 0
-        s.over16, s.over33, s.over50 = 0, 0, 0
-        s.metrics = {}
-        for _, key in ipairs(PERF_KEYS) do
-            s.metrics[key] = {calls = 0, total = 0, peak = 0}
-        end
-        s.heap_start, s.flags = perf_heap(), perf_flags()
-        -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: reset the combat draw
-        -- counters with the other accumulators so this capture starts from zero.
-        local draw_diag = kyohud._draw_diag
-        if type(draw_diag) == "table" then
-            draw_diag.calls, draw_diag.sum, draw_diag.max = 0, 0, 0
-        end
-        -- TEMPORARY DIAGNOSTIC REMOVE BEFORE RELEASE: start the H5 phase sums
-        -- from zero with the other capture accumulators.
-        h5_phase_reset(RT._h5_diag_phase)
-    end
-    if s.now then
-        local gap = now - s.now
-        s.gap_sum = s.gap_sum + gap
-        s.gap_max = math.max(s.gap_max, gap)
-        if gap > 1 / 60 then s.over16 = s.over16 + 1 end
-        if gap > 1 / 30 then s.over33 = s.over33 + 1 end
-        if gap > 0.05 then s.over50 = s.over50 + 1 end
-    end
-    s.now = now
-    local cpu_ok, cpu = pcall(os.clock)
-    if not cpu_ok or not finite(cpu) or (s.marker and cpu < s.marker) then
-        self:_perf_emit(s, "ABORTED (os.clock invalid)")
-        return nil
-    end
-    s.frame_cpu, s.marker = cpu, cpu
-    return s
-end
-
-function RT:_perf_mark(s, key)
-    if self._perf_done then return end
-    local ok, now = pcall(os.clock)
-    if not ok or not finite(now) or now < s.marker then
-        self:_perf_emit(s, "ABORTED (os.clock invalid)")
-        return
-    end
-    perf_record(s, key, now - s.marker)
-    s.marker = now
-end
-
-function RT:_perf_finish(s)
-    self:_perf_mark(s, "other")
-    if self._perf_done then return end
-    perf_record(s, "runtime", s.marker - s.frame_cpu)
-    s.frames = s.frames + 1
-    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: include the combat draw
-    -- counters in the report; only the capture-start block resets them.
-    local combat = s.metrics and s.metrics.combat
-    if combat then
-        local draw_diag = kyohud._draw_diag
-        if type(draw_diag) == "table" then
-            combat.calls = tonumber(draw_diag.calls) or 0
-            combat.total = tonumber(draw_diag.sum) or 0
-            combat.peak = tonumber(draw_diag.max) or 0
-        else
-            combat.calls, combat.total, combat.peak = 0, 0, 0
-        end
-    end
-    if s.now - s.started >= 20 then self:_perf_emit(s, "COMPLETE") end
 end
 
 local function lookup_method(obj, method_name)
@@ -756,22 +424,15 @@ function RT:update(manager, t, dt)
     if E then E._update_ran_now = false; E._verify_ok_now = false end
     if C then C._update_ran_now = false; C._verify_ok_now = false end
     if not t then return end
-    local perf = self:_perf_begin()
 
     if kyohud.settings.enable_hud_foundation == true then
         self:_coordinate_alerts("update", t, dt)
         self:_coordinate_assault("update", t, dt)
-        if perf then self:_perf_mark(perf, "other") end
         self:_coordinate_player("update", t, dt)
-        if perf then self:_perf_mark(perf, "player") end
         self:_coordinate_weapons("update", t, dt)
-        if perf then self:_perf_mark(perf, "weapons") end
         self:_coordinate_equipment("update", t, dt)
-        if perf then self:_perf_mark(perf, "equipment") end
         local crew_receipt = self:_coordinate_crew("update", t, dt)
-        if perf then self:_perf_mark(perf, "crew") end
-        self:_sync_local_backdrop(t, perf, crew_receipt)
-        if perf then self:_perf_mark(perf, "backdrop") end
+        self:_sync_local_backdrop(t, crew_receipt)
     end
 
     if kyohud.settings.enable_hud_foundation == true and kyohud.settings.enable_objectives == true then
@@ -782,7 +443,6 @@ function RT:update(manager, t, dt)
     end
 
     if self._last_recovery_time ~= nil and t >= self._last_recovery_time and (t - self._last_recovery_time) < RECOVERY_INTERVAL then
-        if perf then self:_perf_finish(perf) end
         return
     end
 
@@ -792,7 +452,6 @@ function RT:update(manager, t, dt)
     if kyohud.settings.enable_hud_foundation ~= true then
         self:_retry_pending_h5_releases()
         self:unmount()
-        if perf then self:_perf_finish(perf) end
         return
     end
 
@@ -802,7 +461,6 @@ function RT:update(manager, t, dt)
         self:_do_refresh()
         self:_coordinate_mission("update", t, dt)
         self:_coordinate_objectives("update", t, dt)
-        if perf then self:_perf_finish(perf) end
         return
     end
 
@@ -812,7 +470,6 @@ function RT:update(manager, t, dt)
     self:mount(mgr)
     self:_coordinate_mission("update", t, dt)
     self:_coordinate_objectives("update", t, dt)
-    if perf then self:_perf_finish(perf) end
 end
 
 -- quality split approved 2026-11-10: throttled frames read the live root
@@ -1318,13 +975,6 @@ function RT:_apply_native_priority(t)
         if not fresh then h5_child_index_set(parent, name, nil) end
         S.hide_crew = true
         S.hide_local = true
-        -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-        if not S._diag_crew_leaf and not S._diag_crew_parent and not S._diag_crew_name then
-            S._diag_crew_parent, S._diag_crew_name = parent, name
-        end
-        if not S._diag_local_leaf and not S._diag_local_parent and not S._diag_local_name then
-            S._diag_local_parent, S._diag_local_name = parent, name
-        end
         return nil
     end
     local function check_leaf(leaf_panel)
@@ -1337,26 +987,12 @@ function RT:_apply_native_priority(t)
         if ev == nil or ea == nil then
             S.hide_crew = true
             S.hide_local = true
-            -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-            if not S._diag_crew_leaf and not S._diag_crew_parent and not S._diag_crew_name then
-                S._diag_crew_leaf, S._diag_crew_vis, S._diag_crew_alpha = leaf_panel, ev, ea
-            end
-            if not S._diag_local_leaf and not S._diag_local_parent and not S._diag_local_name then
-                S._diag_local_leaf, S._diag_local_vis, S._diag_local_alpha = leaf_panel, ev, ea
-            end
             return
         end
         local nb = _bounds_in_common(leaf_panel, common_parent, reads)
         if not nb then
             S.hide_crew = true
             S.hide_local = true
-            -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-            if not S._diag_crew_leaf and not S._diag_crew_parent and not S._diag_crew_name then
-                S._diag_crew_leaf, S._diag_crew_vis, S._diag_crew_alpha = leaf_panel, ev, ea
-            end
-            if not S._diag_local_leaf and not S._diag_local_parent and not S._diag_local_name then
-                S._diag_local_leaf, S._diag_local_vis, S._diag_local_alpha = leaf_panel, ev, ea
-            end
             return
         end
         if S.any_crew and not S.hide_crew then
@@ -1365,16 +1001,8 @@ function RT:_apply_native_priority(t)
             end
             if not S._cb then
                 S.hide_crew = true
-                -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-                if not S._diag_crew_leaf and not S._diag_crew_parent and not S._diag_crew_name then
-                    S._diag_crew_leaf, S._diag_crew_vis, S._diag_crew_alpha = leaf_panel, ev, ea
-                end
             elseif _aabb_overlap(nb, S._cb) then
                 S.hide_crew = true
-                -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-                if not S._diag_crew_leaf and not S._diag_crew_parent and not S._diag_crew_name then
-                    S._diag_crew_leaf, S._diag_crew_vis, S._diag_crew_alpha = leaf_panel, ev, ea
-                end
             end
         end
         if S.any_local and not S.hide_local then
@@ -1384,10 +1012,6 @@ function RT:_apply_native_priority(t)
                 end
                 if not S._pb or _aabb_overlap(nb, S._pb) then
                     S.hide_local = true
-                    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-                    if not S._diag_local_leaf and not S._diag_local_parent and not S._diag_local_name then
-                        S._diag_local_leaf, S._diag_local_vis, S._diag_local_alpha = leaf_panel, ev, ea
-                    end
                 end
             end
             if not S.hide_local and weapons_root and panel_alive(weapons_root) then
@@ -1396,10 +1020,6 @@ function RT:_apply_native_priority(t)
                 end
                 if not S._wb or _aabb_overlap(nb, S._wb) then
                     S.hide_local = true
-                    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-                    if not S._diag_local_leaf and not S._diag_local_parent and not S._diag_local_name then
-                        S._diag_local_leaf, S._diag_local_vis, S._diag_local_alpha = leaf_panel, ev, ea
-                    end
                 end
             end
             if not S.hide_local and equipment_root and panel_alive(equipment_root) then
@@ -1408,10 +1028,6 @@ function RT:_apply_native_priority(t)
                 end
                 if not S._eb or _aabb_overlap(nb, S._eb) then
                     S.hide_local = true
-                    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-                    if not S._diag_local_leaf and not S._diag_local_parent and not S._diag_local_name then
-                        S._diag_local_leaf, S._diag_local_vis, S._diag_local_alpha = leaf_panel, ev, ea
-                    end
                 end
             end
         end
@@ -1474,13 +1090,6 @@ function RT:_apply_native_priority(t)
             if special_equip[SPECIAL_EQUIP_MAX + 1] ~= nil then
                 S.hide_crew = true
                 S.hide_local = true
-                -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-                if not S._diag_crew_leaf and not S._diag_crew_parent and not S._diag_crew_name then
-                    S._diag_crew_name = "special_equip"
-                end
-                if not S._diag_local_leaf and not S._diag_local_parent and not S._diag_local_name then
-                    S._diag_local_name = "special_equip"
-                end
             end
         end
     end
@@ -1536,38 +1145,6 @@ function RT:_apply_native_priority(t)
         end
     end
 
-    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: priority hide transitions and
-    -- a 5.0 s persistent reading while either hide flag remains true.
-    local diag_prev = RT._h4_diag_state
-    local diag_changed = false
-    if diag_prev == nil then
-        diag_prev = {crew = S.hide_crew, local_flag = S.hide_local}
-        RT._h4_diag_state = diag_prev
-    elseif diag_prev.crew ~= S.hide_crew or diag_prev.local_flag ~= S.hide_local then
-        diag_prev.crew = S.hide_crew
-        diag_prev.local_flag = S.hide_local
-        diag_changed = true
-    end
-    local diag_time = diag_now(t)
-    local diag_persist = false
-    if not diag_changed and (S.hide_crew or S.hide_local) and diag_time ~= nil
-        and RT._h4_diag_last_time ~= nil and diag_time >= RT._h4_diag_last_time
-        and (diag_time - RT._h4_diag_last_time) >= DIAG_PERSIST_INTERVAL then
-        diag_persist = true
-    end
-    if diag_changed or diag_persist then
-        local reason_crew = diag_reason(S._diag_crew_leaf, S._diag_crew_parent, S._diag_crew_name)
-        local reason_local = diag_reason(S._diag_local_leaf, S._diag_local_parent, S._diag_local_name)
-        local line = string.format("%screw=%s local=%s reason_crew=%s reason_local=%s vis_crew=%s alpha_crew=%s vis_local=%s alpha_local=%s",
-            diag_persist and "PERSIST " or "",
-            tostring(S.hide_crew == true), tostring(S.hide_local == true),
-            reason_crew, reason_local,
-            diag_value(S._diag_crew_vis), diag_value(S._diag_crew_alpha),
-            diag_value(S._diag_local_vis), diag_value(S._diag_local_alpha))
-        if diag_emit(line) and diag_time ~= nil then
-            RT._h4_diag_last_time = diag_time
-        end
-    end
 end
 
 local H5_PLAYER_ID_LEAVES = {"name", "name_bg", "callsign", "callsign_bg"}
@@ -2201,26 +1778,12 @@ end
 function RT:_coordinate_h5_native_duplicates(crew_receipt)
     local mgr = self._manager
     if not mgr then return {} end
-    -- TEMPORARY DIAGNOSTIC REMOVE BEFORE RELEASE: time only during an active
-    -- capture; the accumulators are reused in place, never reallocated.
-    local diag_perf = self._perf_diagnostic
-    local phase = nil
-    if diag_perf and diag_perf.started and not self._perf_done
-        and self._perf_enabled ~= false then
-        phase = self._h5_diag_phase
-    end
     if self._disabled or self._freeflight then
         self:_release_all_h5()
-        -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-        h5_diag_local("p_ok_false", false, false, 0, false)
-        h5_diag_crew("c_ok", false, false, false, 0)
         return {}
     end
     local nv = kyohud.hud.native_visibility
     if not nv or type(nv.acquire) ~= "function" then
-        -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-        h5_diag_local("p_ok_false", false, false, 0, false)
-        h5_diag_crew("c_ok", false, false, false, 0)
         return {}
     end
 
@@ -2251,38 +1814,32 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
     -- live light root read. H5 never adds a full verifier pcall.
     local certifications = {}
     if p_ok then
-        local verify_start = h5_phase_begin(phase)
         local ok
         if P._update_ran_now == true then
             ok = P._verify_ok_now == true
         else
             ok = h5_light_root_ok(P)
         end
-        h5_phase_end(phase, "verify_p", verify_start)
         certifications[P] = {root = P._root, manager = P._manager, verify = P.verify, ok = ok}
         if not ok then p_ok = false end
     end
     if w_ok then
-        local verify_start = h5_phase_begin(phase)
         local ok
         if W._update_ran_now == true then
             ok = W._verify_ok_now == true
         else
             ok = h5_light_root_ok(W)
         end
-        h5_phase_end(phase, "verify_w", verify_start)
         certifications[W] = {root = W._root, manager = W._manager, verify = W.verify, ok = ok}
         if not ok then w_ok = false end
     end
     if e_ok then
-        local verify_start = h5_phase_begin(phase)
         local ok
         if E._update_ran_now == true then
             ok = E._verify_ok_now == true
         else
             ok = h5_light_root_ok(E)
         end
-        h5_phase_end(phase, "verify_e", verify_start)
         certifications[E] = {root = E._root, manager = E._manager, verify = E.verify, ok = ok}
         if not ok then e_ok = false end
     end
@@ -2299,21 +1856,18 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
             end
         end
         if not receipt_valid then
-            local verify_start = h5_phase_begin(phase)
             local ok
             if C._update_ran_now == true then
                 ok = C._verify_ok_now == true
             else
                 ok = h5_light_crew_ok(C)
             end
-            h5_phase_end(phase, "verify_c", verify_start)
             if not ok then c_ok = false end
         end
     end
 
     -- All four visibility queries precede target acquisition and any H5 writes.
     -- Share their common ancestors, never this cache with priority or acquisition.
-    local vis_start = h5_phase_begin(phase)
     local visibility_reads = {}
     local p_vis = false
     if p_ok then
@@ -2331,30 +1885,10 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
     if c_ok then
         c_vis = _effective_visible(C._root, visibility_reads) == true and (_effective_alpha(C._root, visibility_reads) or 0) > 0
     end
-    h5_phase_end(phase, "vis", vis_start)
-
-    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-    local local_p_state = p_ok and "released" or "p_ok_false"
-    local local_p_targets = 0
-    local local_p_verify = false
-    local crew_reason = "c_ok"
-    local crew_verify = false
-    local crew_targets = 0
-    if c_ok then
-        if not c_vis then
-            crew_reason = "c_vis"
-        else
-            crew_verify = C and C._render_verified == true
-            crew_reason = crew_verify and "targets" or "verify"
-        end
-    end
 
     local teammate_panels = mgr._teammate_panels
     if type(teammate_panels) ~= "table" then
         self:_release_all_h5()
-        -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE.
-        h5_diag_local(local_p_state, p_ok, p_vis, local_p_targets, local_p_verify)
-        h5_diag_crew(crew_reason, c_ok, crew_verify, c_vis, crew_targets)
         return certifications
     end
 
@@ -2368,36 +1902,22 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
             if entry_panel and panel_alive(entry_panel) then
                 local key = "local_p"
                 if p_ok and p_vis then
-                    local collect_start = h5_phase_begin(phase)
-                    local p_targets, identity_ok = h5_collect_player_targets(entry_panel, P)
-                    h5_phase_end(phase, "collect_p", collect_start)
-                    local_p_targets = #p_targets
-                    local_p_verify = identity_ok == true
-                    local acq_start = h5_phase_begin(phase)
+                    local p_targets = h5_collect_player_targets(entry_panel, P)
                     if #p_targets > 0 then
-                        local_p_state = "acquired"
                         self:_h5_acquire_group(key .. "_p", p_targets, {
                             entry_panel = entry_panel,
                             manager = mgr,
                             root_gen = self._generation,
                         })
                     else
-                        local_p_state = "no_targets"
                         self:_h5_release_group(key .. "_p")
                     end
-                    h5_phase_end(phase, "acq_p", acq_start)
                 else
-                    local_p_state = p_ok and "released" or "p_ok_false"
-                    local acq_start = h5_phase_begin(phase)
                     self:_h5_release_group(key .. "_p")
-                    h5_phase_end(phase, "acq_p", acq_start)
                 end
                 handled_keys[key .. "_p"] = true
                 if w_ok and w_vis then
-                    local collect_start = h5_phase_begin(phase)
                     local w_targets = h5_collect_weapon_targets(entry_panel, W)
-                    h5_phase_end(phase, "collect_w", collect_start)
-                    local acq_start = h5_phase_begin(phase)
                     if #w_targets > 0 then
                         self:_h5_acquire_group(key .. "_w", w_targets, {
                             entry_panel = entry_panel,
@@ -2407,18 +1927,12 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
                     else
                         self:_h5_release_group(key .. "_w")
                     end
-                    h5_phase_end(phase, "acq_w", acq_start)
                 else
-                    local acq_start = h5_phase_begin(phase)
                     self:_h5_release_group(key .. "_w")
-                    h5_phase_end(phase, "acq_w", acq_start)
                 end
                 handled_keys[key .. "_w"] = true
                 if e_ok and e_vis then
-                    local collect_start = h5_phase_begin(phase)
                     local e_targets = h5_collect_equipment_targets(entry_panel, E)
-                    h5_phase_end(phase, "collect_e", collect_start)
-                    local acq_start = h5_phase_begin(phase)
                     if #e_targets > 0 then
                         self:_h5_acquire_group(key .. "_e", e_targets, {
                             entry_panel = entry_panel,
@@ -2428,25 +1942,16 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
                     else
                         self:_h5_release_group(key .. "_e")
                     end
-                    h5_phase_end(phase, "acq_e", acq_start)
                 else
-                    local acq_start = h5_phase_begin(phase)
                     self:_h5_release_group(key .. "_e")
-                    h5_phase_end(phase, "acq_e", acq_start)
                 end
                 handled_keys[key .. "_e"] = true
             end
         end
     else
-        local acq_start = h5_phase_begin(phase)
         self:_h5_release_group("local_p_p")
-        h5_phase_end(phase, "acq_p", acq_start)
-        acq_start = h5_phase_begin(phase)
         self:_h5_release_group("local_p_w")
-        h5_phase_end(phase, "acq_w", acq_start)
-        acq_start = h5_phase_begin(phase)
         self:_h5_release_group("local_p_e")
-        h5_phase_end(phase, "acq_e", acq_start)
     end
 
     if c_ok and c_vis and ACT and type(ACT.write_crew_native_coverage) == "function" then
@@ -2476,19 +1981,14 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
                                 if entry_panel and panel_alive(entry_panel) then
                                     local key = "crew_" .. pos
                                     handled_keys[key] = true
-                                    local collect_start = h5_phase_begin(phase)
                                     local targets = h5_collect_crew_targets(entry_panel, current, shown)
-                                    h5_phase_end(phase, "collect_c", collect_start)
-                                    local acq_start = h5_phase_begin(phase)
                                     if #targets > 0 then
-                                        crew_targets = crew_targets + #targets
                                         self:_h5_acquire_group(key, targets, {
                                             entry_panel = entry_panel, manager = mgr, root_gen = self._generation,
                                         })
                                     else
                                         self:_h5_release_group(key)
                                     end
-                                    h5_phase_end(phase, "acq_c", acq_start)
                                 end
                             end
                         end
@@ -2501,21 +2001,10 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
     if self._h5_groups then
         for key, state in pairs(self._h5_groups) do
             if not handled_keys[key] then
-                local acq_start = h5_phase_begin(phase)
                 self:_h5_release_group(key)
-                h5_phase_end(phase, h5_phase_acq_key(key), acq_start)
             end
         end
     end
-    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: H5 group transitions only.
-    local local_group = self._h5_groups and self._h5_groups["local_p_p"]
-    if local_group and not local_group._release_pending then
-        local_p_state = "acquired"
-    elseif local_p_state == "acquired" then
-        local_p_state = "released"
-    end
-    h5_diag_local(local_p_state, p_ok, p_vis, local_p_targets, local_p_verify)
-    h5_diag_crew(crew_reason, c_ok, crew_verify, c_vis, crew_targets)
     self:_sync_h5_id_label_visibility()
     return certifications
 end
@@ -2590,11 +2079,9 @@ function RT:_release_h5()
     self:_release_all_h5()
 end
 
-function RT:_sync_local_backdrop(t, perf, crew_receipt)
+function RT:_sync_local_backdrop(t, crew_receipt)
     self:_apply_native_priority(t)
-    if perf then self:_perf_mark(perf, "native_priority") end
     local certifications = self:_coordinate_h5_native_duplicates(crew_receipt)
-    if perf then self:_perf_mark(perf, "native_replace") end
     if t ~= nil then
         if self._last_backdrop_sync ~= nil and t >= self._last_backdrop_sync
             and (t - self._last_backdrop_sync) < BG_THROTTLE then

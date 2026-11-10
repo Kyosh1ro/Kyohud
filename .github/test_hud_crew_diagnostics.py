@@ -1,4 +1,9 @@
-"""NO DIAGNOSTIC contract; zero log messages and no diagnostic methods."""
+"""NO DIAGNOSTIC contract; zero log messages and no diagnostic fields.
+
+Stricter after the diagnostic cleanup: the legacy opt-in knobs are forced on
+before the transitions, so silence and absence are proven even if a removed
+instrumentation path is accidentally reintroduced.
+"""
 import unittest
 from test_hud_crew_acceptance import mounted
 
@@ -9,6 +14,16 @@ class CrewDiagnosticTests(unittest.TestCase):
         lua.execute(r'''
             _messages={}
             function log(message) _messages[#_messages+1]=message end
+            _has_diag_armed = RT._diag_armed ~= nil
+            _has_diag_lines = RT._diag_lines ~= nil
+            _has_h4_diag = RT._h4_diag_state ~= nil
+            _has_h5_diag = RT._h5_diag_state ~= nil
+            _has_h5_phase = RT._h5_diag_phase ~= nil
+            _has_perf = RT._perf_done ~= nil or RT._perf_diagnostic ~= nil
+                or RT._perf_result ~= nil or RT._perf_report ~= nil
+                or RT._perf_enabled ~= nil or kyohud._draw_diag ~= nil
+            RT._diag_armed = true
+            kyohud._draw_diag = {calls=0,sum=0,max=0}
             RT:update(managers.hud,1.1,.05)
             RT:update(managers.hud,1.2,.05)
             _stable=#_messages
@@ -35,6 +50,12 @@ class CrewDiagnosticTests(unittest.TestCase):
             _has_diagnostic=C._diagnostic~=nil
         ''')
         g=lua.globals()
+        self.assertFalse(g._has_diag_armed,'no _diag_armed field')
+        self.assertFalse(g._has_diag_lines,'no _diag_lines field')
+        self.assertFalse(g._has_h4_diag,'no _h4_diag_state field')
+        self.assertFalse(g._has_h5_diag,'no _h5_diag_state field')
+        self.assertFalse(g._has_h5_phase,'no _h5_diag_phase field')
+        self.assertFalse(g._has_perf,'no perf or draw-diagnostic fields')
         self.assertEqual(g._stable,0,'no log messages during stable phase')
         self.assertEqual(g._total,0,'no log messages across all transitions')
         self.assertFalse(g._has_diagnostic,'no _diagnostic method')
@@ -46,6 +67,8 @@ class CrewDiagnosticTests(unittest.TestCase):
     def test_no_diagnostics_with_genuine_overlap(self):
         lua=mounted()
         lua.execute(r'''
+            _messages={}
+            function log(message) _messages[#_messages+1]=message end
             local lc=C._layout_cache
             local combat=panel_double:panel({name='diag_combat_root'})
             combat:set_shape(0,0,1280,1080)
@@ -80,8 +103,10 @@ class CrewDiagnosticTests(unittest.TestCase):
             obstacle:set_visible(true)
             RT:update(managers.hud,4.4,.05)
             _hidden_final=not C._root:visible()
+            _total=#_messages
         ''')
         g=lua.globals()
+        self.assertEqual(g._total,0,'no log messages across overlap transitions')
         self.assertIs(g._hidden,True,'real overlap must hide crew')
         self.assertIs(g._recovered,True,'recovery must succeed when obstacle hides')
         self.assertIs(g._same_root,True,'root primitive must be preserved')

@@ -287,12 +287,10 @@ class VerifyQualitySplitTests(unittest.TestCase):
         self.assertTrue(bool(g.again_group),
                         "the repaired local group stays acquired")
 
-    def test_acquisition_surface_matches_with_diagnostics_disabled(self):
+    def test_acquisition_surface_matches_across_meta_and_light_frames(self):
         lua = _radial_runtime()
         _bind_names(lua)
         lua.execute(r'''
-            R._perf_enabled = false
-            RT._diag_armed = false
             local function snapshot()
                 local counts = {}
                 for key, state in pairs(R._h5_groups or {}) do
@@ -332,7 +330,7 @@ class VerifyQualitySplitTests(unittest.TestCase):
         self.assertTrue(bool(g.again_parity),
                         "light and meta frames must acquire the same groups/targets")
         self.assertTrue(bool(g.again_mask_parity),
-                        "diagnostics disabled must not change masking")
+                        "meta and light frames must keep the same masking")
 
     def test_skipped_module_update_is_treated_as_non_ran(self):
         lua = _radial_runtime()

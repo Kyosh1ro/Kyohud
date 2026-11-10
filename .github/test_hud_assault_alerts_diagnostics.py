@@ -199,8 +199,10 @@ class PresentationDiagAbsenceTests(unittest.TestCase):
                 lua.globals().rf = rf
                 lua.execute(r'''
                     _attempts = 0
+                    _assault_state_diag_count = 0
                     function log(msg)
                         if type(msg) == "string" and msg:find("[KyoHUD][AssaultStateDiag]", 1, true) then
+                            _assault_state_diag_count = _assault_state_diag_count + 1
                             return
                         end
                         _attempts = _attempts + 1
@@ -224,6 +226,7 @@ class PresentationDiagAbsenceTests(unittest.TestCase):
                     _root_visible = root:visible()
                     _render_ok = subject:_verify_render()
                     _attempts_final = _attempts
+                    _assault_state_diag_final = _assault_state_diag_count
                 ''')
                 g = lua.globals()
                 self.assertTrue(g._update_ok_failure,
@@ -238,6 +241,8 @@ class PresentationDiagAbsenceTests(unittest.TestCase):
                     mode + ": render must verify after recovery")
                 self.assertEqual(g._attempts_final, 0,
                     mode + ": log must not be attempted (no diagnostics emitted)")
+                self.assertEqual(g._assault_state_diag_final, 0,
+                    mode + ": zero AssaultStateDiag lines may be emitted")
 
     def test_casing_ticker_property_mutation_silence(self):
         """Mutate each retained ticker property; verify fail/restore with zero diagnostics."""

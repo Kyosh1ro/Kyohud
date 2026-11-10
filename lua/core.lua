@@ -1916,16 +1916,6 @@ function KH:draw()
     local s = self.settings
     if not s then return end
 
-    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: measure the non-timed combat
-    -- draw body with os.clock. The reusable table is mutated in place, so every
-    -- call after the first one allocates nothing here.
-    local draw_diag = self._draw_diag
-    if not draw_diag then
-        draw_diag = { calls = 0, sum = 0, max = 0 }
-        self._draw_diag = draw_diag
-    end
-    local cpu_start = os.clock()
-
     local t = now()
 
     -- Purge expired buffs
@@ -2376,15 +2366,6 @@ function KH:draw()
     if s.enable_killfeed and s.show_total_score ~= false
             and self._heist_score_recorded then
         KH.DrawHeistScoreWidget(self, self._panel, w, h, size, alpha, s)
-    end
-
-    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: accumulate the body duration
-    -- in the reused fields, without logging anything per frame.
-    local cpu_elapsed = os.clock() - cpu_start
-    draw_diag.calls = draw_diag.calls + 1
-    draw_diag.sum = draw_diag.sum + cpu_elapsed
-    if cpu_elapsed > draw_diag.max then
-        draw_diag.max = cpu_elapsed
     end
 end
 

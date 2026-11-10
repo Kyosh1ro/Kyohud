@@ -16,93 +16,7 @@ if S.presenting == nil then S.presenting = false end
 if S.client_preparation == nil then S.client_preparation = false end
 if S.is_host == nil then S.is_host = false end
 
-A._assault_state_diag_session_count = A._assault_state_diag_session_count or 0
-A._assault_state_diag_last_tuple_phase = A._assault_state_diag_last_tuple_phase
-A._assault_state_diag_last_tuple_state = A._assault_state_diag_last_tuple_state
-A._assault_state_diag_last_tuple_reason = A._assault_state_diag_last_tuple_reason
-A._assault_state_diag_last_tuple_predicate = A._assault_state_diag_last_tuple_predicate
-A._assault_state_diag_bai_type = A._assault_state_diag_bai_type
 A._assault_state_diag_bai_getter_type = A._assault_state_diag_bai_getter_type
-A._assault_state_diag_bai_raw_result = A._assault_state_diag_bai_raw_result
-A._assault_state_diag_bai_err = A._assault_state_diag_bai_err
-A._assault_state_diag_first_predicate = A._assault_state_diag_first_predicate
-
-local DIAG_PREFIX = "[KyoHUD][AssaultStateDiag]"
-local DIAG_CAP = 30
-
-local function _diag_emit(self, state, reason, predicate, extra)
-    if self._assault_state_diag_session_count >= DIAG_CAP then return end
-    local tuple_state = state or "unknown"
-    local tuple_reason = reason or "unknown"
-    local tuple_predicate = predicate or "none"
-    if self._state.phase == (self._assault_state_diag_last_tuple_phase or nil)
-        and tuple_state == (self._assault_state_diag_last_tuple_state or nil)
-        and tuple_reason == (self._assault_state_diag_last_tuple_reason or nil)
-        and tuple_predicate == (self._assault_state_diag_last_tuple_predicate or nil) then
-        return
-    end
-    local ok_build, msg = pcall(function()
-        local phase = self._state.phase or "nil"
-        local is_host = tostring(self._state.is_host)
-        local active = tostring(self._state.active)
-        local presenting = tostring(self._state.presenting)
-        local endless = tostring(self._state.endless)
-        local trans_alpha = tostring(self._transition_active)
-        local bai_type = tostring(self._assault_state_diag_bai_type or "nil")
-        local bai_gt = tostring(self._assault_state_diag_bai_getter_type or "nil")
-        local bai_raw = tostring(self._assault_state_diag_bai_raw_result)
-        local adv_cached = tostring(self._bai_advanced_active)
-        local source_id = tostring(self._source)
-        local corner_id = tostring(self._bai_corner)
-        local render_v = tostring(self._render_verified)
-        local native_acq = tostring(self._native_acquired)
-        local msg = DIAG_PREFIX
-            .. " state=" .. tuple_state
-            .. " phase=" .. phase
-            .. " is_host=" .. is_host
-            .. " active=" .. active
-            .. " presenting=" .. presenting
-            .. " endless=" .. endless
-            .. " trans=" .. trans_alpha
-            .. " reason=" .. tuple_reason
-            .. " predicate=" .. tuple_predicate
-            .. " bai_type=" .. bai_type
-            .. " bai_getter_type=" .. bai_gt
-            .. " bai_raw=" .. bai_raw
-            .. " adv_cached=" .. adv_cached
-            .. " source=" .. source_id
-            .. " corner=" .. corner_id
-            .. " render_verified=" .. render_v
-            .. " native_acquired=" .. native_acq
-        if self._assault_state_diag_first_actual then
-            msg = msg .. " actual=" .. self._assault_state_diag_first_actual
-        end
-        if self._assault_state_diag_first_desired then
-            msg = msg .. " desired=" .. self._assault_state_diag_first_desired
-        end
-        if extra then
-            local ok_extra, str_extra = pcall(tostring, extra)
-            if ok_extra and str_extra then
-                msg = msg .. " " .. str_extra
-            end
-        end
-        return msg
-    end)
-    if not ok_build then
-        self._assault_state_diag_last_tuple_phase = self._state.phase
-        self._assault_state_diag_last_tuple_state = tuple_state
-        self._assault_state_diag_last_tuple_reason = tuple_reason
-        self._assault_state_diag_last_tuple_predicate = tuple_predicate
-        self._assault_state_diag_session_count = self._assault_state_diag_session_count + 1
-        return
-    end
-    self._assault_state_diag_last_tuple_phase = self._state.phase
-    self._assault_state_diag_last_tuple_state = tuple_state
-    self._assault_state_diag_last_tuple_reason = tuple_reason
-    self._assault_state_diag_last_tuple_predicate = tuple_predicate
-    self._assault_state_diag_session_count = self._assault_state_diag_session_count + 1
-    pcall(log, msg)
-end
 
 A._native_mode = A._native_mode
 
@@ -243,34 +157,22 @@ end
 function A:_refresh_bai_bridge()
     local ok_bai, bai = pcall(function() return BAI end)
     if not ok_bai or type(bai) ~= "table" then
-        self._assault_state_diag_bai_type = "nil"
         self._assault_state_diag_bai_getter_type = "nil"
-        self._assault_state_diag_bai_raw_result = nil
         self:_purge_bai_bridge()
         return
     end
-    self._assault_state_diag_bai_type = "table"
     local getter_type = nil
-    local raw_result = nil
-    local getter_err = nil
     local advanced = true
     if type(bai.ShowAdvancedAssaultInfo) == "function" then
         getter_type = "function"
         local ok_adv, adv_val = pcall(function() return bai:ShowAdvancedAssaultInfo() end)
-        if ok_adv then
-            raw_result = adv_val
-            if type(adv_val) == "boolean" then
-                advanced = adv_val
-            end
-        else
-            getter_err = tostring(adv_val)
+        if ok_adv and type(adv_val) == "boolean" then
+            advanced = adv_val
         end
     else
         getter_type = "nil"
     end
     self._assault_state_diag_bai_getter_type = getter_type
-    self._assault_state_diag_bai_raw_result = raw_result
-    self._assault_state_diag_bai_err = getter_err
     if self._bai_instance ~= nil and self._bai_instance ~= bai then
         self:_purge_bai_bridge()
     end
@@ -2071,24 +1973,7 @@ function A:_repair_layout_shapes(layout)
 end
 
 function A:_verify_render()
-    self._assault_state_diag_first_predicate = nil
-    self._assault_state_diag_first_actual = nil
-    self._assault_state_diag_first_desired = nil
-    local function _pred_fail(pred, actual, desired)
-        if not self._assault_state_diag_first_predicate then
-            self._assault_state_diag_first_predicate = pred
-            local function fmt(v)
-                if v == nil then return "nil" end
-                if type(v) == "number" then return string.format("%.17g", v) end
-                local ok, s = pcall(tostring, v)
-                if ok then return s end
-                return "?"
-            end
-            if actual ~= nil or desired ~= nil then
-                self._assault_state_diag_first_actual = fmt(actual)
-                self._assault_state_diag_first_desired = fmt(desired)
-            end
-        end
+    local function _pred_fail()
         self._render_verified = false
     end
     if not self._layout_cache then
@@ -3212,25 +3097,19 @@ function A:_release_native()
 end
 
 function A:_sync_native_visibility()
-    local fallback_reason = nil
     local should_fallback = false
     if self._state.presenting ~= true then
         should_fallback = true
-        fallback_reason = "not_presenting"
     else
-        local fb, reason = self:_should_fallback_native()
-        if fb then
+        if self:_should_fallback_native() then
             should_fallback = true
-            fallback_reason = reason
         end
     end
     if not should_fallback and (not self._root_panel or not a_panel_alive(self._root_panel)) then
         should_fallback = true
-        fallback_reason = "no_root_panel"
     end
     if not should_fallback and not self._layout_cache then
         should_fallback = true
-        fallback_reason = "no_layout_cache"
     end
 
     if should_fallback then
@@ -3241,27 +3120,22 @@ function A:_sync_native_visibility()
         if self._root_panel and a_panel_alive(self._root_panel) then
             a_safe_call(self._root_panel, "set_visible", false)
         end
-        _diag_emit(self, "fallback", fallback_reason or "unknown", "sync_native")
         return false
     end
 
     a_safe_call(self._root_panel, "set_visible", true)
 
     if not self:_verify_render() then
-        local pred = self._assault_state_diag_first_predicate or "unknown"
-        _diag_emit(self, "fallback", "render", pred)
         self:_handle_render_failure()
         return false
     end
 
     if not self:_try_acquire_native() then
-        _diag_emit(self, "fallback", "native_acquire_failed", "try_acquire")
         self:_release_native()
         a_safe_call(self._root_panel, "set_visible", false)
         return false
     end
 
-    _diag_emit(self, "owned", "render", "acquired")
     return true
 end
 
