@@ -118,7 +118,7 @@ class DownsHeartIconTests(unittest.TestCase):
             
             -- Expected heart geometry
             local exp_x = 24 * rootw
-            local exp_y = 22 * rootw + 16 * ge - 8 * rootw
+            local exp_y = 192 * rootw + 16 * ge - 8 * rootw
             local exp_size = 16 * rootw
             
             -- Verify heart icon geometry

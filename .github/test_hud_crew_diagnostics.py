@@ -51,7 +51,9 @@ class CrewDiagnosticTests(unittest.TestCase):
             combat:set_shape(0,0,1280,1080)
             combat:set_visible(true)
             kyohud._panel=combat
-            local obstacle=combat:rect({x=lc.x+5,y=lc.y+5,w=46,h=27,visible=true})
+            local card=C._cards[1]
+            local drawn_y=C._root:y()+card.root:y()+card._backdrop:y()
+            local obstacle=combat:rect({x=lc.x+5,y=drawn_y+5,w=46,h=27,visible=true})
             _name_attempts=0
             obstacle.name=function() _name_attempts=_name_attempts+1; return 'obstacle' end
             local root_before=C._root

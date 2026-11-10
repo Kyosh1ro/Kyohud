@@ -142,13 +142,16 @@ class CrewReadbackTests(unittest.TestCase):
         lua = mounted()
         lua.execute('''
             _layout_ok=true
+            local layout=kyohud.hud.layout
             for _,size in ipairs({{1920,1080},{1680,1050},{1280,1024},{1198,673},{958,748},{2560,1080}}) do
                 for _,s in ipairs({.95,1,1.05}) do
                     kyohud.settings.hud_scale=s
                     local l=C:_compute_layout(size[1],size[2])
                     local u=math.min(size[1]/1920,size[2]/1080)
-                    local equipment_left=size[1]-.02*size[1]-(680*s+12)*u
-                    if not l or l.x+l.total_w>equipment_left then _layout_ok=false end
+                    local e=u*s
+                    local lp=layout.local_player(size[1],size[2],s)
+                    if not l or not lp then _layout_ok=false
+                    elseif l.x+l.total_w>lp.x-12*e+0.5 then _layout_ok=false end
                 end
             end
             kyohud.settings.hud_scale=1

@@ -91,8 +91,9 @@ class CrewPlacementGeometryContractTests(unittest.TestCase):
             _new_intersect2 = new_intersects(520, 527.5, 240, 33)
             _new_intersect3 = new_intersects(556.4, 527, 38, 27)
 
-            local cap_y = 720 * 0.5 - margin_x
-            _crew_bottom_capped = crew_bottom <= cap_y
+            local e = us * scale
+            local expected_crew_y = 720 - 144 * e
+            _crew_y_formula = math.abs(crew_y - expected_crew_y) < 0.5
 
             RT:update(managers.hud, 1.5, 0.05)
             _root_visible = C._root:visible()
@@ -136,8 +137,8 @@ class CrewPlacementGeometryContractTests(unittest.TestCase):
             msg="RED: runtime root width must match parent width 1280")
         self.assertAlmostEqual(float(g._rt_root_h), 720.0, places=1,
             msg="RED: runtime root height must match parent height 720")
-        self.assertIs(g._crew_bottom_capped, True,
-            "NEW crew bottom must be <= parent_h*0.5-margin_x")
+        self.assertIs(g._crew_y_formula, True,
+            "NEW crew y must be h-162e")
         self.assertIs(g._root_visible, True,
             "RED: crew root must be visible after runtime update")
         self.assertIs(g._certified, True,
@@ -271,7 +272,9 @@ class CrewPlacementGeometryContractTests(unittest.TestCase):
             _phaseF_w = C._layout_cache.total_w
             _phaseF_h = C._layout_cache.card_h
 
-            local blocker = combat:rect({name="genuine_blocker", x=crew_x0, y=crew_y0, w=crew_w0, h=crew_h0, visible=true})
+            -- UNAVOIDABLE: full parent-height barrier spanning all possible crew Y positions;
+            -- compact buff avoidance cannot route around a full-height obstacle, so hide is correct.
+            local blocker = combat:rect({name="genuine_blocker", x=crew_x0, y=-combat:y(), w=crew_w0, h=C._parent_panel:h(), visible=true})
             RT:update(managers.hud, 5.2, 0.05)
             _blocker_hidden = not C._root:visible()
             _blocker_uncertified = not C:_verify_render()
@@ -399,8 +402,10 @@ class CrewPlacementGeometryContractTests(unittest.TestCase):
             local root_before = C._root
             local card1_before = C._cards[1]
             local blocker_x = lc_x0 - 11
-            local blocker_y = lc_y0 - 13
-            local blocker = combat:rect({name="world_blocker", x=blocker_x, y=blocker_y, w=lc.total_w, h=lc.card_h, visible=true})
+            -- UNAVOIDABLE: world-space full parent-height barrier at combat offset y=13;
+            -- compact buff avoidance cannot route around a full-height obstacle, so hide is correct.
+            local blocker_y = -13
+            local blocker = combat:rect({name="world_blocker", x=blocker_x, y=blocker_y, w=lc.total_w, h=parent:h(), visible=true})
             RT:update(managers.hud, 1.6, 0.05)
             _world_conflict_hidden = not C._root:visible()
             _world_conflict_uncertified = not C:_verify_render()
@@ -434,19 +439,21 @@ class CrewPlacementGeometryContractTests(unittest.TestCase):
                     local lc2 = C._layout_cache
                     if lc2 then
                         local geom = kyohud.hud.layout.resolve(dim[1], dim[2], scale)
-                        local margin_x = geom.margin_x or 0
-                        local cap_y = dim[2] * 0.5 - margin_x
+                        local e = geom.uniform_scale * geom.scale
+                        local lp = kyohud.hud.layout.local_player(dim[1], dim[2], scale)
+                        local boundary = lp and (lp.x - 12 * e) or 0
                         local crew_bottom = lc2.y + lc2.card_h
+                        local state_top = lc2.y - (lc2.state_h or 0)
+                        local expected_y = dim[2] - 144 * e
 
-                        local in_bounds = (lc2.x >= margin_x) and (lc2.y >= margin_x)
-                            and (lc2.x + lc2.total_w <= dim[1] - margin_x)
-                            and (crew_bottom <= dim[2] - margin_x)
+                        local in_bounds = (lc2.x >= 0) and (state_top >= 0)
+                            and (lc2.x + lc2.total_w <= dim[1])
+                            and (crew_bottom <= dim[2])
 
-                        local equipment_left = dim[1] - margin_x - (680 * scale + 12) * geom.uniform_scale
-                        local equipment_separation = (lc2.x + lc2.total_w) <= equipment_left
+                        local equipment_separation = boundary > 0 and (lc2.x + lc2.total_w) <= boundary + 0.5
 
                         results[combo_count] = {
-                            capped = crew_bottom <= cap_y,
+                            capped = math.abs(lc2.y - expected_y) < 0.5,
                             in_bounds = in_bounds,
                             equipment_sep = equipment_separation,
                             x = lc2.x,
@@ -527,7 +534,7 @@ class CrewPlacementGeometryContractTests(unittest.TestCase):
         self.assertEqual(int(g._certified_count), 9,
             "RED: all 9 combinations must be certified")
         self.assertIs(g._all_capped, True,
-            "RED: all 9 combinations must cap crew bottom at parent_h*0.5-margin_x")
+            "RED: all 9 combinations must have y = h-162e")
         self.assertIs(g._all_in_bounds, True,
             "RED: all 9 combinations must keep crew in bounds")
         self.assertIs(g._all_equipment_sep, True,

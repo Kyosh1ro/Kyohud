@@ -136,8 +136,8 @@ class PlayerEPresentationTests(unittest.TestCase):
                         local e=math.min(test_w/1920,test_h/1080)*test_scale
                         assert(math.abs(root:w()-380*e)<.001)
                         assert(math.abs(gauge.root:w()-300*e)<.001)
-                        assert(math.abs(root:x()+gauge.root:x()-(test_w-test_w*.02-300*e))<.001)
-                        assert(math.abs(root:h()-120*e)<.001)
+                        assert(math.abs(root:x()+gauge.root:x()-(test_w-40*e-300*e))<.001)
+                        assert(math.abs(root:h()-232*e)<.001)
                         local function metric(r) return {current=r*100,total=100,ratio=r,valid=true,provenance="local"} end
                         for _, r in ipairs({0,.29,.30,.31,.49,.5,.51,.74,.75,.76,1,2}) do
                             P:render({health=metric(r),armor=metric(1-r),downs=3,condition_icon="mugshot_normal"},10)

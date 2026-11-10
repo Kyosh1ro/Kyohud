@@ -19,6 +19,9 @@ P._manager = P._manager
 P._layout_cache = P._layout_cache
 P._last_update_time = P._last_update_time
 P._render_verified = P._render_verified or false
+-- quality split approved 2026-11-10
+P._update_ran_now = P._update_ran_now or false
+P._verify_ok_now = P._verify_ok_now or false
 P._downs_icon = P._downs_icon
 P._downs_icon_available = P._downs_icon_available
 
@@ -113,27 +116,12 @@ function P:_compute_layout(parent_w, parent_h)
     if not is_finite(parent_w) or not is_finite(parent_h) then return nil end
     if parent_w <= 0 or parent_h <= 0 then return nil end
     local layout = kyohud.hud.layout
-    if not layout or type(layout.resolve) ~= "function" then return nil end
+    if not layout or type(layout.local_player) ~= "function" then return nil end
     local scale = kyohud.settings.hud_scale or 1
-    local geom = layout.resolve(parent_w, parent_h, scale)
-    if not geom or not geom.valid then return nil end
-    local us = geom.uniform_scale or 1
-    local s = geom.scale or 1
-    local eff = us * s
-    local pw = (REF_W + DOWNS_RESERVE) * eff
-    local ph = REF_H * eff
-    local reserve = BOTTOM_RESERVE * us
-    local margin = geom.margin_x or 0
-    if pw <= 0 or ph <= 0 then return nil end
-    if pw > geom.available_x or ph > geom.available_y then return nil end
-    local x = parent_w - margin - pw
-    local y = parent_h - margin - reserve - ph
-    if x < margin then x = margin end
-    if y < margin then y = margin end
-    if x + pw > parent_w - margin then return nil end
-    if y + ph > parent_h - margin then return nil end
+    local lc = layout.local_player(parent_w, parent_h, scale)
+    if not lc then return nil end
     return {
-        x = x, y = y, w = pw, h = ph,
+        x = lc.x, y = lc.y, w = lc.w, h = lc.h,
         parent_w = parent_w, parent_h = parent_h,
     }
 end
@@ -225,16 +213,16 @@ function P:_desired_layout()
     local metrics = self._downs_metrics
     if metrics and metrics.primitive==self._downs_text and metrics.text==self._exp_downs_text
         and metrics.fs==24*ge then text_h=math.max(text_h,metrics.height) end
-    local text_y = 22*e+16*ge-text_h/2
+    local text_y = 192*e+16*ge-text_h/2
     return {
         root = { x = lc.x, y = lc.y, w = w, h = h },
-        gauge = { x = DOWNS_RESERVE * e, y = 22 * e, w = gauge_w, h = box_h },
+        gauge = { x = DOWNS_RESERVE * e, y = 192 * e, w = gauge_w, h = box_h },
         gauge_scale = ge,
-        downs_box = {x=14*e,y=22*e+3*ge,w=64*e,h=26*ge},
+        downs_box = {x=14*e,y=192*e+3*ge,w=64*e,h=26*ge},
         downs_label = { x = 42*e, y = text_y, w = 32*e, h = text_h },
-        downs_icon = { x = 24*e, y = 22*e+16*ge-8*e, w = 16*e, h = 16*e },
+        downs_icon = { x = 24*e, y = 192*e+16*ge-8*e, w = 16*e, h = 16*e },
         downs_text = { x = 42*e, y = text_y, w = 32*e, h = text_h },
-        condition_text = { x = DOWNS_RESERVE*e, y = 90 * e, w = gauge_w, h = 22 * e },
+        condition_text = { x = DOWNS_RESERVE*e, y = 0, w = gauge_w, h = 22 * e },
         font = PLAYER_FONT,
 
         downs_label_fs = 24*ge,
@@ -396,6 +384,8 @@ function P:render(snapshot, multiplier)
 end
 
 function P:verify()
+    -- quality split approved 2026-11-10
+    self._verify_ok_now = false
     if self._downs_measure_valid ~= true then
         self._render_verified = false
         return false
@@ -510,6 +500,8 @@ function P:verify()
     end)
     if not fit_ok or not fit then self._render_verified=false;return false end
     self._render_verified = true
+    -- quality split approved 2026-11-10
+    self._verify_ok_now = true
     return true
 end
 
@@ -683,6 +675,9 @@ function P:on_heist_start(manager)
 end
 
 function P:update(manager, t, dt)
+    -- quality split approved 2026-11-10
+    self._update_ran_now = false
+    self._verify_ok_now = false
     if not t then return end
     if kyohud.settings.enable_player ~= true
        or kyohud.settings.enable_hud_foundation ~= true
@@ -712,6 +707,8 @@ function P:update(manager, t, dt)
         return
     end
     self._last_update_time = t
+    -- quality split approved 2026-11-10: main block ran, not a throttle return.
+    self._update_ran_now = true
     if not self:verify() then
         if self._root and panel_alive(self._root) then
             safe_call(self._root, "set_visible", false)

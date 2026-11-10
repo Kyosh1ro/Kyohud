@@ -14,6 +14,12 @@ function NV:new(whitelist)
     return inst
 end
 
+function NV:_invalidate_entry_index()
+    self._entry_index = nil
+    self._indexed_entries = nil
+    self._indexed_count = nil
+end
+
 function NV:_is_allowed(obj, property)
     if property ~= "visible" and property ~= "alpha" then return false end
     local wl = self._whitelist[obj]
@@ -144,10 +150,19 @@ function NV:_rollback_applied(applied)
             end
         end
         self._entries = kept
+        self:_invalidate_entry_index()
     end
 end
 
 function NV:_restore_old_generations(owner, new_generation)
+    local needs_restore = false
+    for _, entry in ipairs(self._entries) do
+        if entry.owner == owner and entry.generation ~= new_generation then
+            needs_restore = true
+            break
+        end
+    end
+    if not needs_restore then return true end
     local kept = {}
     local failed = {}
     for _, e in ipairs(self._entries) do
@@ -163,6 +178,7 @@ function NV:_restore_old_generations(owner, new_generation)
         table.insert(kept, f)
     end
     self._entries = kept
+    self:_invalidate_entry_index()
     return #failed == 0
 end
 
@@ -175,10 +191,59 @@ local function make_record(obj, prop, old, applied, owner, generation)
     }
 end
 
+-- Cache lease bindings only, never native values or verification results.
+-- Stable generations keep their registry; structural changes invalidate it.
+local function index_entries(entries)
+    local index = {alpha = {}, visible = {}, positions = {}}
+    for i, entry in ipairs(entries) do
+        local by_property = index[entry.property]
+        if by_property then
+            local object = entry.object
+            if object ~= nil and by_property[object] == nil then
+                by_property[object] = entry
+                index.positions[entry] = i
+            end
+        end
+    end
+    return index
+end
+
+function NV:_get_entry_index()
+    if not self._entry_index or self._indexed_entries ~= self._entries
+        or self._indexed_count ~= #self._entries then
+        self._entry_index = index_entries(self._entries)
+        self._indexed_entries = self._entries
+        self._indexed_count = #self._entries
+    end
+    return self._entry_index
+end
+
+local function indexed_entry(service, index, object, property)
+    local by_property = index[property]
+    if not by_property or object == nil then return nil end
+    local entry = by_property[object]
+    if entry and entry.object == object and entry.property == property
+        and service._entries[index.positions[entry]] == entry then
+        return entry
+    end
+    -- Preserve native __eq aliases and detect same-length record replacements.
+    if entry then index.positions[entry] = nil end
+    local i, found = service:_find_entry(object, property)
+    by_property[object] = nil
+    if found then
+        -- Keep only the canonical record binding, not every transient wrapper.
+        local canonical = found.object
+        if canonical ~= nil then by_property[canonical] = found end
+        index.positions[found] = i
+    end
+    return found
+end
+
 function NV:acquire(owner, generation, requests)
     if type(requests) ~= "table" then return false end
 
-    local batch_map = {}
+    local entry_index = self:_get_entry_index()
+    local batch_map = nil
     for _, req in ipairs(requests) do
         if type(req) ~= "table" then return false end
         local obj = req.id
@@ -188,22 +253,22 @@ function NV:acquire(owner, generation, requests)
         if not is_valid_value(prop, val) then return false end
         if not is_obj_alive(obj) then return false end
 
-        local obj_map = batch_map[obj]
-        if not obj_map then
-            obj_map = {}
-            batch_map[obj] = obj_map
-        end
-        if obj_map[prop] ~= nil and obj_map[prop] ~= val then
-            return false
-        end
-        obj_map[prop] = val
-
-        local _, existing = self:_find_entry(obj, prop)
+        local existing = indexed_entry(self, entry_index, obj, prop)
         if existing then
             if existing.owner ~= owner then return false end
             if existing.generation == generation and existing.applied_value ~= val then
                 return false
             end
+        end
+        -- An already held same-generation property has one permitted value;
+        -- conflicting duplicates were rejected above. Allocate duplicate maps
+        -- only for genuinely new/changed leases, not every stable frame.
+        if not existing or existing.generation ~= generation then
+            batch_map = batch_map or {}
+            local obj_map = batch_map[obj]
+            if not obj_map then obj_map = {}; batch_map[obj] = obj_map end
+            if obj_map[prop] ~= nil and obj_map[prop] ~= val then return false end
+            obj_map[prop] = val
         end
     end
 
@@ -211,13 +276,14 @@ function NV:acquire(owner, generation, requests)
         return false
     end
 
+    entry_index = self:_get_entry_index()
     local applied = {}
     for _, req in ipairs(requests) do
         local obj = req.id
         local prop = req.property
         local val = req.value
 
-        local _, existing = self:_find_entry(obj, prop)
+        local existing = indexed_entry(self, entry_index, obj, prop)
         if existing and existing.owner == owner and existing.generation == generation then
             if existing.applied_value == val then
                 local actual, ae = self:_read_value(obj, prop)
@@ -243,6 +309,9 @@ function NV:acquire(owner, generation, requests)
             if not rb_err and readback == val then
                 table.insert(applied, record)
                 table.insert(self._entries, record)
+                entry_index[prop][obj] = record
+                entry_index.positions[record] = #self._entries
+                self._indexed_count = #self._entries
             elseif not rb_err and readback == old then
                 self:_rollback_applied(applied)
                 return false
@@ -276,6 +345,7 @@ function NV:release(owner, generation)
         end
     end
     self._entries = kept
+    self:_invalidate_entry_index()
 end
 
 function NV:release_all()
@@ -286,6 +356,7 @@ function NV:release_all()
         end
     end
     self._entries = kept
+    self:_invalidate_entry_index()
 end
 
 kyohud.hud.native_visibility = kyohud.hud.native_visibility or NV:new({})

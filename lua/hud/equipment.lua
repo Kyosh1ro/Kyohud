@@ -17,6 +17,9 @@ M._selections_table = M._selections_table
 M._source_generation = M._source_generation or 0
 M._invalidated = M._invalidated or true
 M._snapshot = M._snapshot
+-- quality split approved 2026-11-10
+M._update_ran_now = M._update_ran_now or false
+M._verify_ok_now = M._verify_ok_now or false
 
 local function is_valid_positive_quantity(v)
     if type(v) ~= "number" then return false end
@@ -644,6 +647,8 @@ function M:_present()
 end
 
 function M:verify()
+    -- quality split approved 2026-11-10
+    self._verify_ok_now = false
     if not live(self._root) or not live(self._parent) or not self._layout or not self._rows then return false end
     local shown,visible=safe_call(self._root,"visible")
     if not shown or visible~=true then return false end
@@ -661,7 +666,10 @@ function M:verify()
             if not ok or visible~=false then return false end
         end
     end
-    return #self._rows==6
+    if #self._rows~=6 then return false end
+    -- quality split approved 2026-11-10
+    self._verify_ok_now = true
+    return true
 end
 
 function M:refresh_settings(manager)
@@ -684,6 +692,9 @@ function M:destroy(manager)
 end
 
 function M:update(manager,t,dt)
+    -- quality split approved 2026-11-10
+    self._update_ran_now = false
+    self._verify_ok_now = false
     if not managers or manager~=managers.hud or not is_valid_known_quantity(t) then return end
     if not enabled() then self:unmount();return end
     if not live(self._root) then
@@ -693,6 +704,8 @@ function M:update(manager,t,dt)
     if not live(self._root) then return end
     if self._last_ui and t>=self._last_ui and t-self._last_ui<.05 then return end
     self._last_ui=t
+    -- quality split approved 2026-11-10: main block ran, not a throttle return.
+    self._update_ran_now = true
     if self._dirty or not self._last_poll or t<self._last_poll or t-self._last_poll>=.5 then
         self:refresh(manager);self._last_poll=t;self._dirty=false
     end

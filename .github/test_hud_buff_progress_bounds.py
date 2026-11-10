@@ -338,7 +338,9 @@ class RuntimeIntegrationBuffProgressCrewConflictTest(unittest.TestCase):
 
         lua.execute('''
             local lc = C._layout_cache
-            kyohud.DrawTimedBuffProgress(kyohud._panel, lc.x + 5, lc.y + 5, 46, 27, 1, Color(1, 1, 1), 0.8, 99)
+            local card=C._cards[1]
+            local drawn_y=C._root:y()+card.root:y()+card._backdrop:y()
+            kyohud.DrawTimedBuffProgress(kyohud._panel, lc.x + 5, drawn_y + 5, 46, 27, 1, Color(1, 1, 1), 0.8, 99)
             RT:update(managers.hud, 2.6, 0.05)
             _hidden_at_2_6 = not C._root:visible()
         ''')
@@ -366,7 +368,7 @@ class RuntimeIntegrationBuffProgressCrewConflictTest(unittest.TestCase):
             local lc = C._layout_cache
             _producer = kyohud._panel:rect({
                 x = lc.x + 5,
-                y = lc.y + 5,
+                y = C._root:y()+C._cards[1].root:y()+C._cards[1]._backdrop:y()+5,
                 w = 46,
                 h = 27,
                 color = Color(1, 1, 1),

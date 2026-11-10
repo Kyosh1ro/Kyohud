@@ -422,6 +422,7 @@ function CC.new(parent, name)
 
         self._weapon_text = self.root:text({name = name .. "_wp", font = FONT, layer = 2, text = ""})
         self._reserve_text = self.root:text({name = name .. "_rv", font = FONT, layer = 2, text = ""})
+        self._inactive_ammo_text = self.root:text({name = name .. "_iaw", font = FONT, layer = 2, text = ""})
 
         self._equipment_text = self.root:text({name = name .. "_dp", font = FONT, layer = 2, text = ""})
         self._cables_text = self.root:text({name = name .. "_cb", font = FONT, layer = 2, text = ""})
@@ -479,6 +480,7 @@ function Card:_all_live()
         and live(self._ar_bg) and live(self._armor_fill) and live(self._armor_text)
         and live(self._weapon_text)
         and live(self._reserve_text)
+        and live(self._inactive_ammo_text)
         and live(self._equipment_text) and live(self._cables_text) and live(self._projectile_text)
         and live(self._deployable_icon) and live(self._cables_icon) and live(self._projectile_icon)
         and live(self._interaction_text) and live(self._status_text)
@@ -1088,7 +1090,39 @@ function Card:update(actor, t)
 
         local body_bottom = is_bot and (hp_bg_y + hp_bg_h)
             or math.max(ar_bg_y + ar_bg_h, eq_text_y + r1.h, icon_y + icon_sz)
+
+        -- Inactive weapon slot ammo row (humans only): the other slot's
+        -- clip/reserve, gray nominal 16e vs the active 22e, below existing
+        -- equipment content inside the owned backdrop. Bots hide the row and
+        -- add no height; unknown is shown as ---/---, never invented.
+        local ia_visible = not_bot
+        local ia_str = ""
+        local ia_sz = 16 * e
+        local ia_x = 2 * e
+        local ia_y = body_bottom
+        local ia_w = 0
+        local ia_h = 18 * e
+        if ia_visible then
+            local wp_sel = actor.weapon and actor.weapon.selection_index
+            local other = (wp_sel == 1 and 2) or (wp_sel == 2 and 1) or nil
+            local ia_data = other and actor.ammo_slots and actor.ammo_slots[other] or nil
+            ia_str = fmt_ammo_value(ia_data and ia_data.current_clip)
+                .. "/" .. fmt_ammo_value(ia_data and ia_data.reserve)
+            ia_y = body_bottom + 2 * e
+            ia_w = w - 4 * e
+        end
+        shape(self._inactive_ammo_text, ia_x, ia_y, ia_w, ia_h)
+        self._inactive_ammo_text:set_visible(ia_visible)
+        exp.inactive_ammo_text = self:_fit(self._inactive_ammo_text, "iaw", ia_str, ia_sz, false)
+        exp.inactive_ammo_text_geo = {x = ia_x, y = ia_y, w = ia_w, h = ia_h}
+        exp.inactive_ammo_text_visible = ia_visible
+        pcall(function() self._inactive_ammo_text:set_color(DIM) end)
+        exp.inactive_ammo_text_color = store_color(DIM)
+
         local content_bottom = math.max(r0.y + r0.h, body_bottom)
+        if ia_visible and ia_y + ia_h > content_bottom then
+            content_bottom = ia_y + ia_h
+        end
         local backdrop_w = w
         if is_bot then
             local name_ink = measure(self._name_text)
@@ -1303,7 +1337,8 @@ function Card:update(actor, t)
         for _, p in ipairs({self._name_text, self._peer_dot, self._rank_text,
             self._hp_bg, self._health_fill, self._health_text,
             self._ar_bg, self._armor_fill, self._armor_text, self._weapon_text,
-            self._reserve_text, self._equipment_text, self._cables_text, self._projectile_text,
+            self._reserve_text, self._inactive_ammo_text,
+            self._equipment_text, self._cables_text, self._projectile_text,
             self._deployable_icon, self._cables_icon, self._projectile_icon,
             self._interaction_text, self._status_text,
             self._downs_icon, self._downs_text, self._downs_label}) do
@@ -1474,6 +1509,7 @@ function Card:verify()
         chk_text(self._armor_text, exp.armor_text, exp.armor_text_geo, exp.armor_text_color, exp.armor_text_visible)
         chk_text(self._weapon_text, exp.weapon_text, exp.weapon_text_geo, exp.weapon_text_color, exp.weapon_text_visible)
         chk_text(self._reserve_text, exp.reserve_text, exp.reserve_text_geo, exp.reserve_text_color, exp.reserve_text_visible)
+        chk_text(self._inactive_ammo_text, exp.inactive_ammo_text, exp.inactive_ammo_text_geo, exp.inactive_ammo_text_color, exp.inactive_ammo_text_visible)
         chk_text(self._equipment_text, exp.equipment_text, exp.equipment_text_geo, exp.equipment_text_color, exp.armor_visible)
         chk_text(self._cables_text, exp.cables_text, exp.cables_text_geo, exp.cables_text_color, exp.armor_visible)
         chk_text(self._projectile_text, exp.projectile_text, exp.projectile_text_geo, exp.projectile_text_color, exp.armor_visible)
@@ -1624,6 +1660,7 @@ function Card:destroy()
     self._armor_text = nil
     self._weapon_text = nil
     self._reserve_text = nil
+    self._inactive_ammo_text = nil
     self._equipment_text = nil
     self._cables_text = nil
     self._projectile_text = nil

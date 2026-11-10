@@ -9,6 +9,10 @@ kyohud.hud = kyohud.hud or {}
 local weapons = kyohud.hud.weapons or {}
 kyohud.hud.weapons = weapons
 
+-- quality split approved 2026-11-10
+weapons._update_ran_now = weapons._update_ran_now or false
+weapons._verify_ok_now = weapons._verify_ok_now or false
+
 local function sanitize_number(value)
     if type(value) ~= "number" then return nil end
     if value ~= value then return nil end
@@ -596,6 +600,8 @@ function weapons:_render()
 end
 
 function weapons:verify()
+    -- quality split approved 2026-11-10
+    self._verify_ok_now = false
     if not self._mounted or not self._root or not check_alive(self._root) then return false end
     if not self._layout_cache then return false end
     local lc = self._layout_cache
@@ -618,6 +624,8 @@ function weapons:verify()
         if type(self._cards[i].verify) ~= "function" then return false end
         if not self._cards[i]:verify() then return false end
     end
+    -- quality split approved 2026-11-10
+    self._verify_ok_now = true
     return true
 end
 
@@ -649,6 +657,9 @@ function weapons:destroy(manager)
 end
 
 function weapons:update(manager, t, dt)
+    -- quality split approved 2026-11-10
+    self._update_ran_now = false
+    self._verify_ok_now = false
     if manager ~= managers.hud then return end
     if type(t) ~= "number" or t ~= t or t == math.huge or t == -math.huge then return end
     if kyohud.settings.enable_hud_foundation ~= true or kyohud.settings.enable_weapons ~= true or _G.IS_VR == true then
@@ -668,6 +679,8 @@ function weapons:update(manager, t, dt)
     self._wua = (self._wua or 0) + (dt or 0)
     if self._wua < UI then return end
     self._wua = 0
+    -- quality split approved 2026-11-10: main block ran, not a throttle return.
+    self._update_ran_now = true
     if type(t) ~= "number" or t ~= t then return end
     if self._last_poll == nil or t < self._last_poll or t - self._last_poll >= 0.5 then
         self._last_poll = t

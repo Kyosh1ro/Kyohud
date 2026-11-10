@@ -47,7 +47,7 @@ class CompactCompositionTests(unittest.TestCase):
             local _,_,mode_w=c._mode_text:text_rect()
             assert(c._mode_bg:w()<=mode_w+10, 'RED: intrinsic badge, not wide white cell')
             local P=kyohud.hud.player
-            assert(W._root:y()+W._root:h()<=P._root:y()+22+.05)
+            assert(W._root:y()+W._root:h()<=P._root:y()+192+.05)
             local bg=E._rows[1]._cell_bg
             bg:set_shape(1,0,bg:w(),bg:h())
             assert(not E:verify(),'RED: shared equipment background must be certified')

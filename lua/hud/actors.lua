@@ -399,6 +399,7 @@ local function collect_human_ammo(peer_id, selection_index, ammo_unknown, peer_o
     if ammo_unknown then return nil end
     if type(peer_id) ~= "number" then return nil end
     if type(selection_index) ~= "number" then return nil end
+    if selection_index ~= 1 and selection_index ~= 2 then return nil end
 
     local pm = safe_get(function()
         if type(managers) ~= "table" then return nil end
@@ -1264,8 +1265,19 @@ local function _refresh_crew_roster(manager)
 
                         if not turret_hidden then
                             local ammo_data = nil
+                            local slots_data = nil
                             if not c.is_ai and type(c.peer_id) == "number" then
-                                ammo_data = collect_human_ammo(c.peer_id, weapon_data.selection_index, turret_unknown, c._peer_obj, false)
+                                local slot1_data = collect_human_ammo(c.peer_id, 1, turret_unknown, c._peer_obj, false)
+                                local slot2_data = collect_human_ammo(c.peer_id, 2, turret_unknown, c._peer_obj, false)
+                                if weapon_data.selection_index == 1 then
+                                    ammo_data = slot1_data
+                                elseif weapon_data.selection_index == 2 then
+                                    ammo_data = slot2_data
+                                end
+                                slots_data = {
+                                    [1] = slot1_data,
+                                    [2] = slot2_data,
+                                }
                             end
 
                             entry.weapon = {
@@ -1276,6 +1288,9 @@ local function _refresh_crew_roster(manager)
                                 ammo = ammo_data,
                                 _weapon_unit = weapon_data._unit,
                             }
+                            if slots_data then
+                                entry.ammo_slots = slots_data
+                            end
                         end
                     end
                 end
@@ -1452,6 +1467,78 @@ local function crew_owner_current(src)
     return true
 end
 
+-- Scalar source eligibility only: caller-owned bounded buffers, never UI proofs.
+-- Public crew snapshots remain detached; no actor/nested-table references escape here.
+local function crew_ammo_known(a)
+    return type(a) == "table" and finite(a.current_clip) and a.current_clip >= 0
+        and finite(a.total_raw) and a.total_raw >= a.current_clip
+        and finite(a.reserve) and a.reserve >= 0
+end
+
+local function crew_publication_current(channel, src, selection)
+    local key = selection and (src.peer_id * 1000 + selection) or src.peer_id
+    local tracker = _pm_published[channel]
+    local published = tracker and tracker[key]
+    if not published then return false end
+    local session, pm, registry = _resolve_pm_context(channel)
+    if published.session ~= session or published.pm ~= pm
+        or published.registry_source ~= registry or published.peer_obj ~= src._identity_key then
+        return false
+    end
+    local record = type(registry) == "table" and registry[src.peer_id]
+    if selection then record = type(record) == "table" and record[selection] end
+    return record ~= nil and record == published.record
+end
+
+function ACT:write_crew_native_coverage(out, presented)
+    for i = 1, 3 do
+        local row = out[i] or {}
+        out[i] = row
+        row.valid = false
+        local live = _crew_entries[i]
+        local src = live
+        if presented then src = presented[i] end
+        if live and src and crew_owner_current(live)
+            and src.occupant_token == live.occupant_token and src.slot == live.slot then
+            row.valid = true
+            row.slot, row.position, row.occupant_token = src.slot, i, src.occupant_token
+            row.ai, row.name, row.peer_id = src.ai, src.name ~= nil, src.peer_id
+            local metrics = src
+            if not presented and not src.ai then
+                local r = _reg[src.slot]
+                metrics = r and r.peer_id == src.peer_id and r.ai == false and r or nil
+            end
+            row.health = metrics and metrics.health and metrics.health.valid == true
+                and (src.ai or metrics.health.provenance == "network_quantized") or false
+            row.armor = not src.ai and metrics and metrics.armor and metrics.armor.valid == true
+                and metrics.armor.provenance == "network_quantized" or false
+            row.downs = not src.ai and metrics and finite(metrics.downs) and metrics.downs >= 0 or false
+            local w, slots = src.weapon, src.ammo_slots
+            local selected = w and w.selection_index
+            row.ammo1, row.ammo2 = false, false
+            if not src.ai and (selected == 1 or selected == 2) then
+                local a1, a2 = slots and slots[1], slots and slots[2]
+                if selected == 1 then a1 = w.ammo else a2 = w.ammo end
+                row.ammo1, row.ammo2 = crew_ammo_known(a1), crew_ammo_known(a2)
+            end
+            local eq = not src.ai and src.equipment
+            local dep, ties, proj = eq and eq.deployable, eq and eq.cable_ties, eq and eq.projectile
+            row.deployable = dep and dep.id ~= nil and finite(dep.amount) and dep.amount >= 0 or false
+            row.cables = ties and finite(ties.amount) and (ties.amount >= 0 or ties.amount == -1) or false
+            row.projectile = proj and proj.id ~= nil and finite(proj.amount) and proj.amount >= 0
+                and (proj.kind == "throwable" or proj.kind == "ability") or false
+            if not presented and not src.ai then
+                row.ammo1 = row.ammo1 and crew_publication_current("ammo", live, 1)
+                row.ammo2 = row.ammo2 and crew_publication_current("ammo", live, 2)
+                row.deployable = row.deployable and crew_publication_current("deployable", live)
+                row.cables = row.cables and crew_publication_current("cable_ties", live)
+                row.projectile = row.projectile and crew_publication_current("grenade", live)
+            end
+        end
+    end
+    return out
+end
+
 function ACT:get_crew_snapshot()
     local snap = {}
     for i = 1, 3 do
@@ -1490,6 +1577,24 @@ function ACT:get_crew_snapshot()
                     }
                 end
                 copy.weapon = weapon_copy
+            end
+
+            if src.ammo_slots then
+                local slots_copy = {}
+                for si = 1, 2 do
+                    local sa = src.ammo_slots[si]
+                    if sa then
+                        slots_copy[si] = {
+                            max_clip = sa.max_clip,
+                            current_clip = sa.current_clip,
+                            total_raw = sa.total_raw,
+                            max = sa.max,
+                            reserve = sa.reserve,
+                            provenance = sa.provenance,
+                        }
+                    end
+                end
+                copy.ammo_slots = slots_copy
             end
 
             if src.equipment then
@@ -1830,11 +1935,25 @@ local function _pm_update_crew_ammo(peer_id, selection_index, peer_obj, certifie
     if not position then return end
     local entry = _crew_entries[position]
     if not entry then return end
-    if not entry.weapon or entry.weapon.selection_index ~= selection_index then return end
+    if entry.ai == true then return end
+    if selection_index ~= 1 and selection_index ~= 2 then return end
     local turret_hidden, turret_unknown = _pm_check_turret(peer_id)
-    if turret_hidden then entry.weapon = nil; return end
+    if turret_hidden then
+        entry.weapon = nil
+        entry.ammo_slots = nil
+        return
+    end
+    if turret_unknown then
+        entry.ammo_slots = nil
+        if entry.weapon then entry.weapon.ammo = nil end
+        return
+    end
     local ammo_data = collect_human_ammo(peer_id, selection_index, turret_unknown, peer_obj, certified)
-    entry.weapon.ammo = ammo_data
+    entry.ammo_slots = entry.ammo_slots or {}
+    entry.ammo_slots[selection_index] = ammo_data
+    if entry.weapon and entry.weapon.selection_index == selection_index then
+        entry.weapon.ammo = ammo_data
+    end
 end
 
 local function on_crew_weapon_selected(self, slot, selection_index)
@@ -1848,9 +1967,16 @@ local function on_crew_weapon_selected(self, slot, selection_index)
                 if not entry.ai then hidden, unknown = _pm_check_turret(entry.peer_id) end
                 if not hidden then
                     weapon.ammo = not entry.ai and collect_human_ammo(entry.peer_id, selection_index, unknown, entry._identity_key) or nil
+                    if unknown then entry.ammo_slots = nil end
                     entry.weapon = weapon
-                else entry.weapon = nil end
-            else entry.weapon = nil end
+                else
+                    entry.weapon = nil
+                    entry.ammo_slots = nil
+                end
+            else
+                entry.weapon = nil
+                entry.ammo_slots = nil
+            end
             return
         end
     end

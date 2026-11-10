@@ -103,7 +103,7 @@ class EquipmentPresentationTests(unittest.TestCase):
                     local row=kyohud.hud.layout.local_loadout(size[1],size[2],scale)
                     assert(E._root:x()>=row.x and E._root:x()+E._root:w()<=row.x+row.w,
                         'equipment must stay inside compact loadout reservation')
-                    assert(E._root:y()+E._root:h()<=p.y+22*row.e,
+                    assert(E._root:y()+E._root:h()<=p.y+192*row.e,
                         'equipment must remain above unchanged gauge content')
                     assert(E:verify())
                 end

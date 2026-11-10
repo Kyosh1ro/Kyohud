@@ -1864,6 +1864,49 @@ function KH.compute_buff_row_layout(
 end
 
 
+-- Resolve only our buff row against at most three nominal owned card bounds.
+-- Crew never follows the buff row, including while its overlap fallback is hidden.
+function KH:_yield_buffs_to_crew(layout, panel, label_height)
+    if layout.slot_count == 0 then return end
+    local crew = self.hud and self.hud.crew
+    if not crew or type(crew.get_buff_exclusions) ~= "function" then return end
+    local ok, exclusions = pcall(crew.get_buff_exclusions, crew, panel)
+    if not ok or not exclusions then return end
+    local positions = layout.positions
+    local scale = layout.scale
+    local left = positions[1].x - layout.cell_w * 0.5 - 2
+    local right = positions[layout.slot_count].x + layout.cell_w * 0.5 + 2
+    local top_extent = layout.effective_size * 0.5 + layout.frame_pad_y
+        + label_height * scale + BUFF_ROW_EDGE_MARGIN
+    local bottom_extent = layout.effective_size * 0.5 + 22 * scale + 2
+    local y = positions[1].y
+    local band = exclusions.band
+    for _ = 1, 3 do
+        local next_y = y
+        if band and band.valid then
+            -- Yield against the same full-width union band scanned by
+            -- _combat_conflict, not the individual card rows.
+            if left < band.x + band.w and right > band.x
+                and y - top_extent < band.y + band.h and y + bottom_extent > band.y then
+                next_y = math.min(next_y, band.y - band.gap - bottom_extent)
+            end
+        else
+            for i = 1, 3 do
+                local r = exclusions[i]
+                if r and r.valid and left < r.x + r.w and right > r.x
+                    and y - top_extent < r.y + r.h and y + bottom_extent > r.y then
+                    next_y = math.min(next_y, r.y - r.gap - bottom_extent)
+                end
+            end
+        end
+        if next_y == y then break end
+        -- An impossible layout yields to the existing conservative overlap guard.
+        if next_y < top_extent then return end
+        y = next_y
+    end
+    for i = 1, layout.slot_count do positions[i].y = y end
+end
+
 -- ══════════════════════════════════════════════════
 -- Dessin du HUD
 -- ═══════════════════════════════════════════════════
@@ -1872,6 +1915,16 @@ function KH:draw()
 
     local s = self.settings
     if not s then return end
+
+    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: measure the non-timed combat
+    -- draw body with os.clock. The reusable table is mutated in place, so every
+    -- call after the first one allocates nothing here.
+    local draw_diag = self._draw_diag
+    if not draw_diag then
+        draw_diag = { calls = 0, sum = 0, max = 0 }
+        self._draw_diag = draw_diag
+    end
+    local cpu_start = os.clock()
 
     local t = now()
 
@@ -2039,6 +2092,7 @@ function KH:draw()
             top_label_height,
             RENDER_CACHES.layout
         )
+        self:_yield_buffs_to_crew(layout, self._panel, top_label_height)
         local buff_size = layout.effective_size
         local frame_pad_x = layout.frame_pad_x
         local frame_pad_y = layout.frame_pad_y
@@ -2322,6 +2376,15 @@ function KH:draw()
     if s.enable_killfeed and s.show_total_score ~= false
             and self._heist_score_recorded then
         KH.DrawHeistScoreWidget(self, self._panel, w, h, size, alpha, s)
+    end
+
+    -- TEMPORARY DIAGNOSTIC, REMOVE BEFORE RELEASE: accumulate the body duration
+    -- in the reused fields, without logging anything per frame.
+    local cpu_elapsed = os.clock() - cpu_start
+    draw_diag.calls = draw_diag.calls + 1
+    draw_diag.sum = draw_diag.sum + cpu_elapsed
+    if cpu_elapsed > draw_diag.max then
+        draw_diag.max = cpu_elapsed
     end
 end
 

@@ -13,15 +13,18 @@ C._mounted = C._mounted or false
 C._parent_panel = C._parent_panel
 C._manager = C._manager
 C._render_verified = C._render_verified or false
+-- quality split approved 2026-11-10
+C._update_ran_now = C._update_ran_now or false
+C._verify_ok_now = C._verify_ok_now or false
 C._layout_cache = nil
 C._last_poll_time = nil
 C._last_present_time = nil
+C._clearance_y = nil
 
 local ROOT_NAME = "kyohud_crew_panel"
 local REF_CARD_W = 432
 local REF_CARD_H = 120
 local REF_GAP = 20
-local REF_BOTTOM_RESERVE = 200
 local MAX_CARDS = 3
 local CREW_POLL_INTERVAL = 0.5
 local PRESENT_INTERVAL = 0.05
@@ -89,30 +92,24 @@ function C:_compute_layout(parent_w, parent_h)
     if not geom or not geom.valid then return nil end
     local us = geom.uniform_scale or 1
     local s = geom.scale or 1
-    local eff = us * s
-    if eff < MIN_EFF_SCALE then return nil end
-    local margin_x = geom.margin_x or 0
-    local margin_y = margin_x
-    local reserve = REF_BOTTOM_RESERVE * us
-    local gap = REF_GAP * us
-    local card_h = REF_CARD_H * eff
-    local state_h = 30 * eff
-    local equipment_left = parent_w - margin_x - (680 * s + 12) * us
-    -- Arithmetic rounding slack: tiny safety margin to prevent floating-point overflow of the reserved boundary.
-    local card_w = math.min(REF_CARD_W * eff, (equipment_left - margin_x - (MAX_CARDS - 1) * gap - 1e-6 * us) / MAX_CARDS)
+    local e = us * s
+    if e < MIN_EFF_SCALE then return nil end
+    local lp = type(layout.local_player) == "function" and layout.local_player(parent_w, parent_h, scale) or nil
+    if not lp then return nil end
+    local boundary = lp.x - 12 * e
+    local gap = REF_GAP * e
+    local card_h = REF_CARD_H * e
+    local state_h = 30 * e
+    local x = 44 * e
+    local y = parent_h - 144 * e
+    local slack = 1e-6 * us
+    local card_w = math.min(REF_CARD_W * e, (boundary - x - (MAX_CARDS - 1) * gap - slack) / MAX_CARDS)
     if card_w <= 0 or card_h <= 0 then return nil end
     local total_w = MAX_CARDS * card_w + (MAX_CARDS - 1) * gap
     if total_w <= 0 then return nil end
-    local x = margin_x
-    local y = parent_h - margin_y - reserve - card_h
-    -- Stable upper-left band above midpoint; independent of transient combat/buff animations.
-    -- Preserve horizontal/equipment/bottom constraints.
-    y = math.min(y, parent_h * 0.5 - margin_x - card_h)
-    if y < margin_y then y = margin_y end
-    if x + total_w > parent_w - margin_x then return nil end
-    if y - state_h < margin_y then y = margin_y + state_h end
-    if y + card_h > parent_h - margin_y then return nil end
-    if x + total_w > equipment_left then return nil end
+    if x + total_w > boundary then return nil end
+    if y - state_h < 0 then return nil end
+    if y + card_h > parent_h then return nil end
     return {
         x = x, y = y,
         state_h = state_h,
@@ -175,14 +172,15 @@ function C:_apply_layout()
     if not self._layout_cache then return end
     local lc = self._layout_cache
     local state_h = lc.state_h or 0
+    local y = self._clearance_y or lc.y
     if self._root and panel_alive(self._root) then
-        safe_call(self._root, "set_shape", lc.x, lc.y - state_h, lc.total_w, lc.card_h + state_h)
+        safe_call(self._root, "set_shape", lc.x, y - state_h, lc.total_w, lc.card_h + state_h)
     end
     for i = 1, MAX_CARDS do
         local card = self._cards[i]
         if card then
             local cx = (i - 1) * (lc.card_w + lc.gap)
-            card:set_geometry(cx, state_h, lc.card_w, lc.card_h, self._pixel_mapping)
+            card:set_geometry(cx, state_h + (card._bottom_offset or 0), lc.card_w, lc.card_h, self._pixel_mapping)
         end
     end
 end
@@ -211,6 +209,21 @@ function C:_present_cards(snap, t)
                 self._expected_positions[i] = true
                 local ok = card:update(actor, t)
                 if ok then
+                    local measured, height = pcall(function() return card._backdrop:h() end)
+                    if not measured or not finite(height) or height <= 0 or height > self._layout_cache.card_h then
+                        ok = false
+                    else
+                        local lc = self._layout_cache
+                        local offset = lc.card_h - height
+                        if not finite(card._bottom_offset) or math.abs(card._bottom_offset - offset) > 0.01 then
+                            card._bottom_offset = offset
+                            card:set_geometry((i - 1) * (lc.card_w + lc.gap),
+                                (lc.state_h or 0) + offset, lc.card_w, lc.card_h, self._pixel_mapping)
+                            ok = card:update(actor, t)
+                        end
+                    end
+                end
+                if ok then
                     any_visible = true
                 else
                     pcall(function()
@@ -228,6 +241,11 @@ function C:_present_cards(snap, t)
             end
         end
     end
+    local actors = kyohud.hud.actors
+    if actors and type(actors.write_crew_native_coverage) == "function" then
+        self._native_coverage = self._native_coverage or {}
+        actors:write_crew_native_coverage(self._native_coverage, by_pos)
+    end
     if any_visible then
         safe_call(self._root, "set_visible", true)
     else
@@ -242,7 +260,8 @@ function C:_verify_render()
         if not self._root:visible() or self._root:alpha() ~= 1 then return false end
         local function close(a, b) return finite(a) and math.abs(a - b) <= 0.5 end
         local state_h = lc.state_h or 0
-        if not close(self._root:x(), lc.x) or not close(self._root:y(), lc.y - state_h)
+        local y = self._clearance_y or lc.y
+        if not close(self._root:x(), lc.x) or not close(self._root:y(), y - state_h)
             or not close(self._root:w(), lc.total_w) or not close(self._root:h(), lc.card_h + state_h) then return false end
         local any = false
         for i = 1, MAX_CARDS do
@@ -258,7 +277,29 @@ function C:_verify_render()
         return any
     end)
     self._render_verified = ok and valid == true
+    -- quality split approved 2026-11-10
+    self._verify_ok_now = self._render_verified
     return self._render_verified
+end
+
+function C:_occupied_top_offset()
+    local top = nil
+    for i = 1, MAX_CARDS do
+        local card = self._cards[i]
+        if card and panel_alive(card.root) then
+            local ok, visible = pcall(function() return card.root:visible() end)
+            if not ok or type(visible) ~= "boolean" then return nil end
+            if visible then
+                if not panel_alive(card._state_bg) then return nil end
+                local header_ok, header = pcall(function() return card._state_bg:visible() end)
+                if not header_ok or type(header) ~= "boolean" then return nil end
+                local offset = card._bottom_offset or 0
+                if header then offset = offset - (self._layout_cache.state_h or 0) end
+                top = top and math.min(top, offset) or offset
+            end
+        end
+    end
+    return top or 0
 end
 
 function C:_combat_conflict()
@@ -266,9 +307,18 @@ function C:_combat_conflict()
     if not lc or not panel_alive(panel) then return false end
     local ok, conflict = pcall(function()
         if not panel:visible() then return false end
+        local panel_alpha = 1
+        if type(panel.alpha) == "function" then
+            panel_alpha = panel:alpha() or 1
+        end
+        if not finite(panel_alpha) then return true end
+        if panel_alpha <= 0 then return false end
         local state_h = lc.state_h or 0
-        local root_top = lc.y - state_h
-        local root_bottom = lc.y + lc.card_h
+        local effective_y = self._clearance_y or lc.y
+        local occupied_top = self:_occupied_top_offset()
+        if occupied_top == nil then return true end
+        local root_top = effective_y + occupied_top
+        local root_bottom = effective_y + lc.card_h
         local function overlaps(p)
             if not panel_alive(p) or not p:visible() then return false end
             if type(p.alpha) == "function" and p:alpha() <= 0 then return false end
@@ -277,17 +327,82 @@ function C:_combat_conflict()
                 x = p:world_x() - self._parent_panel:world_x()
                 y = p:world_y() - self._parent_panel:world_y()
             end
-            local hit = p:w() > 0 and p:h() > 0 and x < lc.x + lc.total_w and x + p:w() > lc.x
-                and y < root_bottom and y + p:h() > root_top
+            if not finite(x) or not finite(y) then return true end
+            local pw, ph = p:w(), p:h()
+            if not finite(pw) or not finite(ph) then return true end
+            if pw <= 0 or ph <= 0 then return false end
+            local hit = x < lc.x + lc.total_w and x + pw > lc.x
+                and y < root_bottom and y + ph > root_top
             return hit
         end
-        -- Root placement container is never occupancy; only our direct drawn children, no native scan.
         for _, child in pairs(panel:children()) do
             if overlaps(child) then return true end
         end
         return false
     end)
     return not ok or conflict == true
+end
+
+-- Nominal occupied rectangles, independent of buff-induced visibility fallback.
+-- Only three owned cards are considered; never inspect a native subtree.
+function C:get_buff_exclusions(panel)
+    if not enabled() or not self._mounted or not self._layout_cache
+        or not panel_alive(self._root) or not panel_alive(panel) then return nil end
+    local ok, result = pcall(function()
+        local function origin(p)
+            local x, y = 0, 0
+            for _ = 1, 8 do
+                if not panel_alive(p) then return nil end
+                local px, py = p:x(), p:y()
+                if not finite(px) or not finite(py) then return nil end
+                x, y = x + px, y + py
+                local parent = p:parent()
+                if not parent then return x, y, p end
+                p = parent
+            end
+        end
+        local px, py, pr = origin(self._parent_panel)
+        local bx, by, br = origin(panel)
+        if not px or not bx or pr ~= br then return nil end
+        local lc = self._layout_cache
+        local rows = self._buff_exclusions or {}
+        self._buff_exclusions = rows
+        local band = rows.band or {}
+        rows.band = band
+        band.valid = false
+        local band_top = nil
+        for i = 1, MAX_CARDS do
+            local row = rows[i] or {}
+            rows[i] = row
+            row.valid = false
+            local card = self._cards[i]
+            if self._expected_positions and self._expected_positions[i] and card and card._exp then
+                local offset = card._bottom_offset or 0
+                local header = card._exp.state_bg_visible and (lc.state_h or 0) or 0
+                row.x = px - bx + lc.x + (i - 1) * (lc.card_w + lc.gap)
+                row.y = py - by + lc.y + offset - header
+                row.w, row.h = lc.card_w, lc.card_h - offset + header
+                row.gap = 12 * lc.card_h / 120
+                row.valid = finite(row.x) and finite(row.y) and finite(row.w)
+                    and finite(row.h) and row.w > 0 and row.h > 0
+                if row.valid and (band_top == nil or row.y < band_top) then
+                    band_top = row.y
+                end
+            end
+        end
+        -- Mirror the full-width union band used by _combat_conflict so the
+        -- buff row yields above the actual scanned area, not per-card rows.
+        if band_top ~= nil then
+            band.x = px - bx + lc.x
+            band.w = lc.total_w
+            band.y = band_top
+            band.h = (py - by + lc.y + lc.card_h) - band_top
+            band.gap = 12 * lc.card_h / 120
+            band.valid = band.w > 0 and band.h > 0
+        end
+        return rows
+    end)
+    return ok and result or nil
 end
 
 function C:mount(manager)
@@ -360,7 +475,11 @@ function C:unmount()
     self._mounted = false
     self._layout_cache = nil
     self._pixel_mapping = nil
+    self._native_coverage = nil
+    self._buff_exclusions = nil
+    self._expected_positions = nil
     self._render_verified = false
+    self._clearance_y = nil
     return true
 end
 
@@ -403,6 +522,9 @@ function C:on_heist_start(manager)
 end
 
 function C:update(manager, t, dt)
+    -- quality split approved 2026-11-10
+    self._update_ran_now = false
+    self._verify_ok_now = false
     if not finite(t) then return end
     if manager and self._manager and manager ~= self._manager then return end
     self._last_time = t
@@ -432,13 +554,26 @@ function C:update(manager, t, dt)
             self._last_poll_time = t
         end
     end
-    if self._last_present_time ~= nil and t >= self._last_present_time and (t - self._last_present_time) < PRESENT_INTERVAL then
+    -- Poll frames must never be consumed by the presentation throttle, else conflict stays stale.
+    if not poll and self._last_present_time ~= nil and t >= self._last_present_time and (t - self._last_present_time) < PRESENT_INTERVAL then
         return
     end
     self._last_present_time = t
+    -- quality split approved 2026-11-10: main block ran, not a throttle return.
+    self._update_ran_now = true
+    local snap = nil
+    if actors and type(actors.get_crew_snapshot) == "function" then
+        snap = actors:get_crew_snapshot()
+    end
+    local presented = false
     if poll then
         self:_create_cards()
+        self._clearance_y = nil
+        self:_apply_layout()
+        safe_call(self._root, "set_alpha", 1)
+        self:_present_cards(snap, t)
         self._conflict = self:_combat_conflict()
+        presented = true
     end
     if self._conflict then
         safe_call(self._root, "set_visible", false)
@@ -449,25 +584,35 @@ function C:update(manager, t, dt)
         safe_call(self._root, "set_visible", false)
         return
     end
-    local snap = nil
-    if actors and type(actors.get_crew_snapshot) == "function" then
-        snap = actors:get_crew_snapshot()
+    if not presented then
+        self:_apply_layout()
+        safe_call(self._root, "set_alpha", 1)
+        self:_present_cards(snap, t)
     end
-    self:_apply_layout()
-    safe_call(self._root, "set_alpha", 1)
-    self:_present_cards(snap, t)
-    if not self:_verify_render() then
+    local verifier = self._verify_render
+    if not verifier(self) then
         if self._root and panel_alive(self._root) then
             safe_call(self._root, "set_visible", false)
             self:_apply_layout()
             if snap then
                 self:_present_cards(snap, t)
             end
-            if not self:_verify_render() then
+            verifier = self._verify_render
+            if not verifier(self) then
                 safe_call(self._root, "set_visible", false)
+                return
             end
+        else
+            return
         end
     end
+    return {
+        module = self,
+        root = self._root,
+        manager = self._manager,
+        verifier = verifier,
+        ok = true,
+    }
 end
 
 function C:destroy(manager)

@@ -190,12 +190,11 @@ class CrewCardHorizontalLayoutTests(unittest.TestCase):
 class CrewOwnerLayoutTests(unittest.TestCase):
     def test_pure_owner_layout_across_sizes_and_scales(self):
         """Pure-owner layout: _compute_layout with correct receiver across 12 combos.
-        Expected from actual layout.resolve: eff=us*s, x=margin_x,
-        rightboundary=w-margin_x-(680*s+12)*us, gap=20*us,
-        expected_card_w=min(432*eff,(rightboundary-x-2*gap)/3).
-        Assert card width exact, gap exact, x+total<=boundary, card_h=120*eff,
-        y=min(h-margin_x-200*us-card_h, h*.5-margin_x-card_h) clamped margin_x.
-        RED: gap=20 produces meaningful failure (production uses 12).
+        Expected from actual layout.resolve: eff=us*s, x=44e,
+        rightboundary=local_player.x-12e, gap=20e,
+        expected_card_w=min(432e,(rightboundary-x-2*gap-slack)/3).
+        Assert card width exact, gap exact, x+total<=boundary, card_h=120e,
+        y=h-162e.
         """
         lua, ok = crew_lua()
         self.assertTrue(ok, "RED: lua/hud/crew.lua must exist")
@@ -223,12 +222,13 @@ class CrewOwnerLayoutTests(unittest.TestCase):
                     local eff = us * s
                     local margin_x = geom.margin_x
 
-                    local rightboundary = w - margin_x - (680 * s + 12) * us
-                    local gap_expected = 20 * us
-                    local card_w_expected = math.min(432 * eff, (rightboundary - margin_x - 2 * gap_expected) / 3)
+                    local lp = layout.local_player(w, h, scale)
+                    local rightboundary = lp and (lp.x - 12 * eff) or 0
+                    local gap_expected = 20 * eff
+                    local x_expected = 44 * eff
+                    local card_w_expected = math.min(432 * eff, (rightboundary - x_expected - 2 * gap_expected - 1e-6 * us) / 3)
                     local card_h_expected = 120 * eff
-                    local y_expected = math.min(h - margin_x - 200 * us - card_h_expected, h * 0.5 - margin_x - card_h_expected)
-                    if y_expected < margin_x then y_expected = margin_x end
+                    local y_expected = h - 144 * eff
 
                     local actual = C:_compute_layout(w, h)
 
@@ -237,6 +237,7 @@ class CrewOwnerLayoutTests(unittest.TestCase):
                         eff = eff, margin_x = margin_x,
                         rightboundary = rightboundary,
                         gap_expected = gap_expected,
+                        x_expected = x_expected,
                         card_w_expected = card_w_expected,
                         card_h_expected = card_h_expected,
                         y_expected = y_expected,

@@ -64,7 +64,7 @@ class SlotLabelsDownsBoxTests(unittest.TestCase):
             local d=P:_desired_layout()
             assert(d.downs_box.x+d.downs_box.w<d.gauge.x,'RED: cell left of health')
             local e=W._layout_cache.e
-            local margin=RT._root_panel:w()*.02
+            local margin=40*e
             local old_x=RT._root_panel:w()-margin-300*e
             assert(math.abs(P._root:x()+d.gauge.x-old_x)<.05,'gauge world X preserved')
             assert(math.abs(d.gauge.w-300*e)<.05)
@@ -105,7 +105,7 @@ class SlotLabelsDownsBoxTests(unittest.TestCase):
                         assert(not W._cards[2]._name_text:visible())
                         assert(d.downs_box.x+d.downs_box.w<d.gauge.x)
                         assert(math.abs(d.gauge.w-300*e)<.05)
-                        assert(math.abs(P._root:x()+d.gauge.x-(pw-pw*.02-300*e))<.05)
+                        assert(math.abs(P._root:x()+d.gauge.x-(pw-40*e-300*e))<.05)
                     ''')
 
     def test_downs_background_style_recovery_and_lifecycle(self):

@@ -31,7 +31,7 @@ class WeaponsFinalizationTests(unittest.TestCase):
                     W:refresh_settings(managers.hud)
                     local p=kyohud.hud.player:_compute_layout(size[1],size[2])
                     local e=math.min(size[1]/1920,size[2]/1080)*scale
-                    if not p or W._root:y()+W._root:h()>p.y+22*e-6*e+.05 then disjoint=false end
+                    if not p or W._root:y()+W._root:h()>p.y+192*e-6*e+.05 then disjoint=false end
                 end
             end
         ''')
