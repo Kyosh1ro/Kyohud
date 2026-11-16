@@ -368,7 +368,7 @@ function P:render(snapshot, multiplier)
         peer_color = actors:get_local_peer_color()
     end
     if self._gauge then
-        self._gauge:render(health, armor, mode, multiplier, peer_color)
+        self._gauge:render(health, armor, mode, multiplier, peer_color, snapshot and snapshot.health_effects or nil)
     end
     if self._downs_text and panel_alive(self._downs_text) then
         local downs_str = self:_resolve_downs_str(snapshot)
@@ -528,6 +528,81 @@ function P:_capture_and_render(mgr)
         end
     end
     self:render(snapshot, mult)
+    local rt = kyohud.hud.runtime
+    local unit = nil
+    local damage = nil
+    local unit_ok, live_unit = pcall(function()
+        return managers.player:player_unit()
+    end)
+    if unit_ok and live_unit then
+        unit = live_unit
+        local cd_ok, live_damage = pcall(function()
+            return live_unit:character_damage()
+        end)
+        if cd_ok then damage = live_damage end
+    end
+    local health = snapshot and snapshot.health or nil
+    local armor = snapshot and snapshot.armor or nil
+    local effects = snapshot and snapshot.health_effects or nil
+    local delayed = effects and effects.delayed_damage or nil
+    self._delayed_source_receipt = {
+        manager = mgr or self._manager,
+        runtime_root = rt and rt._root_panel or nil,
+        generation = rt and rt._generation or nil,
+        root = self._root,
+        unit = unit,
+        damage = damage,
+        health_current = health and health.current or nil,
+        health_total = health and health.total or nil,
+        health_ratio = health and health.ratio or nil,
+        armor_current = armor and armor.current or nil,
+        armor_total = armor and armor.total or nil,
+        armor_ratio = armor and armor.ratio or nil,
+        delayed_known = delayed ~= nil and delayed.known == true,
+        delayed_amount = delayed and delayed.amount or nil,
+    }
+    local stored = effects and effects.stored_health or nil
+    self._reserve_source_receipt = {
+        manager = mgr or self._manager,
+        runtime_root = rt and rt._root_panel or nil,
+        generation = rt and rt._generation or nil,
+        root = self._root,
+        unit = unit,
+        damage = damage,
+        stored_known = stored ~= nil and stored.known == true,
+        stored_ratio = stored and stored.ratio or nil,
+        stored_max_ratio = stored and stored.max_ratio or nil,
+    }
+    local pm = managers and managers.player or nil
+    local copr_active = nil
+    local copr_ratio = nil
+    if pm then
+        local active_status, active = safe_call(pm, "has_activate_temporary_upgrade",
+            "temporary", "copr_ability")
+        if active_status == CALL_OK and type(active) == "boolean" then
+            copr_active = active
+            if active == true then
+                local ratio_status, ratio = safe_call(pm, "upgrade_value",
+                    "player", "copr_static_damage_ratio", 0)
+                if ratio_status == CALL_OK and is_finite(ratio) then
+                    copr_ratio = ratio
+                end
+            end
+        end
+    end
+    self._copr_source_receipt = {
+        manager = mgr or self._manager,
+        runtime_root = rt and rt._root_panel or nil,
+        generation = rt and rt._generation or nil,
+        root = self._root,
+        unit = unit,
+        damage = damage,
+        health_current = health and health.current or nil,
+        health_total = health and health.total or nil,
+        health_ratio = health and health.ratio or nil,
+        copr_active = copr_active,
+        copr_ratio = copr_ratio,
+    }
     -- The new snapshot can fail fitting or a setter after the pre-update
     -- certification succeeded. Do not expose that failed frame until next tick.
     if not self:verify() then
@@ -568,6 +643,9 @@ function P:mount(manager)
         self._downs_label = nil
         self._downs_icon = nil
         self._downs_icon_available = nil
+        self._delayed_source_receipt = nil
+        self._reserve_source_receipt = nil
+        self._copr_source_receipt = nil
     end
     local status, existing = safe_call(parent, "child", PLAYER_ROOT_NAME)
     if status == CALL_OK and existing ~= nil and panel_alive(existing) then
@@ -600,6 +678,16 @@ function P:mount(manager)
 end
 
 function P:unmount()
+    local rt = kyohud.hud.runtime
+    if rt and type(rt._release_delayed_replacement) == "function" then
+        rt:_release_delayed_replacement(true)
+    end
+    if rt and type(rt._release_reserve_replacement) == "function" then
+        rt:_release_reserve_replacement(true)
+    end
+    if rt and type(rt._release_copr_replacement) == "function" then
+        rt:_release_copr_replacement(true)
+    end
     if not self._mounted and not self._root then return true end
     if self._gauge and type(self._gauge.destroy) == "function" then
         self._gauge:destroy()
@@ -627,6 +715,9 @@ function P:unmount()
     self._mounted = false
     self._layout_cache = nil
     self._render_verified = false
+    self._delayed_source_receipt = nil
+    self._reserve_source_receipt = nil
+    self._copr_source_receipt = nil
     return true
 end
 
@@ -698,6 +789,9 @@ function P:update(manager, t, dt)
         self._mounted = false
         self._layout_cache = nil
         self._render_verified = false
+        self._delayed_source_receipt = nil
+        self._reserve_source_receipt = nil
+        self._copr_source_receipt = nil
     end
     if not self._mounted then
         self:mount(manager or self._manager)
@@ -744,3 +838,46 @@ function P:destroy(manager)
     end
     self:unmount()
 end
+
+-- Opt-in residual phase probe. Static wrappers are installed after the fresh
+-- method definitions and preserve the original bodies, return arity and error
+-- propagation. Timing helpers are inert unless a bounded capture is active.
+local function install_residual_phase(module, method_name, phase_name, returns_value)
+    local marker = "_residual_phase_" .. phase_name
+    if module[method_name] == module[marker] then return end
+    local original = module[method_name]
+    if type(original) ~= "function" then return end
+    local wrapped
+    if returns_value then
+        wrapped = function(self, ...)
+            local rt = kyohud.hud.runtime
+            local start
+            if rt and type(rt._residual_stamp) == "function" then
+                start = rt:_residual_stamp()
+            end
+            local result = original(self, ...)
+            if start ~= nil and rt and type(rt._residual_record) == "function" then
+                rt:_residual_record(phase_name, start)
+            end
+            return result
+        end
+    else
+        wrapped = function(self, ...)
+            local rt = kyohud.hud.runtime
+            local start
+            if rt and type(rt._residual_stamp) == "function" then
+                start = rt:_residual_stamp()
+            end
+            original(self, ...)
+            if start ~= nil and rt and type(rt._residual_record) == "function" then
+                rt:_residual_record(phase_name, start)
+            end
+        end
+    end
+    module[marker] = wrapped
+    module[method_name] = wrapped
+end
+
+install_residual_phase(P, "_capture_and_render", "player_capture", false)
+install_residual_phase(P, "render", "player_render", false)
+install_residual_phase(P, "verify", "player_verify", true)

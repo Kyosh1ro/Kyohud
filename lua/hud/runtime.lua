@@ -18,6 +18,27 @@ RT._h5_generation = RT._h5_generation or 0
 RT._h5_targets = RT._h5_targets
 RT._h5_source_id = RT._h5_source_id
 
+RT._priority_trace_emitted = RT._priority_trace_emitted or 0
+RT._priority_trace_episode = RT._priority_trace_episode or false
+
+if RT._stoic_trace_checked == nil then
+    RT._stoic_trace_checked = true
+    RT._stoic_trace_enabled = false
+    RT._stoic_trace_emitted = RT._stoic_trace_emitted or 0
+    local trace_path
+    if type(ModPath) == "string" then
+        trace_path = ModPath .. "KYO_STOIC_TRACE"
+    end
+    if trace_path ~= nil and type(io) == "table" and type(io.open) == "function" then
+        local open_ok, handle = pcall(io.open, trace_path, "r")
+        if open_ok and handle ~= nil then
+            RT._stoic_trace_enabled = true
+            pcall(function() handle:read("*a") end)
+            pcall(function() handle:close() end)
+        end
+    end
+end
+
 local ROOT_NAME = "kyohud_root_panel"
 local RECOVERY_INTERVAL = 0.5
 local REQUIRED_CONTEXT = "lib/managers/hudmanagerpd2"
@@ -31,6 +52,8 @@ local BG_G = 9 / 255
 local BG_B = 11 / 255
 local BG_A = 0.86
 local BG_THROTTLE = 0.05
+local STOIC_TRACE_LIMIT = 40
+local PRIORITY_TRACE_LIMIT = 16
 local BG_TINT
 
 local CALL_OK = "ok"
@@ -70,6 +93,311 @@ local function safe_call(obj, method_name, ...)
     local ok_call, result = pcall(method_or_err, obj, ...)
     if not ok_call then return CALL_ERROR, nil end
     return CALL_OK, result
+end
+
+-- Temporary opt-in residual diagnostic. It exists only when the runtime chunk
+-- finds KYO_RESIDUAL_PERF under ModPath at load. An optional KYO_OBJECTIVES_PERF
+-- is probed only after that general sentinel and selects completion capture
+-- instead of the general warmup. There is no option, manifest or native field.
+function RT:_residual_load()
+    self._residual_probe = nil
+    if type(ModPath) ~= "string" or ModPath == "" then return end
+    if type(io) ~= "table" or type(io.open) ~= "function" then return end
+    local ok_open, handle = pcall(io.open, ModPath .. "KYO_RESIDUAL_PERF", "r")
+    if not ok_open or not handle then return end
+    pcall(function() handle:close() end)
+    local completion_mode = false
+    local ok_objectives, objectives_handle = pcall(io.open, ModPath .. "KYO_OBJECTIVES_PERF", "r")
+    if ok_objectives and objectives_handle then
+        pcall(function() objectives_handle:close() end)
+        completion_mode = true
+    end
+    self._residual_probe = {
+        mode = completion_mode and "completion" or nil,
+        active = false,
+        done = false,
+        aborted = false,
+        warm_start = nil,
+        capture_start = nil,
+        last_t = nil,
+        gap_16 = 0,
+        gap_33 = 0,
+        gap_50 = 0,
+        gap_max = 0,
+        phases = {
+            alerts = {count = 0, sum = 0, max = 0},
+            assault = {count = 0, sum = 0, max = 0},
+            assault_verify = {count = 0, sum = 0, max = 0},
+            assault_verify_full = {count = 0, sum = 0, max = 0},
+            assault_verify_light = {count = 0, sum = 0, max = 0},
+            assault_native = {count = 0, sum = 0, max = 0},
+            assault_animation = {count = 0, sum = 0, max = 0},
+            player = {count = 0, sum = 0, max = 0},
+            player_capture = {count = 0, sum = 0, max = 0},
+            player_render = {count = 0, sum = 0, max = 0},
+            player_verify = {count = 0, sum = 0, max = 0},
+            player_native_acquire = {count = 0, sum = 0, max = 0},
+            crew_native_acquire = {count = 0, sum = 0, max = 0},
+            weapons = {count = 0, sum = 0, max = 0},
+            equipment = {count = 0, sum = 0, max = 0},
+            equipment_collect = {count = 0, sum = 0, max = 0},
+            equipment_snapshot = {count = 0, sum = 0, max = 0},
+            equipment_present = {count = 0, sum = 0, max = 0},
+            equipment_verify = {count = 0, sum = 0, max = 0},
+            equipment_throttled = {count = 0, sum = 0, max = 0},
+            crew = {count = 0, sum = 0, max = 0},
+            harmony = {count = 0, sum = 0, max = 0},
+            harmony_delayed_sync = {count = 0, sum = 0, max = 0},
+            harmony_priority = {count = 0, sum = 0, max = 0},
+            harmony_delayed_post = {count = 0, sum = 0, max = 0},
+            reserve = {count = 0, sum = 0, max = 0},
+            copr = {count = 0, sum = 0, max = 0},
+            harmony_duplicates = {count = 0, sum = 0, max = 0},
+            combat_draw = {count = 0, sum = 0, max = 0},
+            objectives_anim = {count = 0, sum = 0, max = 0},
+            objectives_anim_idle = {count = 0, sum = 0, max = 0},
+            objectives_anim_active = {count = 0, sum = 0, max = 0},
+            objectives_callback = {count = 0, sum = 0, max = 0},
+            recovery = {count = 0, sum = 0, max = 0},
+            runtime = {count = 0, sum = 0, max = 0},
+            mission_feed = {count = 0, sum = 0, max = 0},
+            mission_sync = {count = 0, sum = 0, max = 0},
+            mission_title_sync = {count = 0, sum = 0, max = 0},
+            mission_layout = {count = 0, sum = 0, max = 0},
+            mission_verify = {count = 0, sum = 0, max = 0},
+            mission_labels_verify = {count = 0, sum = 0, max = 0},
+        },
+    }
+end
+RT:_residual_load()
+
+function RT:_residual_player_alive()
+    local status, unit = safe_call(managers and managers.player or nil, "player_unit")
+    if status ~= CALL_OK or unit == nil then return false end
+    if type(alive) ~= "function" then return true end
+    local ok_alive, is_alive = pcall(alive, unit)
+    return ok_alive and is_alive == true
+end
+
+function RT:_residual_stamp()
+    local p = self._residual_probe
+    if not p or p.done or not p.active then return nil end
+    if type(os) ~= "table" then return nil end
+    local clock = os.clock
+    if type(clock) ~= "function" then return nil end
+    local ok, now = pcall(clock)
+    if not ok or not finite(now) then return nil end
+    return now
+end
+
+function RT:_residual_record(name, start)
+    local p = self._residual_probe
+    if not p or p.done or not p.active then return end
+    if type(start) ~= "number" or not finite(start) then return end
+    local phase = p.phases[name]
+    if not phase then return end
+    local now = self:_residual_stamp()
+    if now == nil then return end
+    local delta = now - start
+    if not finite(delta) or delta < 0 then return end
+    phase.count = phase.count + 1
+    phase.sum = phase.sum + delta
+    if delta > phase.max then phase.max = delta end
+end
+
+function RT:_residual_abort(reason)
+    local p = self._residual_probe
+    if not p or p.done then return end
+    p.done = true
+    p.active = false
+    if p.aborted then return end
+    p.aborted = true
+    pcall(log, "[KyoHUD][ResidualProbe] aborted: " .. (reason or "invalid"))
+end
+
+function RT:_residual_finish()
+    local p = self._residual_probe
+    if not p or p.done then return end
+    p.done = true
+    p.active = false
+    local ph = p.phases
+    local label = "HUD intervals, not GPU; os.clock quantized; runtime inclusive; nested under assault; mission_feed outside runtime; mission_sync/layout/verify inclusive all callers incl recovery; mission_title_sync inclusive title sync/fitting nested under mission_sync for all callers and mission_labels_verify inclusive label measurement/certification nested under mission_layout/_update_layout changed predicate AND mission_verify for all callers, neither pure text_rect nor translation time; do not add nested mission totals to module totals; objectives_anim runtime inclusive; objectives_anim_idle/active split eligible animate only (early returns unclassified) and the finishing frame counts active; objectives_callback nested/overlapping, no sum totals"
+        .. "; harmony_delayed_sync/priority/delayed_post/duplicates nested under harmony but all callers count (overlaps possible); reserve aggregates pre-priority sync and post-priority release checks, nested under harmony, all callers count; copr aggregates pre-priority sync and post-priority release checks, nested under harmony, all callers count; backdrop work unclassified residue; combat_draw outside runtime"
+        .. "; equipment_collect/equipment_snapshot/equipment_present/equipment_verify are nested-inclusive overlapping equipment phases (snapshot and verify inside present, H5 certification verify, HUD transition callers included) and equipment_throttled counts equipment update throttle early returns; they overlap each other and the overall equipment bucket, so never sum them"
+        .. "; player_capture/player_render/player_verify are nested inclusive overlapping player phases (render and verify nest under capture through the real player path) and player_native_acquire/crew_native_acquire time only the real _h5_acquire_group native acquisition for local_ prefixed and crew_ groups respectively, excluding coordination and target collection; never sum them"
+    if p.mode == "completion" then
+        label = label .. "; mode=completion"
+    end
+    local inconclusive = ""
+    if ph.runtime.sum == 0 then inconclusive = "; timing inconclusive" end
+    local ok_format, message = pcall(string.format,
+        "[KyoHUD][ResidualProbe] alerts %d %.3f %.3f; assault %d %.3f %.3f; "
+        .. "assault_verify %d %.3f %.3f; assault_verify_full %d %.3f %.3f; assault_verify_light %d %.3f %.3f; "
+        .. "assault_native %d %.3f %.3f; assault_animation %d %.3f %.3f; "
+        .. "player %d %.3f %.3f; "
+        .. "player_capture %d %.3f %.3f; player_render %d %.3f %.3f; "
+        .. "player_verify %d %.3f %.3f; "
+        .. "player_native_acquire %d %.3f %.3f; crew_native_acquire %d %.3f %.3f; "
+        .. "weapons %d %.3f %.3f; equipment %d %.3f %.3f; "
+        .. "equipment_collect %d %.3f %.3f; equipment_snapshot %d %.3f %.3f; "
+        .. "equipment_present %d %.3f %.3f; equipment_verify %d %.3f %.3f; "
+        .. "equipment_throttled %d %.3f %.3f; "
+        .. "crew %d %.3f %.3f; harmony %d %.3f %.3f; objectives_anim %d %.3f %.3f; "
+        .. "objectives_anim_idle %d %.3f %.3f; objectives_anim_active %d %.3f %.3f; "
+        .. "objectives_callback %d %.3f %.3f; "
+        .. "recovery %d %.3f %.3f; runtime %d %.3f %.3f; "
+        .. "mission_feed %d %.3f %.3f; mission_sync %d %.3f %.3f; "
+        .. "mission_title_sync %d %.3f %.3f; "
+        .. "mission_layout %d %.3f %.3f; mission_verify %d %.3f %.3f; "
+        .. "mission_labels_verify %d %.3f %.3f; "
+        .. "harmony_delayed_sync %d %.3f %.3f; harmony_priority %d %.3f %.3f; "
+        .. "harmony_delayed_post %d %.3f %.3f; reserve %d %.3f %.3f; "
+        .. "copr %d %.3f %.3f; "
+        .. "harmony_duplicates %d %.3f %.3f; "
+        .. "combat_draw %d %.3f %.3f; "
+        .. "gaps >16.7ms %d >33.3ms %d >50ms %d max_ms %.3f; %s%s",
+        ph.alerts.count, ph.alerts.sum * 1000, ph.alerts.max * 1000,
+        ph.assault.count, ph.assault.sum * 1000, ph.assault.max * 1000,
+        ph.assault_verify.count, ph.assault_verify.sum * 1000, ph.assault_verify.max * 1000,
+        ph.assault_verify_full.count, ph.assault_verify_full.sum * 1000, ph.assault_verify_full.max * 1000,
+        ph.assault_verify_light.count, ph.assault_verify_light.sum * 1000, ph.assault_verify_light.max * 1000,
+        ph.assault_native.count, ph.assault_native.sum * 1000, ph.assault_native.max * 1000,
+        ph.assault_animation.count, ph.assault_animation.sum * 1000, ph.assault_animation.max * 1000,
+        ph.player.count, ph.player.sum * 1000, ph.player.max * 1000,
+        ph.player_capture.count, ph.player_capture.sum * 1000, ph.player_capture.max * 1000,
+        ph.player_render.count, ph.player_render.sum * 1000, ph.player_render.max * 1000,
+        ph.player_verify.count, ph.player_verify.sum * 1000, ph.player_verify.max * 1000,
+        ph.player_native_acquire.count, ph.player_native_acquire.sum * 1000, ph.player_native_acquire.max * 1000,
+        ph.crew_native_acquire.count, ph.crew_native_acquire.sum * 1000, ph.crew_native_acquire.max * 1000,
+        ph.weapons.count, ph.weapons.sum * 1000, ph.weapons.max * 1000,
+        ph.equipment.count, ph.equipment.sum * 1000, ph.equipment.max * 1000,
+        ph.equipment_collect.count, ph.equipment_collect.sum * 1000, ph.equipment_collect.max * 1000,
+        ph.equipment_snapshot.count, ph.equipment_snapshot.sum * 1000, ph.equipment_snapshot.max * 1000,
+        ph.equipment_present.count, ph.equipment_present.sum * 1000, ph.equipment_present.max * 1000,
+        ph.equipment_verify.count, ph.equipment_verify.sum * 1000, ph.equipment_verify.max * 1000,
+        ph.equipment_throttled.count, ph.equipment_throttled.sum * 1000, ph.equipment_throttled.max * 1000,
+        ph.crew.count, ph.crew.sum * 1000, ph.crew.max * 1000,
+        ph.harmony.count, ph.harmony.sum * 1000, ph.harmony.max * 1000,
+        ph.objectives_anim.count, ph.objectives_anim.sum * 1000, ph.objectives_anim.max * 1000,
+        ph.objectives_anim_idle.count, ph.objectives_anim_idle.sum * 1000, ph.objectives_anim_idle.max * 1000,
+        ph.objectives_anim_active.count, ph.objectives_anim_active.sum * 1000, ph.objectives_anim_active.max * 1000,
+        ph.objectives_callback.count, ph.objectives_callback.sum * 1000, ph.objectives_callback.max * 1000,
+        ph.recovery.count, ph.recovery.sum * 1000, ph.recovery.max * 1000,
+        ph.runtime.count, ph.runtime.sum * 1000, ph.runtime.max * 1000,
+        ph.mission_feed.count, ph.mission_feed.sum * 1000, ph.mission_feed.max * 1000,
+        ph.mission_sync.count, ph.mission_sync.sum * 1000, ph.mission_sync.max * 1000,
+        ph.mission_title_sync.count, ph.mission_title_sync.sum * 1000, ph.mission_title_sync.max * 1000,
+        ph.mission_layout.count, ph.mission_layout.sum * 1000, ph.mission_layout.max * 1000,
+        ph.mission_verify.count, ph.mission_verify.sum * 1000, ph.mission_verify.max * 1000,
+        ph.mission_labels_verify.count, ph.mission_labels_verify.sum * 1000, ph.mission_labels_verify.max * 1000,
+        ph.harmony_delayed_sync.count, ph.harmony_delayed_sync.sum * 1000, ph.harmony_delayed_sync.max * 1000,
+        ph.harmony_priority.count, ph.harmony_priority.sum * 1000, ph.harmony_priority.max * 1000,
+        ph.harmony_delayed_post.count, ph.harmony_delayed_post.sum * 1000, ph.harmony_delayed_post.max * 1000,
+        ph.reserve.count, ph.reserve.sum * 1000, ph.reserve.max * 1000,
+        ph.copr.count, ph.copr.sum * 1000, ph.copr.max * 1000,
+        ph.harmony_duplicates.count, ph.harmony_duplicates.sum * 1000, ph.harmony_duplicates.max * 1000,
+        ph.combat_draw.count, ph.combat_draw.sum * 1000, ph.combat_draw.max * 1000,
+        p.gap_16, p.gap_33, p.gap_50, p.gap_max,
+        label, inconclusive)
+    if ok_format then pcall(log, message) end
+end
+
+function RT:_residual_tick(t)
+    local p = self._residual_probe
+    if not p or p.done then return end
+
+    if not p.active and kyohud.settings.enable_hud_foundation ~= true then
+        p.warm_start = nil
+        p.last_t = nil
+        return
+    end
+
+    if type(t) ~= "number" or not finite(t) then
+        if p.active then
+            self:_residual_abort("invalid_t")
+        else
+            p.warm_start = nil
+            p.last_t = nil
+        end
+        return
+    end
+
+    local live = self:_residual_player_alive()
+
+    if p.active then
+        if not live or (p.last_t ~= nil and t < p.last_t) then
+            self:_residual_abort(not live and "player_lost" or "backward_t")
+            return
+        end
+        if p.last_t ~= nil then
+            local gap_ms = (t - p.last_t) * 1000
+            if finite(gap_ms) and gap_ms >= 0 then
+                if gap_ms > 16.7 then p.gap_16 = p.gap_16 + 1 end
+                if gap_ms > 33.3 then p.gap_33 = p.gap_33 + 1 end
+                if gap_ms > 50 then p.gap_50 = p.gap_50 + 1 end
+                if gap_ms > p.gap_max then p.gap_max = gap_ms end
+            end
+        end
+        p.last_t = t
+        if p.capture_start ~= nil and (t - p.capture_start) >= 20 then
+            self:_residual_finish()
+        end
+        return
+    end
+
+    if not live then
+        p.warm_start = nil
+        p.last_t = nil
+        return
+    end
+    if p.mode == "completion" then
+        local objectives = kyohud.hud.objectives
+        local eligible = live
+            and kyohud.settings.enable_objectives == true
+            and objectives ~= nil
+            and objectives._mounted == true
+        if not eligible then
+            p.last_t = nil
+            return
+        end
+        if p.last_t ~= nil and t < p.last_t then
+            p.last_t = t
+            return
+        end
+        p.last_t = t
+        return
+    end
+    if p.warm_start == nil then
+        p.warm_start = t
+        p.last_t = t
+        return
+    end
+    if p.last_t ~= nil and t < p.last_t then
+        p.warm_start = t
+        p.last_t = t
+        return
+    end
+    p.last_t = t
+    if (t - p.warm_start) >= 5 then
+        p.active = true
+        p.capture_start = t
+    end
+end
+
+function RT:_residual_note_completion()
+    local p = self._residual_probe
+    if not p or p.done or p.active then return end
+    if p.mode ~= "completion" then return end
+    local settings = kyohud.settings
+    if settings.enable_hud_foundation ~= true then return end
+    if settings.enable_objectives ~= true then return end
+    local objectives = kyohud.hud.objectives
+    if not objectives or objectives._mounted ~= true then return end
+    if not self:_residual_player_alive() then return end
+    local t = p.last_t
+    if type(t) ~= "number" or not finite(t) then return end
+    p.active = true
+    p.capture_start = t
 end
 
 local function get_parent_panel(manager)
@@ -205,11 +533,12 @@ function RT:set_objectives_covered(covered)
     self._objectives_covered = covered
     local mission = kyohud.hud.mission
     if mission and mission._mounted and panel_alive(mission._root_panel) then
-        safe_call(mission._root_panel, "set_visible", false)
+        -- The anchor no longer moves with coverage. Keep the owned root in
+        -- place; failure hides its leaves and restores the native timer.
         mission:_update_layout()
         mission:_ensure_primitives()
         mission:_sync_primitives()
-        if mission:_verify_render() then
+        if mission:_verify_render(not covered) then
             safe_call(mission._root_panel, "set_visible", true)
         else
             mission:_handle_render_failure()
@@ -297,6 +626,9 @@ function RT:_do_refresh()
 end
 
 function RT:unmount()
+    self:_release_delayed_replacement(true)
+    self:_release_reserve_replacement(true)
+    self:_release_copr_replacement(true)
     self:_release_h5()
     self:_coordinate_crew("unmount")
     self:_coordinate_mission("unmount")
@@ -322,6 +654,9 @@ function RT:unmount()
 end
 
 function RT:rebuild(manager)
+    self:_release_delayed_replacement(true)
+    self:_release_reserve_replacement(true)
+    self:_release_copr_replacement(true)
     self:_release_h5()
     self:_coordinate_crew("unmount")
     self:_coordinate_mission("unmount")
@@ -413,6 +748,14 @@ function RT:destroy(manager)
 end
 
 function RT:update(manager, t, dt)
+    local probe = self._residual_probe
+    if probe then
+        self:_residual_tick(t)
+    end
+    local runtime_start
+    if probe then
+        runtime_start = self:_residual_stamp()
+    end
     -- quality split approved 2026-11-10: a module whose update does not run on
     -- this frame must never retain the previous frame's ran/verified state.
     local P = kyohud.hud.player
@@ -423,26 +766,48 @@ function RT:update(manager, t, dt)
     if W then W._update_ran_now = false; W._verify_ok_now = false end
     if E then E._update_ran_now = false; E._verify_ok_now = false end
     if C then C._update_ran_now = false; C._verify_ok_now = false end
-    if not t then return end
+    if not t then
+        self:_residual_record("runtime", runtime_start)
+        return
+    end
 
     if kyohud.settings.enable_hud_foundation == true then
+        local phase_start = self:_residual_stamp()
         self:_coordinate_alerts("update", t, dt)
+        self:_residual_record("alerts", phase_start)
+        phase_start = self:_residual_stamp()
         self:_coordinate_assault("update", t, dt)
+        self:_residual_record("assault", phase_start)
+        phase_start = self:_residual_stamp()
         self:_coordinate_player("update", t, dt)
+        self:_residual_record("player", phase_start)
+        phase_start = self:_residual_stamp()
         self:_coordinate_weapons("update", t, dt)
+        self:_residual_record("weapons", phase_start)
+        phase_start = self:_residual_stamp()
         self:_coordinate_equipment("update", t, dt)
+        self:_residual_record("equipment", phase_start)
+        phase_start = self:_residual_stamp()
         local crew_receipt = self:_coordinate_crew("update", t, dt)
+        self:_residual_record("crew", phase_start)
+        phase_start = self:_residual_stamp()
         self:_sync_local_backdrop(t, crew_receipt)
+        self:_residual_record("harmony", phase_start)
     end
 
     if kyohud.settings.enable_hud_foundation == true and kyohud.settings.enable_objectives == true then
         local objectives = kyohud.hud.objectives
         if objectives and type(objectives.animate) == "function" and objectives._mounted then
+            local phase_start = self:_residual_stamp()
             objectives:animate(t, dt)
+            self:_residual_record("objectives_anim", phase_start)
         end
     end
 
+    local recovery_start = self:_residual_stamp()
     if self._last_recovery_time ~= nil and t >= self._last_recovery_time and (t - self._last_recovery_time) < RECOVERY_INTERVAL then
+        self:_residual_record("recovery", recovery_start)
+        self:_residual_record("runtime", runtime_start)
         return
     end
 
@@ -452,6 +817,8 @@ function RT:update(manager, t, dt)
     if kyohud.settings.enable_hud_foundation ~= true then
         self:_retry_pending_h5_releases()
         self:unmount()
+        self:_residual_record("recovery", recovery_start)
+        self:_residual_record("runtime", runtime_start)
         return
     end
 
@@ -461,6 +828,8 @@ function RT:update(manager, t, dt)
         self:_do_refresh()
         self:_coordinate_mission("update", t, dt)
         self:_coordinate_objectives("update", t, dt)
+        self:_residual_record("recovery", recovery_start)
+        self:_residual_record("runtime", runtime_start)
         return
     end
 
@@ -470,6 +839,8 @@ function RT:update(manager, t, dt)
     self:mount(mgr)
     self:_coordinate_mission("update", t, dt)
     self:_coordinate_objectives("update", t, dt)
+    self:_residual_record("recovery", recovery_start)
+    self:_residual_record("runtime", runtime_start)
 end
 
 -- quality split approved 2026-11-10: throttled frames read the live root
@@ -714,6 +1085,7 @@ end
 
 local NATIVE_DEPTH = 6
 local SPECIAL_EQUIP_MAX = 64
+local COPR_CHILD_MAX = 64
 
 local READ_SLOTS = {visible = 1, alpha = 3, parent = 5, x = 7, y = 9, w = 11, h = 13, text = 15}
 
@@ -928,7 +1300,11 @@ local function h5_child_index_set(parent, name, child)
     by_name[name] = child
 end
 
-function RT:_apply_native_priority(t)
+function RT:_apply_native_priority_unprofiled(t, post_release)
+    local trace = self._stoic_trace_enabled == true
+        and (self._priority_trace_emitted or 0) < PRIORITY_TRACE_LIMIT
+    local collect = trace and self._priority_trace_episode ~= true
+    local active_slot = nil
     local mgr = self._manager
     if not mgr then return end
     local common_parent = self._parent_panel
@@ -945,7 +1321,12 @@ function RT:_apply_native_priority(t)
     local any_local = (player_root and panel_alive(player_root))
         or (weapons_root and panel_alive(weapons_root))
         or (equipment_root and panel_alive(equipment_root))
-    if not any_crew and not any_local then return end
+    if not any_crew and not any_local then
+        if trace and not post_release then
+            self._priority_trace_episode = false
+        end
+        return
+    end
     local reads = {}
     local S = {
         any_crew = any_crew,
@@ -957,7 +1338,21 @@ function RT:_apply_native_priority(t)
         hide_crew = false,
         hide_local = false,
     }
-    local function known_child(parent, name, fresh)
+    local function set_hide_local(cause, leaf, native_bounds, owned_bounds,
+        effective_visible, effective_alpha)
+        S.hide_local = true
+        if not collect or S._priority_first ~= nil then return end
+        S._priority_first = {
+            cause = cause,
+            leaf = leaf,
+            native_bounds = native_bounds,
+            owned_bounds = owned_bounds,
+            slot = active_slot,
+            effective_visible = effective_visible,
+            effective_alpha = effective_alpha,
+        }
+    end
+    local function known_child(parent, name, fresh, child_path)
         if not parent or not panel_alive(parent) then return nil end
         if not fresh then
             local cached = h5_child_index_get(parent, name)
@@ -974,10 +1369,42 @@ function RT:_apply_native_priority(t)
         end
         if not fresh then h5_child_index_set(parent, name, nil) end
         S.hide_crew = true
-        S.hide_local = true
+        set_hide_local("child_lookup", child_path, nil, nil)
         return nil
     end
-    local function check_leaf(leaf_panel)
+    -- The COPR binding may replace the legacy container check only while it is
+    -- an exact, certified lease of this local dedicated panel: every recreated
+    -- numeric notch must still be an immediate child with alpha 0. Anything else
+    -- keeps the historical container observation unchanged.
+    local function local_copr_replaced_leaves(entry_panel, radial)
+        local binding = self._copr_binding
+        if not binding or binding.leased ~= true or binding.certified ~= true then
+            return nil
+        end
+        if binding.radial ~= radial or binding.entry_panel ~= entry_panel then
+            return nil
+        end
+        local copr = binding.copr
+        if not copr or not panel_alive(copr) then return nil end
+        local cps, cparent = _pass_read(reads, copr, "parent")
+        if cps ~= CALL_OK or cparent ~= radial then return nil end
+        local leaves = binding.leaves
+        if type(leaves) ~= "table" then return nil end
+        local count = #leaves
+        if count < 1 or count > COPR_CHILD_MAX then return nil end
+        for i = 1, count do
+            local leaf = leaves[i]
+            if not leaf or not panel_alive(leaf) then return nil end
+            local lps, lparent = _pass_read(reads, leaf, "parent")
+            if lps ~= CALL_OK or lparent ~= copr then return nil end
+            local als, alpha = _pass_read(reads, leaf, "alpha")
+            if als ~= CALL_OK or not finite(alpha) or math.abs(alpha) > 0.0001 then
+                return nil
+            end
+        end
+        return leaves
+    end
+    local function check_leaf(leaf_panel, leaf_path)
         if not leaf_panel or not panel_alive(leaf_panel) then return end
         if S.hide_crew and S.hide_local then return end
         local ev = _effective_visible(leaf_panel, reads)
@@ -986,13 +1413,14 @@ function RT:_apply_native_priority(t)
         if ea == 0 then return end
         if ev == nil or ea == nil then
             S.hide_crew = true
-            S.hide_local = true
+            set_hide_local(ev == nil and "unknown_visibility" or "unknown_alpha",
+                leaf_path, nil, nil, ev, ea)
             return
         end
         local nb = _bounds_in_common(leaf_panel, common_parent, reads)
         if not nb then
             S.hide_crew = true
-            S.hide_local = true
+            set_hide_local("unknown_geometry", leaf_path, nil, nil, ev, ea)
             return
         end
         if S.any_crew and not S.hide_crew then
@@ -1010,94 +1438,151 @@ function RT:_apply_native_priority(t)
                 if not S._pb then
                     S._pb = _player_visible_union(player, reads)
                 end
-                if not S._pb or _aabb_overlap(nb, S._pb) then
-                    S.hide_local = true
+                if not S._pb then
+                    set_hide_local("unknown_player_union", leaf_path, nb, nil, ev, ea)
+                elseif _aabb_overlap(nb, S._pb) then
+                    set_hide_local("overlap_player_union", leaf_path, nb, S._pb, ev, ea)
                 end
             end
             if not S.hide_local and weapons_root and panel_alive(weapons_root) then
                 if not S._wb then
                     S._wb = _bounds_in_common(weapons_root, common_parent, reads)
                 end
-                if not S._wb or _aabb_overlap(nb, S._wb) then
-                    S.hide_local = true
+                if not S._wb then
+                    set_hide_local("unknown_weapons_bounds", leaf_path, nb, nil, ev, ea)
+                elseif _aabb_overlap(nb, S._wb) then
+                    set_hide_local("overlap_weapons", leaf_path, nb, S._wb, ev, ea)
                 end
             end
             if not S.hide_local and equipment_root and panel_alive(equipment_root) then
                 if not S._eb then
                     S._eb = _bounds_in_common(equipment_root, common_parent, reads)
                 end
-                if not S._eb or _aabb_overlap(nb, S._eb) then
-                    S.hide_local = true
+                if not S._eb then
+                    set_hide_local("unknown_equipment_bounds", leaf_path, nb, nil, ev, ea)
+                elseif _aabb_overlap(nb, S._eb) then
+                    set_hide_local("overlap_equipment", leaf_path, nb, S._eb, ev, ea)
                 end
             end
         end
     end
-    local function inspect_teammate_entry(entry)
+    local function inspect_teammate_entry(entry, slot, prefix)
         if type(entry) ~= "table" then return end
+        local function path_of(rel)
+            if not collect or S._priority_first ~= nil then return nil end
+            if prefix == nil then return nil end
+            return prefix .. "/" .. rel
+        end
         local entry_panel = entry._panel
         if entry_panel and panel_alive(entry_panel) then
-            local pp = known_child(entry_panel, "player")
+            local pp_path = path_of("player")
+            local pp = known_child(entry_panel, "player", nil, pp_path)
             if pp and panel_alive(pp) then
-                local carry = known_child(pp, "carry_panel")
-                if carry and panel_alive(carry) then check_leaf(carry) end
-                local interact = known_child(pp, "interact_panel")
-                if interact and panel_alive(interact) then check_leaf(interact) end
-                local radial = known_child(pp, "radial_health_panel")
+                local carry_path = path_of("player/carry_panel")
+                local carry = known_child(pp, "carry_panel", nil, carry_path)
+                if carry and panel_alive(carry) then check_leaf(carry, carry_path) end
+                local interact_path = path_of("player/interact_panel")
+                local interact = known_child(pp, "interact_panel", nil, interact_path)
+                if interact and panel_alive(interact) then check_leaf(interact, interact_path) end
+                local radial_path = path_of("player/radial_health_panel")
+                local radial = known_child(pp, "radial_health_panel", nil, radial_path)
                 if radial and panel_alive(radial) then
-                    local rc = known_child(radial, "radial_custom")
-                    if rc and panel_alive(rc) then check_leaf(rc) end
-                    local ra = known_child(radial, "radial_ability")
-                    if ra and panel_alive(ra) then check_leaf(ra) end
-                    local rr = known_child(radial, "radial_rip")
-                    if rr and panel_alive(rr) then check_leaf(rr) end
-                    local rrb = known_child(radial, "radial_rip_bg")
-                    if rrb and panel_alive(rrb) then check_leaf(rrb) end
-                    local ras = known_child(radial, "radial_absorb_shield_active")
-                    if ras and panel_alive(ras) then check_leaf(ras) end
-                    local rah = known_child(radial, "radial_absorb_health_active")
-                    if rah and panel_alive(rah) then check_leaf(rah) end
-                    local rim = known_child(radial, "radial_info_meter")
-                    if rim and panel_alive(rim) then check_leaf(rim) end
-                    local rimbg = known_child(radial, "radial_info_meter_bg")
-                    if rimbg and panel_alive(rimbg) then check_leaf(rimbg) end
-                    local rdd = known_child(radial, "radial_delayed_damage")
+                    local rc_path = path_of("player/radial_health_panel/radial_custom")
+                    local rc = known_child(radial, "radial_custom", nil, rc_path)
+                    if rc and panel_alive(rc) then check_leaf(rc, rc_path) end
+                    local ra_path = path_of("player/radial_health_panel/radial_ability")
+                    local ra = known_child(radial, "radial_ability", nil, ra_path)
+                    if ra and panel_alive(ra) then check_leaf(ra, ra_path) end
+                    local rr_path = path_of("player/radial_health_panel/radial_rip")
+                    local rr = known_child(radial, "radial_rip", nil, rr_path)
+                    if rr and panel_alive(rr) then check_leaf(rr, rr_path) end
+                    local rrb_path = path_of("player/radial_health_panel/radial_rip_bg")
+                    local rrb = known_child(radial, "radial_rip_bg", nil, rrb_path)
+                    if rrb and panel_alive(rrb) then check_leaf(rrb, rrb_path) end
+                    local ras_path = path_of("player/radial_health_panel/radial_absorb_shield_active")
+                    local ras = known_child(radial, "radial_absorb_shield_active", nil, ras_path)
+                    if ras and panel_alive(ras) then check_leaf(ras, ras_path) end
+                    local rah_path = path_of("player/radial_health_panel/radial_absorb_health_active")
+                    local rah = known_child(radial, "radial_absorb_health_active", nil, rah_path)
+                    if rah and panel_alive(rah) then check_leaf(rah, rah_path) end
+                    local rim_path = path_of("player/radial_health_panel/radial_info_meter")
+                    local rim = known_child(radial, "radial_info_meter", nil, rim_path)
+                    if rim and panel_alive(rim) then check_leaf(rim, rim_path) end
+                    local rimbg_path = path_of("player/radial_health_panel/radial_info_meter_bg")
+                    local rimbg = known_child(radial, "radial_info_meter_bg", nil, rimbg_path)
+                    if rimbg and panel_alive(rimbg) then check_leaf(rimbg, rimbg_path) end
+                    local rdd_path = path_of("player/radial_health_panel/radial_delayed_damage")
+                    local rdd = known_child(radial, "radial_delayed_damage", nil, rdd_path)
                     if rdd and panel_alive(rdd) then
-                        local rdda = known_child(rdd, "radial_delayed_damage_armor")
-                        if rdda and panel_alive(rdda) then check_leaf(rdda) end
-                        local rddh = known_child(rdd, "radial_delayed_damage_health")
-                        if rddh and panel_alive(rddh) then check_leaf(rddh) end
+                        local rdda_path = path_of("player/radial_health_panel/radial_delayed_damage/radial_delayed_damage_armor")
+                        local rdda = known_child(rdd, "radial_delayed_damage_armor", nil, rdda_path)
+                        if rdda and panel_alive(rdda) then check_leaf(rdda, rdda_path) end
+                        local rddh_path = path_of("player/radial_health_panel/radial_delayed_damage/radial_delayed_damage_health")
+                        local rddh = known_child(rdd, "radial_delayed_damage_health", nil, rddh_path)
+                        if rddh and panel_alive(rddh) then check_leaf(rddh, rddh_path) end
                     end
-                    local copr = known_child(radial, "copr_overlay_panel")
+                    local copr_path = path_of("player/radial_health_panel/copr_overlay_panel")
+                    local copr = known_child(radial, "copr_overlay_panel", nil, copr_path)
                     if copr and panel_alive(copr) then
                         -- copr_overlay_panel is created visible while empty and the
                         -- native creates/destroys its numeric "0" child: never serve
                         -- this population from the binding index, re-consult the parent.
-                        local c0 = known_child(copr, "0", true)
-                        if c0 and panel_alive(c0) then check_leaf(copr) end
+                        local c0_path = path_of("player/radial_health_panel/copr_overlay_panel/0")
+                        local c0 = known_child(copr, "0", true, c0_path)
+                        if c0 and panel_alive(c0) then
+                            local replaced = local_copr_replaced_leaves(entry_panel, radial)
+                            if replaced then
+                                -- Observe each replaced notch instead of the now-empty
+                                -- dedicated parent, which stays natively visible.
+                                for i, leaf in ipairs(replaced) do
+                                    local leaf_path
+                                    if collect and S._priority_first == nil then
+                                        leaf_path = "player/radial_health_panel/copr_overlay_panel/"
+                                            .. tostring(i - 1)
+                                    end
+                                    check_leaf(leaf, leaf_path)
+                                end
+                            else
+                                check_leaf(copr, copr_path)
+                            end
+                        end
                     end
                 end
             end
-            local ct = known_child(entry_panel, "condition_timer")
-            if ct and panel_alive(ct) then check_leaf(ct) end
+            local ct_path = path_of("condition_timer")
+            local ct = known_child(entry_panel, "condition_timer", nil, ct_path)
+            if ct and panel_alive(ct) then check_leaf(ct, ct_path) end
         end
         local special_equip = entry._special_equipment
         if type(special_equip) == "table" then
             for j = 1, SPECIAL_EQUIP_MAX do
                 local se = special_equip[j]
                 if se == nil then break end
-                check_leaf(se)
+                local se_path
+                if collect and S._priority_first == nil and prefix ~= nil then
+                    se_path = prefix .. "/_special_equipment[" .. j .. "]"
+                end
+                check_leaf(se, se_path)
             end
             if special_equip[SPECIAL_EQUIP_MAX + 1] ~= nil then
                 S.hide_crew = true
-                S.hide_local = true
+                local overflow_path
+                if collect and S._priority_first == nil and prefix ~= nil then
+                    overflow_path = prefix .. "/_special_equipment["
+                        .. (SPECIAL_EQUIP_MAX + 1) .. "]"
+                end
+                set_hide_local("special_overflow", overflow_path, nil, nil)
             end
         end
     end
     local teammate_panels = mgr._teammate_panels
     if type(teammate_panels) == "table" then
         for i = 1, 4 do
-            inspect_teammate_entry(teammate_panels[i])
+            active_slot = i
+            local prefix = collect and ("teammate_panels[" .. i .. "]") or nil
+            inspect_teammate_entry(teammate_panels[i], i, prefix)
         end
+        active_slot = nil
     end
     local hud_temp = mgr._hud_temp
     if type(hud_temp) == "table" then
@@ -1105,9 +1590,13 @@ function RT:_apply_native_priority(t)
         if temp_panel and panel_alive(temp_panel) then
             local temp_names = { "bag_panel", "throw_instruction" }
             for _, cn in ipairs(temp_names) do
-                local child = known_child(temp_panel, cn)
+                local child_path
+                if collect and S._priority_first == nil then
+                    child_path = "_hud_temp/_temp_panel/" .. cn
+                end
+                local child = known_child(temp_panel, cn, nil, child_path)
                 if child and panel_alive(child) then
-                    check_leaf(child)
+                    check_leaf(child, child_path)
                 end
             end
         end
@@ -1119,9 +1608,13 @@ function RT:_apply_native_priority(t)
             local inames = { hud_interaction._child_name_text, hud_interaction._child_ivalid_name_text }
             for _, cn in ipairs(inames) do
                 if type(cn) == "string" then
-                    local child = known_child(ip, cn)
+                    local child_path
+                    if collect and S._priority_first == nil then
+                        child_path = "_hud_interaction/_hud_panel/" .. cn
+                    end
+                    local child = known_child(ip, cn, nil, child_path)
                     if child and panel_alive(child) then
-                        check_leaf(child)
+                        check_leaf(child, child_path)
                     end
                 end
             end
@@ -1144,7 +1637,18 @@ function RT:_apply_native_priority(t)
             safe_call(self._local_bg_panel, "set_visible", false)
         end
     end
-
+    if trace then
+        if S.hide_local then
+            if self._priority_trace_episode ~= true then
+                self._priority_trace_episode = true
+                if S._priority_first ~= nil then
+                    self:_priority_trace_record(S._priority_first, t)
+                end
+            end
+        elseif not post_release then
+            self._priority_trace_episode = false
+        end
+    end
 end
 
 local H5_PLAYER_ID_LEAVES = {"name", "name_bg", "callsign", "callsign_bg"}
@@ -1155,6 +1659,25 @@ local H5_WEAPON_SEL_BITMAP = "weapon_selection"
 local H5_EQUIP_DEPLOY_LEAVES = {"bg", "equipment", "amount"}
 local H5_EQUIP_TIES_LEAVES = {"bg", "cable_ties", "amount"}
 local H5_EQUIP_GREN_LEAVES = {"bg", "grenades_icon", "amount"}
+local H5_COOLDOWN_GROUP = "local_p_cooldown"
+local H5_DAMAGE_GROUP = "local_p_damage"
+local H5_FLASH_GROUP = "local_p_grenade_flash"
+local H5_VISIBLE_GROUPS = {
+    local_p_cooldown = true,
+    local_p_damage = true,
+    local_p_grenade_flash = true,
+}
+local DAMAGE_FEEDBACK_ROOT_NAME = "kyohud_damage_feedback"
+local DAMAGE_FEEDBACK_EDGE_NAMES = {
+    "kyohud_damage_feedback_top",
+    "kyohud_damage_feedback_bottom",
+    "kyohud_damage_feedback_left",
+    "kyohud_damage_feedback_right",
+}
+local DAMAGE_FEEDBACK_ROOT_LAYER = 40
+local DAMAGE_FEEDBACK_EDGE_LAYER = 41
+local DAMAGE_FEEDBACK_ALPHA_FACTOR = 0.65
+local DAMAGE_FEEDBACK_THICKNESS = 2
 local MAX_H5_SLOTS = 4
 local H5_LOCAL_ID_NAME = "kyohud_local_id_text"
 local H5_LOCAL_ID_FONT = "fonts/font_medium_mf"
@@ -1171,6 +1694,14 @@ local function h5_child(panel, name)
     end
     h5_child_index_set(panel, name, nil)
     return nil
+end
+
+local function h5_child_verified(parent, name)
+    local child = h5_child(parent, name)
+    if not child then return nil end
+    local status, immediate = safe_call(child, "parent")
+    if status ~= CALL_OK or immediate ~= parent then return nil end
+    return child
 end
 
 local function h5_player_slot()
@@ -1539,6 +2070,24 @@ local function h5_collect_weapon_targets(entry_panel, W)
                 if sel_container and panel_alive(sel_container) then
                     local sel_bitmap = h5_child(sel_container, H5_WEAPON_SEL_BITMAP)
                     if sel_bitmap then targets[#targets + 1] = sel_bitmap end
+                    local fire_mode = slot_data.fire_mode
+                    local mode_known = fire_mode == "single"
+                        or fire_mode == "auto"
+                        or fire_mode == "burst"
+                        or fire_mode == "volley"
+                    if mode_known then
+                        for _, mode_leaf_name in ipairs({"firemode_single", "firemode_auto"}) do
+                            local mode_leaf = h5_child(sel_container, mode_leaf_name)
+                            if mode_leaf then
+                                local ps, parent = safe_call(mode_leaf, "parent")
+                                local vs = safe_call(mode_leaf, "visible")
+                                if ps == CALL_OK and parent == sel_container
+                                    and vs == CALL_OK then
+                                    targets[#targets + 1] = mode_leaf
+                                end
+                            end
+                        end
+                    end
                 end
             end
         end
@@ -1603,6 +2152,114 @@ local function h5_collect_equipment_targets(entry_panel, E)
         end
     end
     return targets
+end
+
+local function h5_collect_cooldown_targets(entry_panel)
+    local targets = {}
+    if not entry_panel or not panel_alive(entry_panel) then return targets end
+    local player = h5_child_verified(entry_panel, "player")
+    if not player then return targets end
+    local grenades = h5_child_verified(player, "grenades_panel")
+    if not grenades then return targets end
+    local radial = h5_child_verified(grenades, "grenades_radial")
+    if radial then targets[1] = radial end
+    return targets
+end
+
+local function h5_local_peer_id()
+    local status, session = safe_call(managers and managers.network or nil, "session")
+    if status ~= CALL_OK or session == nil then return nil end
+    local peer_status, peer = safe_call(session, "local_peer")
+    if peer_status ~= CALL_OK or peer == nil then return nil end
+    local id_status, peer_id = safe_call(peer, "id")
+    if id_status ~= CALL_OK then return nil end
+    return peer_id
+end
+
+local function h5_equipment_integrated_row_ok(E, cooldown)
+    local remaining = cooldown.remaining
+    local duration = cooldown.duration
+    if not finite(remaining) or remaining <= 0 then return false end
+    if not finite(duration) or duration <= 0 then return false end
+    if remaining > duration then return false end
+    if type(E._visible_rows) ~= "table" or E._visible_rows[4] ~= true then return false end
+    local row = type(E._rows) == "table" and E._rows[4] or nil
+    if not row or row._verified ~= true or not row._value or not row._root then return false end
+    local root_status, row_visible = safe_call(row._root, "visible")
+    if root_status ~= CALL_OK or row_visible ~= true then return false end
+    local text_status, text = safe_call(row._value, "text")
+    if text_status ~= CALL_OK or text ~= string.format("%ds", math.ceil(remaining)) then return false end
+    local progress = math.min(1, math.max(0, 1 - remaining / duration))
+    if not finite(row._progress) or math.abs(row._progress - progress) > 0.02 then return false end
+    local reveal = row._recharge_reveal
+    if not reveal or not panel_alive(reveal) then return false end
+    local parent_status, reveal_parent = safe_call(reveal, "parent")
+    if parent_status ~= CALL_OK or reveal_parent ~= row._root then return false end
+    local layer_status, layer = safe_call(reveal, "layer")
+    if layer_status ~= CALL_OK or not finite(layer) or math.abs(layer - 1) > 0.01 then return false end
+    local visible_status, reveal_visible = safe_call(reveal, "visible")
+    if visible_status ~= CALL_OK or reveal_visible ~= true then return false end
+    local row_w_status, row_w = safe_call(row._root, "w")
+    local row_h_status, row_h = safe_call(row._root, "h")
+    if row_w_status ~= CALL_OK or row_h_status ~= CALL_OK then return false end
+    if not finite(row_w) or not finite(row_h) then return false end
+    local rx_status, rx = safe_call(reveal, "x")
+    local ry_status, ry = safe_call(reveal, "y")
+    local rw_status, rw = safe_call(reveal, "w")
+    local rh_status, rh = safe_call(reveal, "h")
+    if rx_status ~= CALL_OK or ry_status ~= CALL_OK
+        or rw_status ~= CALL_OK or rh_status ~= CALL_OK then return false end
+    if not finite(rx) or not finite(ry) or not finite(rw) or not finite(rh) then return false end
+    if math.abs(rx) > 0.05 or math.abs(ry - row_h * (1 - progress)) > 0.05 then return false end
+    if math.abs(rw - row_w) > 0.05 or math.abs(rh - row_h * progress) > 0.05 then return false end
+    return true
+end
+
+local function h5_equipment_cooldown_ok(E)
+    if not E or type(E.verify) ~= "function" or type(E.get_snapshot) ~= "function" then return false end
+    if E._player_manager ~= (managers and managers.player) then return false end
+    local local_peer_id = h5_local_peer_id()
+    if local_peer_id == nil or E._peer_id ~= local_peer_id then return false end
+    local snap_ok, snap = pcall(E.get_snapshot, E)
+    if not snap_ok or type(snap) ~= "table" then return false end
+    if snap.source_known ~= true or snap.unsupported == true then return false end
+    if snap.source_generation ~= E._source_generation then return false end
+    local projectile = snap.projectile
+    if type(projectile) ~= "table" then return false end
+    if type(projectile.projectile_id) ~= "string" or projectile.projectile_id == "" then return false end
+    if projectile.kind ~= "ability" and projectile.kind ~= "throwable" then return false end
+    if not (projectile.charges and projectile.charges.known == true) then return false end
+    local cooldown = snap.cooldown
+    if type(cooldown) ~= "table" or cooldown.known ~= true or cooldown.active ~= true then return false end
+    if not finite(cooldown.remaining) or cooldown.remaining <= 0 then return false end
+    if cooldown.integrated == true then
+        if not h5_equipment_integrated_row_ok(E, cooldown) then return false end
+    else
+        if type(E._visible_rows) ~= "table" or E._visible_rows[5] ~= true then return false end
+        local row = type(E._rows) == "table" and E._rows[5] or nil
+        if not row or row._verified ~= true or not row._label or not row._root then return false end
+        local root_status, row_visible = safe_call(row._root, "visible")
+        if root_status ~= CALL_OK or row_visible ~= true then return false end
+        local expected_text = E._texts and E._texts.cooldown or "RECHARGE"
+        local text_status, text = safe_call(row._label, "text")
+        if text_status ~= CALL_OK or text ~= expected_text then return false end
+    end
+    local verify_ok, verified = pcall(E.verify, E)
+    if not verify_ok or verified ~= true then return false end
+    return true
+end
+
+local function h5_equipment_grenade_flash_ok(E, mgr)
+    if not E or type(E._verify_grenade_flash) ~= "function" then return false, nil end
+    if E._grenade_flash_ok ~= true then return false, nil end
+    local source = E._grenade_flash_source
+    if type(source) ~= "table" then return false, nil end
+    if source.manager ~= mgr then return false, nil end
+    if type(source.targets) ~= "table" or #source.targets ~= 2 then return false, nil end
+    if type(source.bases) ~= "table" or #source.bases ~= 2 then return false, nil end
+    local verify_ok, verified = pcall(E._verify_grenade_flash, E)
+    if not verify_ok or verified ~= true then return false, nil end
+    return true, source
 end
 
 local H5_CREW_WEAPONS = {"secondary_weapon_panel", "primary_weapon_panel"}
@@ -1675,6 +2332,108 @@ local function h5_same_targets(a, b)
     return true
 end
 
+function RT:_h5_group_holds_visible(group_key, obj)
+    if type(group_key) ~= "string" or obj == nil then return false end
+    local state = self._h5_groups and self._h5_groups[group_key]
+    if not state or state._release_pending or state.property ~= "visible" then return false end
+    if type(state.targets) ~= "table" then return false end
+    local target = false
+    for i = 1, #state.targets do
+        if state.targets[i] == obj then target = true; break end
+    end
+    if not target then return false end
+    local nv = kyohud.hud.native_visibility
+    if not nv or type(nv._entries) ~= "table" then return false end
+    for _, entry in ipairs(nv._entries) do
+        if entry.object == obj and entry.property == "visible"
+            and entry.owner == state.owner and entry.generation == state.generation then
+            return entry.old_value == true and entry.applied_value == false
+        end
+    end
+    return false
+end
+
+local function h5_flash_bounds(panel)
+    local xs, x = safe_call(panel, "x")
+    local ys, y = safe_call(panel, "y")
+    local ws, w = safe_call(panel, "w")
+    local hs, h = safe_call(panel, "h")
+    if xs ~= CALL_OK or ys ~= CALL_OK or ws ~= CALL_OK or hs ~= CALL_OK then return nil end
+    if not finite(x) or not finite(y) or not finite(w) or not finite(h) then return nil end
+    return x, y, w, h
+end
+
+-- Terminal completion is only recognized when both exact leased ghosts are
+-- alpha 0 at the baseline geometry and native has written visible=false. This
+-- rewrites only this group's held restore intent before release; a timeout or a
+-- bare lease value never qualifies.
+local function h5_flash_terminal(state)
+    local source = state and state.flash_source
+    if type(source) ~= "table" then return false end
+    local parent = source.parent
+    local targets = state.targets
+    local bases = source.bases
+    local ghost_names = source.ghost_names
+    local base_names = source.base_names
+    if not panel_alive(parent) or type(targets) ~= "table" or #targets ~= 2
+        or type(bases) ~= "table" or #bases ~= 2
+        or type(ghost_names) ~= "table" or #ghost_names ~= 2
+        or type(base_names) ~= "table" or #base_names ~= 2 then return false end
+    for i = 1, 2 do
+        local ghost = targets[i]
+        local base = bases[i]
+        if not panel_alive(ghost) or not panel_alive(base) then return false end
+        local gps, ghost_parent = safe_call(ghost, "parent")
+        local bps, base_parent = safe_call(base, "parent")
+        if gps ~= CALL_OK or ghost_parent ~= parent
+            or bps ~= CALL_OK or base_parent ~= parent then return false end
+        local gcs, ghost_child = safe_call(parent, "child", ghost_names[i])
+        local bcs, base_child = safe_call(parent, "child", base_names[i])
+        if gcs ~= CALL_OK or ghost_child ~= ghost
+            or bcs ~= CALL_OK or base_child ~= base then return false end
+        local vs, visible = safe_call(ghost, "visible")
+        local as, alpha = safe_call(ghost, "alpha")
+        if vs ~= CALL_OK or visible ~= false
+            or as ~= CALL_OK or not finite(alpha) then
+            return false
+        end
+        local cs, color = safe_call(ghost, "color")
+        if cs ~= CALL_OK or color == nil then return false end
+        if not finite(color.r) or math.abs(color.r - 1) > 0.001
+            or not finite(color.g) or math.abs(color.g - 1) > 0.001
+            or not finite(color.b) or math.abs(color.b - 1) > 0.001 then
+            return false
+        end
+        if not finite(color.a) or math.abs(color.a) > 0.0001 then return false end
+        local gx, gy, gw, gh = h5_flash_bounds(ghost)
+        local bx, by, bw, bh = h5_flash_bounds(base)
+        if gx == nil or bx == nil then return false end
+        if math.abs(gx - bx) > 0.05 or math.abs(gy - by) > 0.05
+            or math.abs(gw - bw) > 0.05 or math.abs(gh - bh) > 0.05 then
+            return false
+        end
+    end
+    return true
+end
+
+local function h5_reconcile_flash_terminal(state)
+    if not state or state.property ~= "visible" then return end
+    if not h5_flash_terminal(state) then return end
+    local nv = kyohud.hud.native_visibility
+    if not nv or type(nv._entries) ~= "table" then return end
+    for _, entry in ipairs(nv._entries) do
+        if entry.owner == state.owner and entry.generation == state.generation
+            and entry.property == "visible" and entry.old_value == true then
+            for i = 1, #state.targets do
+                if entry.object == state.targets[i] then
+                    entry.old_value = false
+                    break
+                end
+            end
+        end
+    end
+end
+
 local function h5_group_pending(nv, owner, generation)
     if not nv or not nv._entries then return false end
     for _, entry in pairs(nv._entries) do
@@ -1688,6 +2447,7 @@ end
 function RT:_h5_release_group(group_key)
     local state = self._h5_groups and self._h5_groups[group_key]
     if not state then return true end
+    if group_key == H5_FLASH_GROUP then h5_reconcile_flash_terminal(state) end
     local nv = kyohud.hud.native_visibility
     if state.generation > 0 and nv and type(nv.release) == "function" then
         nv:release(state.owner, state.generation)
@@ -1699,9 +2459,16 @@ function RT:_h5_release_group(group_key)
     local added = state.added
     if added and nv and nv._whitelist then
         for leaf, previous in pairs(added) do
-            if nv._whitelist[leaf] then
-                nv._whitelist[leaf].alpha = previous.alpha
-                if not next(nv._whitelist[leaf]) then
+            local allowed = nv._whitelist[leaf]
+            if allowed then
+                local property = previous.property
+                if property == nil then
+                    property = "alpha"
+                    allowed[property] = previous.alpha
+                else
+                    allowed[property] = previous.allowed
+                end
+                if not next(allowed) then
                     nv._whitelist[leaf] = nil
                 end
             end
@@ -1711,7 +2478,14 @@ function RT:_h5_release_group(group_key)
     return true
 end
 
-function RT:_h5_acquire_group(group_key, targets, source_id)
+function RT:_h5_acquire_group(group_key, targets, source_id, property)
+    property = property or "alpha"
+    if property ~= "alpha" and property ~= "visible" then return end
+    if property == "visible" and H5_VISIBLE_GROUPS[group_key] ~= true then return end
+    local value = 0
+    if property == "visible" then
+        value = false
+    end
     if not targets or #targets == 0 then return end
     local nv = kyohud.hud.native_visibility
     if not nv or type(nv.acquire) ~= "function" then return end
@@ -1721,7 +2495,9 @@ function RT:_h5_acquire_group(group_key, targets, source_id)
             and old.entry_panel == source_id.entry_panel
             and old.manager == source_id.manager
             and old.root_gen == source_id.root_gen
+            and (old.property or "alpha") == property
         if same_source then
+            if group_key == H5_FLASH_GROUP then old.flash_source = source_id end
             if not old._release_pending then
                 local ok = nv:acquire(old.owner, old.generation, old.requests)
                 if not ok then
@@ -1749,13 +2525,14 @@ function RT:_h5_acquire_group(group_key, targets, source_id)
     local added = {}
     for i, leaf in ipairs(targets) do
         if nv._whitelist then
-            if not nv._whitelist[leaf] then nv._whitelist[leaf] = {} end
-            if nv._whitelist[leaf].alpha ~= true then
-                added[leaf] = {alpha = nv._whitelist[leaf].alpha}
-                nv._whitelist[leaf].alpha = true
+            local allowed = nv._whitelist[leaf]
+            if not allowed then allowed = {}; nv._whitelist[leaf] = allowed end
+            if allowed[property] ~= true then
+                added[leaf] = {property = property, allowed = allowed[property]}
+                allowed[property] = true
             end
         end
-        requests[i] = {id = leaf, property = "alpha", value = 0}
+        requests[i] = {id = leaf, property = property, value = value}
     end
     local state = {
         owner = owner,
@@ -1764,8 +2541,10 @@ function RT:_h5_acquire_group(group_key, targets, source_id)
         entry_panel = source_id.entry_panel,
         manager = source_id.manager,
         root_gen = source_id.root_gen,
+        property = property,
         added = added,
         requests = requests,
+        flash_source = group_key == H5_FLASH_GROUP and source_id or nil,
     }
     self._h5_groups[group_key] = state
     local ok = nv:acquire(owner, new_gen, requests)
@@ -1775,7 +2554,280 @@ function RT:_h5_acquire_group(group_key, targets, source_id)
     self:_h5_release_group(group_key)
 end
 
-function RT:_coordinate_h5_native_duplicates(crew_receipt)
+-- Opt-in residual phase probe: time the real native H5 group acquisition only.
+-- The wrapper is reinstalled after each fresh definition and never wraps twice.
+if RT._h5_acquire_group ~= RT._residual_h5_acquire_wrapper then
+    local raw_acquire_group = RT._h5_acquire_group
+    local function h5_acquire_phase(group_key)
+        if type(group_key) ~= "string" then return nil end
+        if group_key:sub(1, 6) == "local_" then return "player_native_acquire" end
+        if group_key:sub(1, 5) == "crew_" then return "crew_native_acquire" end
+        return nil
+    end
+    local wrapped = function(self, group_key, targets, source_id, property)
+        local probe = self._residual_probe
+        if not probe or probe.done or not probe.active then
+            raw_acquire_group(self, group_key, targets, source_id, property)
+            return
+        end
+        local phase = h5_acquire_phase(group_key)
+        local start
+        if phase ~= nil and type(self._residual_stamp) == "function" then
+            start = self:_residual_stamp()
+        end
+        raw_acquire_group(self, group_key, targets, source_id, property)
+        if phase ~= nil and start ~= nil and type(self._residual_record) == "function" then
+            self:_residual_record(phase, start)
+        end
+    end
+    RT._residual_h5_acquire_wrapper = wrapped
+    RT._h5_acquire_group = wrapped
+end
+
+local function df_bounds(prim)
+    if not prim or not panel_alive(prim) then return nil end
+    local xs, x = safe_call(prim, "x")
+    local ys, y = safe_call(prim, "y")
+    local ws, w = safe_call(prim, "w")
+    local hs, h = safe_call(prim, "h")
+    if xs ~= CALL_OK or ys ~= CALL_OK or ws ~= CALL_OK or hs ~= CALL_OK then return nil end
+    if not finite(x) or not finite(y) or not finite(w) or not finite(h) then return nil end
+    return {x = x, y = y, w = w, h = h}
+end
+
+local function df_shape_matches(prim, x, y, w, h)
+    local b = df_bounds(prim)
+    if not b then return false end
+    return math.abs(b.x - x) <= 0.51 and math.abs(b.y - y) <= 0.51
+        and math.abs(b.w - w) <= 0.51 and math.abs(b.h - h) <= 0.51
+end
+
+local function df_edge_ok(root, edge, name, sx, sy, sw, sh, expected_alpha)
+    if not edge or not panel_alive(edge) then return false end
+    local ps, parent = safe_call(edge, "parent")
+    if ps ~= CALL_OK or parent ~= root then return false end
+    local cs, child = safe_call(root, "child", name)
+    if cs ~= CALL_OK or child ~= edge then return false end
+    if not df_shape_matches(edge, sx, sy, sw, sh) then return false end
+    local ls, layer = safe_call(edge, "layer")
+    if ls ~= CALL_OK or not finite(layer)
+        or math.abs(layer - DAMAGE_FEEDBACK_EDGE_LAYER) > 0.01 then return false end
+    local vs, visible = safe_call(edge, "visible")
+    if vs ~= CALL_OK or visible ~= true then return false end
+    local ks, color = safe_call(edge, "color")
+    if ks ~= CALL_OK or color == nil then return false end
+    if not finite(color.r) or math.abs(color.r - 1) > 0.001 then return false end
+    if not finite(color.g) or math.abs(color.g) > 0.001 then return false end
+    if not finite(color.b) or math.abs(color.b) > 0.001 then return false end
+    local as, alpha = safe_call(edge, "alpha")
+    if as ~= CALL_OK or not finite(alpha)
+        or math.abs(alpha - expected_alpha) > 0.001 then return false end
+    return true
+end
+
+local function df_root_ok(P, root, x, y, w, h, expected_alpha)
+    if not root or not panel_alive(root) then return false end
+    local ps, parent = safe_call(root, "parent")
+    if ps ~= CALL_OK or parent ~= P._root then return false end
+    local cs, child = safe_call(P._root, "child", DAMAGE_FEEDBACK_ROOT_NAME)
+    if cs ~= CALL_OK or child ~= root then return false end
+    if not df_shape_matches(root, x, y, w, h) then return false end
+    local ls, layer = safe_call(root, "layer")
+    if ls ~= CALL_OK or not finite(layer)
+        or math.abs(layer - DAMAGE_FEEDBACK_ROOT_LAYER) > 0.01 then return false end
+    local vs, visible = safe_call(root, "visible")
+    if vs ~= CALL_OK or visible ~= (expected_alpha > 0) then return false end
+    return true
+end
+
+local function damage_feedback_hide_owned()
+    local P = kyohud.hud.player
+    local feedback = P and P._damage_feedback
+    local root = feedback and feedback.root
+    if root and panel_alive(root) then
+        safe_call(root, "set_visible", false)
+    end
+end
+
+function RT:_sync_damage_feedback(p_ok, p_vis, mgr, entry, handled_keys)
+    local P = kyohud.hud.player
+    local function release()
+        damage_feedback_hide_owned()
+        self:_h5_release_group(H5_DAMAGE_GROUP)
+        handled_keys[H5_DAMAGE_GROUP] = true
+    end
+    if not P or not P._root or not panel_alive(P._root) then release(); return end
+    if not (p_ok and p_vis) then release(); return end
+    if type(entry) ~= "table" or entry._ai == true then release(); return end
+    local panels = mgr and mgr._teammate_panels
+    if type(panels) ~= "table" or panels[h5_player_slot()] ~= entry then release(); return end
+    local entry_panel = entry._panel
+    if not entry_panel or not panel_alive(entry_panel) then release(); return end
+    local player = h5_child_verified(entry_panel, "player")
+    if not player then release(); return end
+    local radial = h5_child_verified(player, "radial_health_panel")
+    if not radial then release(); return end
+    local indicator = h5_child_verified(radial, "damage_indicator")
+    if not indicator then release(); return end
+    local reads = {}
+    if _effective_visible(entry_panel, reads) ~= true
+        or _effective_visible(player, reads) ~= true
+        or _effective_visible(radial, reads) ~= true then release(); return end
+    local entry_alpha = _effective_alpha(entry_panel, reads)
+    local player_alpha = _effective_alpha(player, reads)
+    local radial_alpha = _effective_alpha(radial, reads)
+    if not finite(entry_alpha) or entry_alpha <= 0
+        or not finite(player_alpha) or player_alpha <= 0
+        or not finite(radial_alpha) or radial_alpha <= 0 then release(); return end
+    local als, native_alpha = safe_call(indicator, "alpha")
+    if als ~= CALL_OK or not finite(native_alpha)
+        or native_alpha < 0 or native_alpha > 1 then release(); return end
+    if type(P.verify) ~= "function" then release(); return end
+    local verify_ok, verified = pcall(P.verify, P)
+    if not verify_ok or verified ~= true then release(); return end
+    local gauge = P._gauge
+    local gauge_root = gauge and gauge.root
+    local gps, gauge_parent = safe_call(gauge_root, "parent")
+    if gps ~= CALL_OK or gauge_parent ~= P._root then release(); return end
+    local gauge_bounds = df_bounds(gauge_root)
+    if not gauge_bounds or gauge_bounds.w <= 0 or gauge_bounds.h <= 0 then release(); return end
+    local armor_bg = gauge._armor_bg
+    if not armor_bg or not panel_alive(armor_bg) then release(); return end
+    local aps, armor_parent = safe_call(armor_bg, "parent")
+    if aps ~= CALL_OK or armor_parent ~= gauge_root then release(); return end
+    local armor_bounds = df_bounds(armor_bg)
+    if not armor_bounds or armor_bounds.w <= 0 or armor_bounds.h <= 0 then release(); return end
+    local bounds = {
+        x = gauge_bounds.x + armor_bounds.x,
+        y = gauge_bounds.y + armor_bounds.y,
+        w = armor_bounds.w,
+        h = armor_bounds.h,
+    }
+    local rws, root_w = safe_call(P._root, "w")
+    if rws ~= CALL_OK or not finite(root_w) or root_w <= 0 then release(); return end
+    local thickness = DAMAGE_FEEDBACK_THICKNESS * root_w / 380
+    if thickness <= 0 or thickness > bounds.w or thickness > bounds.h then release(); return end
+    local shapes = {
+        {0, 0, bounds.w, thickness},
+        {0, bounds.h - thickness, bounds.w, thickness},
+        {0, 0, thickness, bounds.h},
+        {bounds.w - thickness, 0, thickness, bounds.h},
+    }
+    local expected_alpha = native_alpha * DAMAGE_FEEDBACK_ALPHA_FACTOR
+    local feedback = P._damage_feedback
+    local root = feedback and feedback.root
+    local edges = feedback and feedback.edges
+    local reusable = false
+    if root and type(edges) == "table" and #edges == 4 and panel_alive(root) then
+        local rp_s, rp = safe_call(root, "parent")
+        local rc_s, rc = safe_call(P._root, "child", DAMAGE_FEEDBACK_ROOT_NAME)
+        if rp_s == CALL_OK and rp == P._root and rc_s == CALL_OK and rc == root then
+            reusable = true
+            for i = 1, 4 do
+                local edge = edges[i]
+                if not edge or not panel_alive(edge) then reusable = false; break end
+                local ep_s, ep = safe_call(edge, "parent")
+                local ec_s, ec = safe_call(root, "child", DAMAGE_FEEDBACK_EDGE_NAMES[i])
+                if ep_s ~= CALL_OK or ep ~= root
+                    or ec_s ~= CALL_OK or ec ~= edge then
+                    reusable = false
+                    break
+                end
+            end
+        end
+    end
+    if not reusable then
+        local existing_s, existing = safe_call(P._root, "child", DAMAGE_FEEDBACK_ROOT_NAME)
+        if existing_s ~= CALL_OK or existing ~= nil then release(); return end
+        if feedback and feedback.root and panel_alive(feedback.root) then
+            safe_call(feedback.root, "set_visible", false)
+        end
+        P._damage_feedback = nil
+        local build_ok, built = pcall(function()
+            local new_root = P._root:panel({
+                name = DAMAGE_FEEDBACK_ROOT_NAME,
+                layer = DAMAGE_FEEDBACK_ROOT_LAYER,
+            })
+            new_root:set_shape(bounds.x, bounds.y, bounds.w, bounds.h)
+            new_root:set_layer(DAMAGE_FEEDBACK_ROOT_LAYER)
+            new_root:set_visible(false)
+            local new_edges = {}
+            for i = 1, 4 do
+                local shape = shapes[i]
+                local edge = new_root:rect({
+                    name = DAMAGE_FEEDBACK_EDGE_NAMES[i],
+                    layer = DAMAGE_FEEDBACK_EDGE_LAYER,
+                })
+                edge:set_shape(shape[1], shape[2], shape[3], shape[4])
+                edge:set_color(Color(1, 1, 0, 0))
+                edge:set_alpha(0)
+                edge:set_visible(true)
+                new_edges[i] = edge
+            end
+            return {root = new_root, edges = new_edges}
+        end)
+        if not build_ok or type(built) ~= "table" or not built.root
+            or type(built.edges) ~= "table" or #built.edges ~= 4 then
+            if type(built) == "table" and built.root and panel_alive(built.root) then
+                safe_call(built.root, "set_visible", false)
+            end
+            release()
+            return
+        end
+        local check_s, check = safe_call(P._root, "child", DAMAGE_FEEDBACK_ROOT_NAME)
+        if check_s ~= CALL_OK or check ~= built.root then
+            safe_call(built.root, "set_visible", false)
+            release()
+            return
+        end
+        P._damage_feedback = built
+        feedback = built
+        root = built.root
+        edges = built.edges
+    end
+    safe_call(root, "set_shape", bounds.x, bounds.y, bounds.w, bounds.h)
+    safe_call(root, "set_layer", DAMAGE_FEEDBACK_ROOT_LAYER)
+    safe_call(root, "set_visible", expected_alpha > 0)
+    for i = 1, 4 do
+        local shape = shapes[i]
+        local edge = edges[i]
+        safe_call(edge, "set_shape", shape[1], shape[2], shape[3], shape[4])
+        safe_call(edge, "set_layer", DAMAGE_FEEDBACK_EDGE_LAYER)
+        safe_call(edge, "set_alpha", expected_alpha)
+        safe_call(edge, "set_visible", true)
+    end
+    local certified = df_root_ok(P, root, bounds.x, bounds.y, bounds.w, bounds.h, expected_alpha)
+    if certified then
+        for i = 1, 4 do
+            local shape = shapes[i]
+            if not df_edge_ok(root, edges[i], DAMAGE_FEEDBACK_EDGE_NAMES[i],
+                shape[1], shape[2], shape[3], shape[4], expected_alpha) then
+                certified = false
+                break
+            end
+        end
+    end
+    if not certified then
+        safe_call(root, "set_visible", false)
+        self:_h5_release_group(H5_DAMAGE_GROUP)
+        handled_keys[H5_DAMAGE_GROUP] = true
+        return
+    end
+    local targets = {indicator}
+    self:_h5_acquire_group(H5_DAMAGE_GROUP, targets, {
+        entry_panel = entry_panel,
+        manager = mgr,
+        root_gen = self._generation,
+    }, "visible")
+    local state = self._h5_groups and self._h5_groups[H5_DAMAGE_GROUP]
+    if not state or state._release_pending or not h5_same_targets(state.targets, targets) then
+        safe_call(root, "set_visible", false)
+        self:_h5_release_group(H5_DAMAGE_GROUP)
+    end
+    handled_keys[H5_DAMAGE_GROUP] = true
+end
+
+function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
     local mgr = self._manager
     if not mgr then return {} end
     if self._disabled or self._freeflight then
@@ -1784,6 +2836,7 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
     end
     local nv = kyohud.hud.native_visibility
     if not nv or type(nv.acquire) ~= "function" then
+        damage_feedback_hide_owned()
         return {}
     end
 
@@ -1811,7 +2864,8 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
     -- never retained across frames. Backdrop writes do not mutate P/W/E content.
     -- quality split approved 2026-11-10: a module that already ran in this same
     -- synchronous pass certifies with its own result. A throttled module gets a
-    -- live light root read. H5 never adds a full verifier pcall.
+    -- live light root read. The damage-feedback mirror separately requires the
+    -- real player verifier before it leases the native indicator visibility.
     local certifications = {}
     if p_ok then
         local ok
@@ -1885,6 +2939,12 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
     if c_ok then
         c_vis = _effective_visible(C._root, visibility_reads) == true and (_effective_alpha(C._root, visibility_reads) or 0) > 0
     end
+    local cooldown_ok = false
+    local flash_ok, flash_source = false, nil
+    if e_ok and e_vis then
+        cooldown_ok = h5_equipment_cooldown_ok(E)
+        flash_ok, flash_source = h5_equipment_grenade_flash_ok(E, mgr)
+    end
 
     local teammate_panels = mgr._teammate_panels
     if type(teammate_panels) ~= "table" then
@@ -1894,9 +2954,11 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
 
     local player_slot = h5_player_slot()
     local handled_keys = {}
+    local local_entry = teammate_panels[player_slot]
+    self:_sync_damage_feedback(p_ok, p_vis, mgr, local_entry, handled_keys)
 
     if p_ok or w_ok or e_ok then
-        local entry = teammate_panels[player_slot]
+        local entry = local_entry
         if type(entry) == "table" then
             local entry_panel = entry._panel
             if entry_panel and panel_alive(entry_panel) then
@@ -1946,12 +3008,73 @@ function RT:_coordinate_h5_native_duplicates(crew_receipt)
                     self:_h5_release_group(key .. "_e")
                 end
                 handled_keys[key .. "_e"] = true
+                if cooldown_ok then
+                    local cooldown_targets = h5_collect_cooldown_targets(entry_panel)
+                    if #cooldown_targets > 0 then
+                        self:_h5_acquire_group(H5_COOLDOWN_GROUP, cooldown_targets, {
+                            entry_panel = entry_panel,
+                            manager = mgr,
+                            root_gen = self._generation,
+                        }, "visible")
+                        handled_keys[H5_COOLDOWN_GROUP] = true
+                    else
+                        self:_h5_release_group(H5_COOLDOWN_GROUP)
+                    end
+                else
+                    self:_h5_release_group(H5_COOLDOWN_GROUP)
+                end
+                if flash_ok and flash_source then
+                    local flash_targets = flash_source.targets
+                    local flash_acquired = false
+                    if type(flash_targets) == "table" and #flash_targets == 2 then
+                        self:_h5_acquire_group(H5_FLASH_GROUP, flash_targets, {
+                            entry_panel = entry_panel,
+                            manager = mgr,
+                            root_gen = self._generation,
+                            parent = flash_source.parent,
+                            bases = flash_source.bases,
+                            ghost_names = flash_source.ghost_names,
+                            base_names = flash_source.base_names,
+                        }, "visible")
+                        local state = self._h5_groups and self._h5_groups[H5_FLASH_GROUP]
+                        if state and not state._release_pending
+                            and state.property == "visible"
+                            and h5_same_targets(state.targets, flash_targets) then
+                            flash_acquired = true
+                            for i = 1, 2 do
+                                local ghost = flash_targets[i]
+                                local vs, visible = safe_call(ghost, "visible")
+                                if vs ~= CALL_OK or visible ~= false
+                                    or not self:_h5_group_holds_visible(H5_FLASH_GROUP, ghost) then
+                                    flash_acquired = false
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    if not flash_acquired then
+                        self:_h5_release_group(H5_FLASH_GROUP)
+                        local row = E and type(E._rows) == "table" and E._rows[4] or nil
+                        if row and type(row._hide_grenade_flash) == "function" then
+                            row:_hide_grenade_flash()
+                        end
+                        if E then
+                            E._grenade_flash_ok = false
+                            E._grenade_flash_source = nil
+                        end
+                    end
+                else
+                    self:_h5_release_group(H5_FLASH_GROUP)
+                end
+                handled_keys[H5_FLASH_GROUP] = true
             end
         end
     else
         self:_h5_release_group("local_p_p")
         self:_h5_release_group("local_p_w")
         self:_h5_release_group("local_p_e")
+        self:_h5_release_group(H5_COOLDOWN_GROUP)
+        self:_h5_release_group(H5_FLASH_GROUP)
     end
 
     if c_ok and c_vis and ACT and type(ACT.write_crew_native_coverage) == "function" then
@@ -2031,6 +3154,18 @@ function RT:_sync_h5_id_label_visibility()
 end
 
 function RT:_retry_pending_h5_releases()
+    local delayed = self._delayed_binding
+    if delayed and delayed.release_pending then
+        self:_release_delayed_replacement(false)
+    end
+    local reserve = self._reserve_binding
+    if reserve and reserve.release_pending then
+        self:_release_reserve_replacement(false)
+    end
+    local copr = self._copr_binding
+    if copr and copr.release_pending then
+        self:_release_copr_replacement(false)
+    end
     if not self._h5_groups then return end
     local any_remaining = false
     for key, state in pairs(self._h5_groups) do
@@ -2056,6 +3191,7 @@ end
 
 function RT:_release_all_h5()
     h5_child_index_reset()
+    damage_feedback_hide_owned()
     if not self._h5_groups then
         self:_sync_h5_id_label_visibility()
         return
@@ -2079,8 +3215,1758 @@ function RT:_release_h5()
     self:_release_all_h5()
 end
 
+-- Local native delayed-damage replacement. Native update_delayed_damage owns
+-- visible/color; native_visibility owns only the alpha leases on these exact
+-- two local leaves. Priority stays unchanged and naturally stops blocking once
+-- the qualified duplicates are alpha 0.
+local DELAYED_OWNER = "kyohud_delayed_replacement"
+local DELAYED_DEPTH = 16
+local RESERVE_OWNER = "kyohud_reserve_replacement"
+local COPR_OWNER = "kyohud_copr_replacement"
+
+local function dr_near(a, b, eps)
+    return finite(a) and finite(b) and math.abs(a - b) <= (eps or 0.001)
+end
+
+local function dr_ratio(current, maximum)
+    if not finite(current) or not finite(maximum) or maximum < 0 then return nil end
+    if maximum == 0 then
+        if current == 0 then return 0 end
+        return nil
+    end
+    if current < 0 then return nil end
+    if current > maximum then
+        -- Presentation-only envelope: tolerate a positive maximum exceeded by
+        -- at most a relative single-precision-sized bound (maximum * 2^-23),
+        -- capped by the existing absolute receipt comparison tolerance used by
+        -- dr_near. Raw health/armor values stay untouched; this does not claim
+        -- a digest implementation nor prove an actual engine cause.
+        local envelope = math.min(0.001, maximum * 2^-23)
+        if current - maximum <= envelope then return 1 end
+        return nil
+    end
+    return current / maximum
+end
+
+local function dr_read_number(obj, method)
+    local status, value = safe_call(obj, method)
+    if status ~= CALL_OK or not finite(value) then return nil end
+    return value
+end
+
+local function dr_read_ratio_color(panel)
+    if not panel_alive(panel) then return nil end
+    local ok, color = pcall(function() return panel:color() end)
+    if not ok or color == nil then return nil end
+    local rok, r = pcall(function() return color.r end)
+    if not rok or not finite(r) or r < 0 or r > 1 then return nil end
+    return r
+end
+
+local function dr_root_visible(P)
+    if not P or not P._root or not panel_alive(P._root) then return false end
+    local status, visible = safe_call(P._root, "visible")
+    return status == CALL_OK and visible == true
+end
+
+-- Read only a valid local active debt whose source identity still matches the
+-- owned receipt. Direct source replacement, unknown/NaN live data and inactive
+-- debt deliberately return nil so the caller keeps the existing refusal path.
+local function dr_live_source(P, mgr)
+    local receipt = P and P._delayed_source_receipt
+    if type(receipt) ~= "table" then return nil end
+    if receipt.manager ~= mgr or receipt.root ~= P._root
+        or receipt.runtime_root ~= RT._root_panel
+        or receipt.generation ~= RT._generation then
+        return nil
+    end
+    local us, unit = safe_call(managers and managers.player or nil, "player_unit")
+    if us ~= CALL_OK or unit == nil then return nil end
+    local cds, damage = safe_call(unit, "character_damage")
+    if cds ~= CALL_OK or damage == nil then return nil end
+    if receipt.unit ~= unit or receipt.damage ~= damage then return nil end
+    local health = dr_read_number(damage, "get_real_health")
+    local health_max = dr_read_number(damage, "_max_health")
+    local armor = dr_read_number(damage, "get_real_armor")
+    local armor_max = dr_read_number(damage, "_max_armor")
+    local debt = dr_read_number(damage, "remaining_delayed_damage")
+    local health_ratio = dr_ratio(health, health_max)
+    local armor_ratio = dr_ratio(armor, armor_max)
+    if health_ratio == nil or armor_ratio == nil then return nil end
+    if debt == nil or debt <= 0 then return nil end
+    return {
+        health = health,
+        health_max = health_max,
+        health_ratio = health_ratio,
+        armor = armor,
+        armor_max = armor_max,
+        armor_ratio = armor_ratio,
+        debt = debt,
+    }
+end
+
+local function dr_receipt_stale(P, live)
+    local receipt = P and P._delayed_source_receipt
+    if type(receipt) ~= "table" then return true end
+    local armor_ratio_ok
+    if live.armor_max == 0 then
+        armor_ratio_ok = receipt.armor_ratio == nil
+            or dr_near(receipt.armor_ratio, 0)
+    else
+        armor_ratio_ok = dr_near(receipt.armor_ratio, live.armor_ratio)
+    end
+    return not dr_near(receipt.health_current, live.health)
+        or not dr_near(receipt.health_total, live.health_max)
+        or not dr_near(receipt.health_ratio, live.health_ratio)
+        or not dr_near(receipt.armor_current, live.armor)
+        or not dr_near(receipt.armor_total, live.armor_max)
+        or not armor_ratio_ok
+        or receipt.delayed_known ~= true
+        or not dr_near(receipt.delayed_amount, live.debt)
+end
+
+-- Local Ex-President reserve replacement. The native set_stored_health_max /
+-- set_stored_health paths only write visible/color, never alpha, so the two
+-- duplicate radial leaves are hidden through alpha leases only. Reservation
+-- reads use the same bounded common ancestry helpers as the delayed replacement.
+local function reserve_ratio(current, maximum)
+    if not finite(current) or not finite(maximum) or maximum < 0 then return nil end
+    if current < 0 then return nil end
+    if maximum == 0 then
+        if current == 0 then return 0 end
+        return nil
+    end
+    local ratio = current / maximum
+    if ratio < 0 then return nil end
+    if ratio > 1 then ratio = 1 end
+    return ratio
+end
+
+local function reserve_live_source(P, mgr)
+    local receipt = P and P._reserve_source_receipt
+    if type(receipt) ~= "table" then return nil end
+    if receipt.manager ~= mgr or receipt.root ~= P._root
+        or receipt.runtime_root ~= RT._root_panel
+        or receipt.generation ~= RT._generation then
+        return nil
+    end
+    local us, unit = safe_call(managers and managers.player or nil, "player_unit")
+    if us ~= CALL_OK or unit == nil then return nil end
+    local cds, damage = safe_call(unit, "character_damage")
+    if cds ~= CALL_OK or damage == nil then return nil end
+    if receipt.unit ~= unit or receipt.damage ~= damage then return nil end
+    local max_health = dr_read_number(damage, "_max_health")
+    local stored = dr_read_number(damage, "armor_stored_health")
+    local max_stored = dr_read_number(damage, "max_armor_stored_health")
+    if max_health == nil or max_health <= 0 then return nil end
+    if stored == nil or max_stored == nil then return nil end
+    local stock_ratio = reserve_ratio(stored, max_health)
+    local capacity_ratio = reserve_ratio(max_stored, max_health)
+    if stock_ratio == nil or capacity_ratio == nil then return nil end
+    return {
+        stored = stored,
+        max_stored = max_stored,
+        max_health = max_health,
+        stock_ratio = stock_ratio,
+        capacity_ratio = capacity_ratio,
+    }
+end
+
+local function reserve_receipt_stale(P, live)
+    local receipt = P and P._reserve_source_receipt
+    if type(receipt) ~= "table" or receipt.stored_known ~= true then return true end
+    return not dr_near(receipt.stored_ratio, live.stock_ratio)
+        or not dr_near(receipt.stored_max_ratio, live.capacity_ratio)
+end
+
+-- Local COPR replacement source. The native overlay exposes an effective
+-- temporary upgrade flag plus the real static damage ratio; the owned gauge
+-- markers also derive from that ratio and the real local health. Unknown or
+-- unsupported sources stay native instead of being masked.
+local function copr_live_source(P, mgr)
+    local receipt = P and P._copr_source_receipt
+    if type(receipt) ~= "table" then return nil end
+    if receipt.manager ~= mgr or receipt.root ~= P._root
+        or receipt.runtime_root ~= RT._root_panel
+        or receipt.generation ~= RT._generation then
+        return nil
+    end
+    local pm = managers and managers.player or nil
+    local as, active = safe_call(pm, "has_activate_temporary_upgrade",
+        "temporary", "copr_ability")
+    if as ~= CALL_OK or active ~= true then return nil end
+    local rs, ratio = safe_call(pm, "upgrade_value",
+        "player", "copr_static_damage_ratio", 0)
+    if rs ~= CALL_OK or not finite(ratio) or ratio <= 0 or ratio > 1 then
+        return nil
+    end
+    local us, unit = safe_call(managers and managers.player or nil, "player_unit")
+    if us ~= CALL_OK or unit == nil then return nil end
+    local cds, damage = safe_call(unit, "character_damage")
+    if cds ~= CALL_OK or damage == nil then return nil end
+    if receipt.unit ~= unit or receipt.damage ~= damage then return nil end
+    local health = dr_read_number(damage, "get_real_health")
+    local health_max = dr_read_number(damage, "_max_health")
+    if health == nil or health_max == nil or health_max <= 0 then return nil end
+    local health_ratio = dr_ratio(health, health_max)
+    if health_ratio == nil then return nil end
+    local raw_n = 1 / ratio
+    if not finite(raw_n) or raw_n < 1 then return nil end
+    local n = math.ceil(raw_n)
+    if n < 1 or n > COPR_CHILD_MAX then return nil end
+    return {
+        active = true,
+        ratio = ratio,
+        n = n,
+        health = health,
+        health_max = health_max,
+        health_ratio = health_ratio,
+        unit = unit,
+        damage = damage,
+    }
+end
+
+local function copr_receipt_stale(P, live)
+    local receipt = P and P._copr_source_receipt
+    if type(receipt) ~= "table" or receipt.copr_active ~= true then return true end
+    return not dr_near(receipt.copr_ratio, live.ratio)
+        or not dr_near(receipt.health_current, live.health)
+        or not dr_near(receipt.health_total, live.health_max)
+        or not dr_near(receipt.health_ratio, live.health_ratio)
+end
+
+function RT:_stoic_trace_record()
+    if self._stoic_trace_enabled ~= true then return end
+    local reason = self._stoic_trace_stage_override_reason
+        or self._stoic_trace_stage_reason or "unknown"
+    local detail = self._stoic_trace_stage_override_detail
+        or self._stoic_trace_stage_detail
+    if self._stoic_trace_last_reason == nil then
+        self._stoic_trace_last_reason = reason
+        return
+    end
+    if reason == self._stoic_trace_last_reason then
+        return
+    end
+    if (self._stoic_trace_emitted or 0) >= STOIC_TRACE_LIMIT then return end
+    self._stoic_trace_last_reason = reason
+    local label
+    if reason == "covered" then
+        label = "COVERED"
+    elseif reason == "inactive" or reason == "unknown" then
+        label = "STATE"
+    elseif self._stoic_trace_first_fail_emitted ~= true then
+        self._stoic_trace_first_fail_emitted = true
+        label = "FIRSTFAIL"
+    else
+        label = "REFUSAL"
+    end
+    self._stoic_trace_emitted = (self._stoic_trace_emitted or 0) + 1
+    pcall(function()
+        local parts = {"[KyoHUD][StoicTrace]", label, "reason=" .. tostring(reason)}
+        if type(detail) == "table" then
+            local order = {
+                "hp", "hp_max", "armor", "armor_max", "debt",
+                "real_hp_ratio", "real_armor_ratio",
+                "native_hp", "native_hp_max", "native_armor", "native_armor_max",
+                "native_entry_hp_ratio", "native_entry_armor_ratio",
+                "native_hp_ratio", "native_armor_ratio",
+                "health_color", "shield_color",
+            }
+            for i = 1, #order do
+                local key = order[i]
+                local value = detail[key]
+                if type(value) == "number" and value == value
+                    and value ~= math.huge and value ~= -math.huge then
+                    parts[#parts + 1] = key .. "=" .. string.format("%.17g", value)
+                end
+            end
+        end
+        local log_fn = _G.log
+        if type(log_fn) == "function" then
+            log_fn(table.concat(parts, " "))
+        end
+    end)
+end
+
+function RT:_priority_trace_record(first, t)
+    if self._stoic_trace_enabled ~= true then return end
+    if type(first) ~= "table" then return end
+    if (self._priority_trace_emitted or 0) >= PRIORITY_TRACE_LIMIT then return end
+    self._priority_trace_emitted = (self._priority_trace_emitted or 0) + 1
+    local function tuple(bounds)
+        if type(bounds) ~= "table" then return "unknown" end
+        if not (finite(bounds.x) and finite(bounds.y)
+            and finite(bounds.w) and finite(bounds.h)) then
+            return "unknown"
+        end
+        return string.format("%.6f,%.6f,%.6f,%.6f",
+            bounds.x, bounds.y, bounds.w, bounds.h)
+    end
+    local function visible_text(value)
+        if value == true then return "true" end
+        if value == false then return "false" end
+        return "unknown"
+    end
+    local function alpha_text(value)
+        if finite(value) then return tostring(value) end
+        return "unknown"
+    end
+    local function local_text(slot)
+        if type(HUDManager) == "table"
+            and type(HUDManager.PLAYER_PANEL) == "number"
+            and type(slot) == "number" then
+            if slot == HUDManager.PLAYER_PANEL then return "true" end
+            return "false"
+        end
+        return "unknown"
+    end
+    pcall(function()
+        local slot = first.slot
+        if slot == nil then slot = "?" end
+        local line = "[KyoHUD][StoicTrace] PRIORITY cause="
+            .. tostring(first.cause or "unknown")
+            .. " leaf=" .. tostring(first.leaf or "unknown")
+            .. " native_bounds=" .. tuple(first.native_bounds)
+            .. " owned_bounds=" .. tuple(first.owned_bounds)
+            .. " slot=" .. tostring(slot)
+            .. " local=true"
+            .. " effective_visible=" .. visible_text(first.effective_visible)
+            .. " effective_alpha=" .. alpha_text(first.effective_alpha)
+            .. " source_local=" .. local_text(first.slot)
+        line = line .. " coord_space=runtime_parent"
+        if finite(t) then
+            line = line .. " time=" .. tostring(t)
+        end
+        local log_fn = _G.log
+        if type(log_fn) == "function" then
+            log_fn(line)
+        end
+    end)
+end
+
+local function dr_active_container(panel)
+    if not panel_alive(panel) then return false end
+    local vs, visible = safe_call(panel, "visible")
+    if vs ~= CALL_OK or visible ~= true then return false end
+    local as, alpha = safe_call(panel, "alpha")
+    return as == CALL_OK and finite(alpha) and alpha > 0
+end
+
+local function dr_leaf_readable(leaf)
+    if not panel_alive(leaf) then return false end
+    for _, method in ipairs({"x", "y", "w", "h", "alpha"}) do
+        local status, value = safe_call(leaf, method)
+        if status ~= CALL_OK or not finite(value) then return false end
+    end
+    local vs, visible = safe_call(leaf, "visible")
+    return vs == CALL_OK and (visible == true or visible == false)
+end
+
+local function dr_reaches(panel, common)
+    if not panel_alive(panel) or not panel_alive(common) then return false end
+    if panel == common then return true end
+    local current = panel
+    local depth = 0
+    while depth < DELAYED_DEPTH do
+        local status, parent = safe_call(current, "parent")
+        if status ~= CALL_OK or parent == nil or not panel_alive(parent) then
+            return false
+        end
+        if parent == common then return true end
+        current = parent
+        depth = depth + 1
+    end
+    return false
+end
+
+local function dr_reaches_exposed(panel, common)
+    if not panel_alive(panel) or not panel_alive(common) then return false end
+    local current = panel
+    local depth = 0
+    while depth < DELAYED_DEPTH do
+        if not dr_active_container(current) then return false end
+        local status, parent = safe_call(current, "parent")
+        if status ~= CALL_OK or parent == nil or not panel_alive(parent) then
+            return false
+        end
+        if parent == common then return true end
+        current = parent
+        depth = depth + 1
+    end
+    return false
+end
+
+local function dr_pending(nv, owner, generation)
+    if not nv or type(nv._entries) ~= "table" then return false end
+    for _, entry in ipairs(nv._entries) do
+        if entry.owner == owner and entry.generation == generation then
+            return true
+        end
+    end
+    return false
+end
+
+local function dr_restore_added(binding, nv)
+    if not binding.added or not nv or type(nv._whitelist) ~= "table" then return end
+    for leaf, previous in pairs(binding.added) do
+        local entry = nv._whitelist[leaf]
+        if entry then
+            entry.alpha = previous.alpha
+            if not next(entry) then nv._whitelist[leaf] = nil end
+        end
+    end
+    binding.added = nil
+end
+
+function RT:_release_delayed_replacement(clear_binding)
+    local binding = self._delayed_binding
+    if not binding then return end
+    local nv = kyohud.hud.native_visibility
+    if binding.leased or binding.release_pending then
+        if nv and type(nv.release) == "function" then
+            nv:release(DELAYED_OWNER, binding.lease_gen)
+        end
+        if dr_pending(nv, DELAYED_OWNER, binding.lease_gen) then
+            binding.release_pending = true
+            if clear_binding then binding.clear_on_release = true end
+            return
+        end
+        binding.release_pending = false
+        dr_restore_added(binding, nv)
+        binding.leased = false
+        binding.lease_gen = nil
+    end
+    if clear_binding or binding.clear_on_release then
+        binding.clear_on_release = nil
+        if not dr_pending(nv, DELAYED_OWNER, binding.lease_gen) then
+            self._delayed_binding = nil
+        end
+    end
+end
+
+function RT:_delayed_native_chain(mgr)
+    if not mgr or type(mgr._teammate_panels) ~= "table" then return nil end
+    local entry = mgr._teammate_panels[h5_player_slot()]
+    if type(entry) ~= "table" then return nil end
+    local entry_panel = entry._panel
+    if not entry_panel or not panel_alive(entry_panel) then return nil end
+    local common = self._parent_panel
+    if not common or not panel_alive(common) then return nil end
+    if not dr_reaches_exposed(entry_panel, common) then return nil end
+
+    local js, player_panel = safe_call(entry_panel, "child", "player")
+    if js ~= CALL_OK or not player_panel or not panel_alive(player_panel) then return nil end
+    local ps, player_parent = safe_call(player_panel, "parent")
+    if ps ~= CALL_OK or player_parent ~= entry_panel then return nil end
+
+    local rs, radial = safe_call(player_panel, "child", "radial_health_panel")
+    if rs ~= CALL_OK or not radial or not panel_alive(radial) then return nil end
+    local rp, radial_parent = safe_call(radial, "parent")
+    if rp ~= CALL_OK or radial_parent ~= player_panel then return nil end
+
+    local ds, delayed = safe_call(radial, "child", "radial_delayed_damage")
+    if ds ~= CALL_OK or not delayed or not panel_alive(delayed) then return nil end
+    local dp, delayed_parent = safe_call(delayed, "parent")
+    if dp ~= CALL_OK or delayed_parent ~= radial then return nil end
+
+    local as, armor_leaf = safe_call(delayed, "child", "radial_delayed_damage_armor")
+    if as ~= CALL_OK or not armor_leaf or not panel_alive(armor_leaf) then return nil end
+    local hs, health_leaf = safe_call(delayed, "child", "radial_delayed_damage_health")
+    if hs ~= CALL_OK or not health_leaf or not panel_alive(health_leaf) then return nil end
+    local ap, armor_parent = safe_call(armor_leaf, "parent")
+    local hp, health_parent = safe_call(health_leaf, "parent")
+    if ap ~= CALL_OK or armor_parent ~= delayed then return nil end
+    if hp ~= CALL_OK or health_parent ~= delayed then return nil end
+
+    local rhs, radial_health = safe_call(radial, "child", "radial_health")
+    if rhs ~= CALL_OK or not radial_health or not panel_alive(radial_health) then return nil end
+    local shs, radial_shield = safe_call(radial, "child", "radial_shield")
+    if shs ~= CALL_OK or not radial_shield or not panel_alive(radial_shield) then return nil end
+    local rhp, radial_health_parent = safe_call(radial_health, "parent")
+    local shp, radial_shield_parent = safe_call(radial_shield, "parent")
+    if rhp ~= CALL_OK or radial_health_parent ~= radial then return nil end
+    if shp ~= CALL_OK or radial_shield_parent ~= radial then return nil end
+
+    if not dr_active_container(entry_panel) or not dr_active_container(player_panel)
+        or not dr_active_container(radial) or not dr_active_container(delayed) then
+        return nil
+    end
+    if not dr_leaf_readable(armor_leaf) or not dr_leaf_readable(health_leaf) then
+        return nil
+    end
+    for _, node in ipairs({player_panel, radial, delayed, armor_leaf, health_leaf}) do
+        if not dr_reaches(node, common) then return nil end
+    end
+
+    return {
+        entry = entry,
+        entry_panel = entry_panel,
+        player = player_panel,
+        radial = radial,
+        delayed = delayed,
+        armor_leaf = armor_leaf,
+        health_leaf = health_leaf,
+        radial_health = radial_health,
+        radial_shield = radial_shield,
+    }
+end
+
+function RT:_delayed_source_state(mgr, chain)
+    local trace = self._stoic_trace_enabled == true
+    local P = kyohud.hud.player
+    if not P or not P._root or not P._gauge or not panel_alive(P._root) then
+        return nil, "unknown", nil
+    end
+    local receipt = P._delayed_source_receipt
+    if type(receipt) ~= "table" then return nil, "receipt_stale", nil end
+    if receipt.manager ~= mgr or receipt.root ~= P._root
+        or receipt.runtime_root ~= self._root_panel
+        or receipt.generation ~= self._generation then
+        return nil, "source_changed", nil
+    end
+
+    local us, unit = safe_call(managers and managers.player or nil, "player_unit")
+    if us ~= CALL_OK or unit == nil then return nil, "live_data_invalid", nil end
+    local cds, damage = safe_call(unit, "character_damage")
+    if cds ~= CALL_OK or damage == nil then return nil, "live_data_invalid", nil end
+    if receipt.unit ~= unit or receipt.damage ~= damage then
+        return nil, "source_changed", nil
+    end
+
+    local health = dr_read_number(damage, "get_real_health")
+    local health_max = dr_read_number(damage, "_max_health")
+    local armor = dr_read_number(damage, "get_real_armor")
+    local armor_max = dr_read_number(damage, "_max_armor")
+    local debt = dr_read_number(damage, "remaining_delayed_damage")
+    local health_ratio = dr_ratio(health, health_max)
+    local armor_ratio = dr_ratio(armor, armor_max)
+    local detail
+    if trace then
+        detail = {
+            hp = health,
+            hp_max = health_max,
+            armor = armor,
+            armor_max = armor_max,
+            debt = debt,
+            real_hp_ratio = health_ratio,
+            real_armor_ratio = armor_ratio,
+        }
+    end
+    if health_ratio == nil or armor_ratio == nil then
+        return nil, "live_data_invalid", detail
+    end
+    if debt == nil or debt <= 0 then return nil, "inactive", detail end
+
+    local receipt_armor_ratio_ok
+    if armor_max == 0 then
+        receipt_armor_ratio_ok = receipt.armor_ratio == nil
+            or dr_near(receipt.armor_ratio, 0)
+    else
+        receipt_armor_ratio_ok = dr_near(receipt.armor_ratio, armor_ratio)
+    end
+    if not dr_near(receipt.health_current, health)
+        or not dr_near(receipt.health_total, health_max)
+        or not dr_near(receipt.health_ratio, health_ratio)
+        or not dr_near(receipt.armor_current, armor)
+        or not dr_near(receipt.armor_total, armor_max)
+        or not receipt_armor_ratio_ok
+        or receipt.delayed_known ~= true
+        or not dr_near(receipt.delayed_amount, debt) then
+        return nil, "receipt_stale", detail
+    end
+
+    local gauge = P._gauge
+    local guage_health = gauge._health
+    local gauge_armor = gauge._armor
+    local effects = gauge._health_effects
+    local gd = effects and effects.delayed_damage or nil
+    if type(guage_health) ~= "table" or guage_health.valid ~= true
+        or not dr_near(guage_health.current, health)
+        or not dr_near(guage_health.total, health_max)
+        or not dr_near(guage_health.ratio, health_ratio) then
+        return nil, "rendered_data_mismatch", detail
+    end
+    if type(gauge_armor) ~= "table" or not dr_near(gauge_armor.current, armor)
+        or not dr_near(gauge_armor.total, armor_max) then
+        return nil, "rendered_data_mismatch", detail
+    end
+    if armor_max > 0 then
+        if gauge_armor.valid ~= true or not dr_near(gauge_armor.ratio, armor_ratio) then
+            return nil, "rendered_data_mismatch", detail
+        end
+    end
+    if type(gd) ~= "table" or gd.known ~= true or not dr_near(gd.amount, debt) then
+        return nil, "rendered_data_mismatch", detail
+    end
+
+    local common = self._parent_panel
+    if not common or not panel_alive(common) then
+        return nil, "owned_ancestry", detail
+    end
+    local prs, root_parent = safe_call(P._root, "parent")
+    if prs ~= CALL_OK or root_parent ~= self._root_panel then
+        return nil, "owned_ancestry", detail
+    end
+    if not dr_reaches_exposed(P._root, common) then
+        return nil, "owned_exposure", detail
+    end
+    local gauge_root = gauge.root
+    if not gauge_root or not panel_alive(gauge_root) then
+        return nil, "owned_ancestry", detail
+    end
+    local grs, gauge_parent = safe_call(gauge_root, "parent")
+    if grs ~= CALL_OK or gauge_parent ~= P._root then
+        return nil, "owned_ancestry", detail
+    end
+    if not dr_reaches_exposed(gauge_root, common) then
+        return nil, "owned_exposure", detail
+    end
+    local health_fill = gauge.health_fill
+    if not health_fill or not panel_alive(health_fill) then
+        return nil, "owned_ancestry", detail
+    end
+    local hrs, fill_parent = safe_call(health_fill, "parent")
+    if hrs ~= CALL_OK or fill_parent ~= gauge_root then
+        return nil, "owned_ancestry", detail
+    end
+    if not dr_reaches_exposed(health_fill, common) then
+        return nil, "owned_exposure", detail
+    end
+    local delayed_armor = gauge._delayed_armor
+    if not delayed_armor or not panel_alive(delayed_armor) then
+        return nil, "owned_ancestry", detail
+    end
+    local das, armor_parent = safe_call(delayed_armor, "parent")
+    if das ~= CALL_OK or armor_parent ~= gauge_root then
+        return nil, "owned_ancestry", detail
+    end
+    if not dr_reaches(delayed_armor, common) then
+        return nil, "owned_ancestry", detail
+    end
+    for i = 1, 4 do
+        local rect = gauge._delayed_health and gauge._delayed_health[i]
+        if not rect or not panel_alive(rect) then
+            return nil, "owned_ancestry", detail
+        end
+        local rps, rect_parent = safe_call(rect, "parent")
+        if rps ~= CALL_OK or rect_parent ~= health_fill then
+            return nil, "owned_ancestry", detail
+        end
+        if not dr_reaches(rect, common) then
+            return nil, "owned_ancestry", detail
+        end
+    end
+
+    local entry_health = chain.entry._health_data
+    local entry_armor = chain.entry._armor_data
+    if type(entry_health) ~= "table" or type(entry_armor) ~= "table" then
+        return nil, "native_data_unknown", detail
+    end
+    local native_health_ratio = dr_ratio(entry_health.current, entry_health.total)
+    local native_armor_ratio = dr_ratio(entry_armor.current, entry_armor.total)
+    if native_health_ratio == nil or native_armor_ratio == nil then
+        return nil, "native_data_unknown", detail
+    end
+    if trace then
+        detail.native_hp = entry_health.current
+        detail.native_hp_max = entry_health.total
+        detail.native_armor = entry_armor.current
+        detail.native_armor_max = entry_armor.total
+        detail.native_entry_hp_ratio = native_health_ratio
+        detail.native_entry_armor_ratio = native_armor_ratio
+    end
+    -- Native presentation may be smoothed independently of the real source.
+    -- It must stay numeric/coherent and share the real maxima, but its current
+    -- values and color animation are not required to equal the real source.
+    if not dr_near(entry_health.total, health_max)
+        or not dr_near(entry_armor.total, armor_max) then
+        return nil, "native_split_mismatch", detail
+    end
+    local health_color = dr_read_ratio_color(chain.radial_health)
+    local shield_color = dr_read_ratio_color(chain.radial_shield)
+    if trace then
+        detail.health_color = health_color
+        detail.shield_color = shield_color
+        detail.native_hp_ratio = health_color
+        detail.native_armor_ratio = shield_color
+    end
+    if health_color == nil or shield_color == nil then
+        return nil, "native_color_unknown", detail
+    end
+
+    local vs, visible = safe_call(P._root, "visible")
+    if vs ~= CALL_OK or visible ~= true then
+        return nil, "owned_exposure", detail
+    end
+    if _effective_visible(P._root, {}) ~= true then
+        return nil, "owned_exposure", detail
+    end
+    local alpha = _effective_alpha(P._root, {})
+    if alpha == nil or alpha <= 0 then
+        return nil, "owned_exposure", detail
+    end
+
+    return {health_ratio = health_ratio, armor_ratio = armor_ratio, debt = debt},
+        "covered", detail
+end
+
+function RT:_delayed_acquire(binding)
+    local nv = kyohud.hud.native_visibility
+    if not nv or type(nv.acquire) ~= "function" then return false end
+    local added = binding.added
+    if not binding.leased or type(added) ~= "table" then
+        added = {}
+        if type(nv._whitelist) == "table" then
+            for _, leaf in ipairs({binding.armor_leaf, binding.health_leaf}) do
+                local entry = nv._whitelist[leaf]
+                if not entry then entry = {}; nv._whitelist[leaf] = entry end
+                if entry.alpha ~= true then
+                    added[leaf] = {alpha = entry.alpha}
+                    entry.alpha = true
+                end
+            end
+        end
+    end
+    local generation = binding.lease_gen
+    if not binding.leased or generation == nil then
+        self._delayed_lease_generation = (self._delayed_lease_generation or 0) + 1
+        generation = self._delayed_lease_generation
+    end
+    -- Record the attempted lease ownership before the call so a partial or
+    -- failed acquire can release/retry the exact generation and retain the
+    -- whitelist markers while any NV entry remains.
+    binding.lease_gen = generation
+    binding.added = added
+    binding.release_pending = true
+    local requests = {
+        {id = binding.armor_leaf, property = "alpha", value = 0},
+        {id = binding.health_leaf, property = "alpha", value = 0},
+    }
+    local ok = nv:acquire(DELAYED_OWNER, generation, requests)
+    if ok then
+        binding.leased = true
+        binding.release_pending = false
+        return true
+    end
+    binding.leased = false
+    binding.release_pending = true
+    return false
+end
+
+function RT:_sync_delayed_replacement_unprofiled(mgr)
+    local trace = self._stoic_trace_enabled == true
+    if trace then
+        self._stoic_trace_stage_reason = nil
+        self._stoic_trace_stage_detail = nil
+        self._stoic_trace_stage_override_reason = nil
+        self._stoic_trace_stage_override_detail = nil
+    end
+    local P = kyohud.hud.player
+    local settings = kyohud.settings
+    if not mgr or kyohud.settings.enable_hud_foundation ~= true
+        or settings.enable_player ~= true or is_vr()
+        or self._disabled or self._freeflight or not self._mounted
+        or not P or not P._mounted or P._manager ~= mgr then
+        if trace then self._stoic_trace_stage_reason = "runtime_inactive" end
+        self:_release_delayed_replacement(true)
+        return
+    end
+
+    local binding = self._delayed_binding
+    if binding and binding.release_pending then
+        if trace then self._stoic_trace_stage_reason = "pending_release" end
+        self:_release_delayed_replacement(false)
+        binding = self._delayed_binding
+        if binding and binding.release_pending then return end
+    end
+
+    local panels = mgr._teammate_panels
+    local entry = type(panels) == "table" and panels[h5_player_slot()] or nil
+    local entry_panel = type(entry) == "table" and entry._panel or nil
+    if binding and (binding.manager ~= mgr or binding.entry ~= entry
+        or binding.entry_panel ~= entry_panel
+        or binding.root_gen ~= self._generation) then
+        if trace then
+            if binding.manager ~= mgr or binding.entry ~= entry
+                or binding.entry_panel ~= entry_panel then
+                self._stoic_trace_stage_reason = "source_changed"
+            else
+                self._stoic_trace_stage_reason = "generation_changed"
+            end
+        end
+        self:_release_delayed_replacement(true)
+        binding = self._delayed_binding
+        if binding then return end
+    end
+
+    local chain = self:_delayed_native_chain(mgr)
+    if not chain then
+        if trace then self._stoic_trace_stage_reason = "chain_invalid" end
+        if binding then self:_release_delayed_replacement(false) end
+        return
+    end
+    if binding then
+        if binding.armor_leaf ~= chain.armor_leaf
+            or binding.health_leaf ~= chain.health_leaf
+            or binding.delayed ~= chain.delayed
+            or binding.radial ~= chain.radial
+            or binding.player ~= chain.player
+            or binding.entry_panel ~= chain.entry_panel then
+            if trace then self._stoic_trace_stage_reason = "chain_changed" end
+            self:_release_delayed_replacement(false)
+            return
+        end
+    end
+
+    local fresh_ok = P._update_ran_now == true
+        and P._verify_ok_now == true and P._render_verified == true
+    if not fresh_ok then
+        local live = dr_live_source(P, mgr)
+        local stale = live ~= nil and dr_receipt_stale(P, live)
+        local hidden = not dr_root_visible(P)
+        if stale then
+            -- A throttled player frame lagged behind a valid live source change.
+            -- Capture and certify through the existing player seam before any
+            -- native mask is authorized; the repair seam also restores a root
+            -- hidden by a prior native-priority pass.
+            local repair_ok, repaired = pcall(P._repair_and_certify, P, mgr)
+            if not repair_ok or repaired ~= true then
+                if trace then
+                    self._stoic_trace_stage_reason = "uncertified_owned_render"
+                end
+                if binding then self:_release_delayed_replacement(false) end
+                return
+            end
+        elseif not (hidden and P._render_verified == true) then
+            local verify_ok, verified = pcall(P.verify, P)
+            if not verify_ok or verified ~= true then
+                if trace then
+                    self._stoic_trace_stage_reason = "uncertified_owned_render"
+                end
+                if binding then self:_release_delayed_replacement(false) end
+                return
+            end
+        end
+    end
+
+    local state, reason, detail = self:_delayed_source_state(mgr, chain)
+    if not state and reason == "owned_exposure"
+        and P._render_verified == true and not dr_root_visible(P)
+        and dr_live_source(P, mgr) ~= nil then
+        -- Only the exposure failed and the root is hidden by a prior native
+        -- priority pass. Reuse the certified repair seam once; ancestry,
+        -- alpha, primitive and corruption failures are not repaired here.
+        local repair_ok, repaired = pcall(P._repair_and_certify, P, mgr)
+        if repair_ok and repaired == true then
+            state, reason, detail = self:_delayed_source_state(mgr, chain)
+        end
+    end
+    if trace then
+        self._stoic_trace_stage_reason = reason or "unknown"
+        self._stoic_trace_stage_detail = detail
+    end
+    if not state then
+        if binding then self:_release_delayed_replacement(false) end
+        return
+    end
+
+    if not binding then
+        binding = {
+            manager = mgr,
+            entry = entry,
+            entry_panel = chain.entry_panel,
+            root_gen = self._generation,
+            player = chain.player,
+            radial = chain.radial,
+            delayed = chain.delayed,
+            armor_leaf = chain.armor_leaf,
+            health_leaf = chain.health_leaf,
+            leased = false,
+        }
+        self._delayed_binding = binding
+    end
+
+    if not self:_delayed_acquire(binding) then
+        if trace then
+            self._stoic_trace_stage_reason = "acquisition_failed"
+            self._stoic_trace_stage_detail = nil
+        end
+        self:_release_delayed_replacement(false)
+    end
+end
+
+function RT:_delayed_replacement_post_priority_unprofiled(t)
+    local trace = self._stoic_trace_enabled == true
+    local binding = self._delayed_binding
+    if not binding or not binding.leased then return end
+    local released = false
+    local release_reason
+    local function release(reason)
+        if released then return end
+        released = true
+        release_reason = reason
+        self:_release_delayed_replacement(false)
+    end
+    local P = kyohud.hud.player
+    if not P or not P._root or not panel_alive(P._root) then
+        release("released_by_visibility")
+    else
+        local vs, visible = safe_call(P._root, "visible")
+        if vs ~= CALL_OK or visible ~= true then
+            release("released_by_visibility")
+        end
+    end
+    if not released then
+        local as, armor_alpha = safe_call(binding.armor_leaf, "alpha")
+        local hs, health_alpha = safe_call(binding.health_leaf, "alpha")
+        local ap, armor_parent = safe_call(binding.armor_leaf, "parent")
+        local hp, health_parent = safe_call(binding.health_leaf, "parent")
+        if ap ~= CALL_OK or armor_parent ~= binding.delayed
+            or hp ~= CALL_OK or health_parent ~= binding.delayed
+            or as ~= CALL_OK or not dr_near(armor_alpha, 0, 0.0001)
+            or hs ~= CALL_OK or not dr_near(health_alpha, 0, 0.0001) then
+            if ap ~= CALL_OK or hp ~= CALL_OK
+                or armor_parent ~= binding.delayed
+                or health_parent ~= binding.delayed then
+                release("released_by_parent")
+            else
+                release("released_by_alpha")
+            end
+        end
+    end
+    if not released then
+        local alpha = _effective_alpha(P._root, {})
+        if _effective_visible(P._root, {}) ~= true
+            or alpha == nil or alpha <= 0 then
+            release("released_by_exposure")
+        end
+    end
+    if trace and released then
+        local stage_reason = self._stoic_trace_stage_reason
+        if stage_reason == nil or stage_reason == "covered" then
+            self._stoic_trace_stage_override_reason = release_reason or "released"
+            self._stoic_trace_stage_override_detail = nil
+        end
+    end
+    if released and t ~= nil
+        and kyohud.settings.enable_hud_foundation == true then
+        -- Restored native leaves must participate in this same frame's priority
+        -- decision instead of waiting for the next harmony pass.
+        self:_apply_native_priority(t, true)
+    end
+end
+
+function RT:_release_reserve_replacement(clear_binding)
+    local binding = self._reserve_binding
+    if not binding then return end
+    local nv = kyohud.hud.native_visibility
+    if binding.leased or binding.release_pending then
+        if nv and type(nv.release) == "function" then
+            nv:release(RESERVE_OWNER, binding.lease_gen)
+        end
+        if dr_pending(nv, RESERVE_OWNER, binding.lease_gen) then
+            binding.release_pending = true
+            if clear_binding then binding.clear_on_release = true end
+            return
+        end
+        binding.release_pending = false
+        dr_restore_added(binding, nv)
+        binding.leased = false
+        binding.lease_gen = nil
+    end
+    if clear_binding or binding.clear_on_release then
+        binding.clear_on_release = nil
+        if not dr_pending(nv, RESERVE_OWNER, binding.lease_gen) then
+            self._reserve_binding = nil
+        end
+    end
+end
+
+function RT:_reserve_native_chain(mgr)
+    if not mgr or type(mgr._teammate_panels) ~= "table" then return nil end
+    local entry = mgr._teammate_panels[h5_player_slot()]
+    if type(entry) ~= "table" then return nil end
+    local entry_panel = entry._panel
+    if not entry_panel or not panel_alive(entry_panel) then return nil end
+    local common = self._parent_panel
+    if not common or not panel_alive(common) then return nil end
+    if not dr_reaches_exposed(entry_panel, common) then return nil end
+
+    local js, player_panel = safe_call(entry_panel, "child", "player")
+    if js ~= CALL_OK or not player_panel or not panel_alive(player_panel) then return nil end
+    local ps, player_parent = safe_call(player_panel, "parent")
+    if ps ~= CALL_OK or player_parent ~= entry_panel then return nil end
+
+    local rs, radial = safe_call(player_panel, "child", "radial_health_panel")
+    if rs ~= CALL_OK or not radial or not panel_alive(radial) then return nil end
+    local rp, radial_parent = safe_call(radial, "parent")
+    if rp ~= CALL_OK or radial_parent ~= player_panel then return nil end
+
+    local irs, rip = safe_call(radial, "child", "radial_rip")
+    if irs ~= CALL_OK or not rip or not panel_alive(rip) then return nil end
+    local ibs, rip_bg = safe_call(radial, "child", "radial_rip_bg")
+    if ibs ~= CALL_OK or not rip_bg or not panel_alive(rip_bg) then return nil end
+    local irp, rip_parent = safe_call(rip, "parent")
+    local ibp, rip_bg_parent = safe_call(rip_bg, "parent")
+    if irp ~= CALL_OK or rip_parent ~= radial then return nil end
+    if ibp ~= CALL_OK or rip_bg_parent ~= radial then return nil end
+
+    if not dr_active_container(entry_panel) or not dr_active_container(player_panel)
+        or not dr_active_container(radial) then
+        return nil
+    end
+    if not dr_leaf_readable(rip) or not dr_leaf_readable(rip_bg) then
+        return nil
+    end
+    for _, node in ipairs({player_panel, radial, rip, rip_bg}) do
+        if not dr_reaches(node, common) then return nil end
+    end
+
+    -- Publish these freshly verified handles before priority runs: a replaced
+    -- but still-alive leaf keeps its old immediate parent, so a stale binding
+    -- would otherwise make priority inspect the previous named child.
+    h5_child_index_set(entry_panel, "player", player_panel)
+    h5_child_index_set(player_panel, "radial_health_panel", radial)
+    h5_child_index_set(radial, "radial_rip", rip)
+    h5_child_index_set(radial, "radial_rip_bg", rip_bg)
+
+    return {
+        entry = entry,
+        entry_panel = entry_panel,
+        player = player_panel,
+        radial = radial,
+        rip = rip,
+        rip_bg = rip_bg,
+    }
+end
+
+function RT:_reserve_source_state(mgr, chain)
+    local P = kyohud.hud.player
+    if not P or not P._root or not P._gauge or not panel_alive(P._root) then
+        return nil, "unknown"
+    end
+    local live = reserve_live_source(P, mgr)
+    if not live then return nil, "live_data_invalid" end
+    if live.capacity_ratio <= 0 then return nil, "capacity_loss" end
+    if reserve_receipt_stale(P, live) then return nil, "receipt_stale" end
+
+    local gauge = P._gauge
+    local effects = gauge._health_effects
+    local stored = type(effects) == "table" and effects.stored_health or nil
+    if type(stored) ~= "table" or stored.known ~= true then
+        return nil, "rendered_data_mismatch"
+    end
+    if not dr_near(stored.ratio, live.stock_ratio)
+        or not dr_near(stored.max_ratio, live.capacity_ratio) then
+        return nil, "rendered_data_mismatch"
+    end
+
+    local common = self._parent_panel
+    if not common or not panel_alive(common) then return nil, "owned_ancestry" end
+    local prs, root_parent = safe_call(P._root, "parent")
+    if prs ~= CALL_OK or root_parent ~= self._root_panel then
+        return nil, "owned_ancestry"
+    end
+    if not dr_reaches_exposed(P._root, common) then
+        return nil, "owned_exposure"
+    end
+    local gauge_root = gauge.root
+    if not gauge_root or not panel_alive(gauge_root) then
+        return nil, "owned_ancestry"
+    end
+    local grs, gauge_parent = safe_call(gauge_root, "parent")
+    if grs ~= CALL_OK or gauge_parent ~= P._root then
+        return nil, "owned_ancestry"
+    end
+    if not dr_reaches_exposed(gauge_root, common) then
+        return nil, "owned_exposure"
+    end
+    local bg = gauge._stored_health_bg
+    local fill = gauge._stored_health_fill
+    for _, prim in ipairs({bg, fill}) do
+        if not prim or not panel_alive(prim) then return nil, "owned_ancestry" end
+        local ps, parent = safe_call(prim, "parent")
+        if ps ~= CALL_OK or parent ~= gauge_root then
+            return nil, "owned_ancestry"
+        end
+        if not dr_reaches(prim, common) then return nil, "owned_ancestry" end
+        local vs, visible = safe_call(prim, "visible")
+        if vs ~= CALL_OK or visible ~= true then
+            return nil, "rendered_data_mismatch"
+        end
+    end
+
+    local vs, visible = safe_call(P._root, "visible")
+    if vs ~= CALL_OK or visible ~= true then
+        return nil, "owned_exposure"
+    end
+    if _effective_visible(P._root, {}) ~= true then
+        return nil, "owned_exposure"
+    end
+    local alpha = _effective_alpha(P._root, {})
+    if alpha == nil or alpha <= 0 then
+        return nil, "owned_exposure"
+    end
+
+    return {stock_ratio = live.stock_ratio, capacity_ratio = live.capacity_ratio},
+        "covered"
+end
+
+function RT:_reserve_acquire(binding)
+    local nv = kyohud.hud.native_visibility
+    if not nv or type(nv.acquire) ~= "function" then return false end
+    local added = binding.added
+    if not binding.leased or type(added) ~= "table" then
+        added = {}
+        if type(nv._whitelist) == "table" then
+            for _, leaf in ipairs({binding.rip, binding.rip_bg}) do
+                local entry = nv._whitelist[leaf]
+                if not entry then entry = {}; nv._whitelist[leaf] = entry end
+                if entry.alpha ~= true then
+                    added[leaf] = {alpha = entry.alpha}
+                    entry.alpha = true
+                end
+            end
+        end
+    end
+    local generation = binding.lease_gen
+    if not binding.leased or generation == nil then
+        self._reserve_lease_generation = (self._reserve_lease_generation or 0) + 1
+        generation = self._reserve_lease_generation
+    end
+    binding.lease_gen = generation
+    binding.added = added
+    binding.release_pending = true
+    local requests = {
+        {id = binding.rip, property = "alpha", value = 0},
+        {id = binding.rip_bg, property = "alpha", value = 0},
+    }
+    local ok = nv:acquire(RESERVE_OWNER, generation, requests)
+    if ok then
+        binding.leased = true
+        binding.release_pending = false
+        return true
+    end
+    binding.leased = false
+    binding.release_pending = true
+    return false
+end
+
+function RT:_sync_reserve_replacement_unprofiled(mgr)
+    local P = kyohud.hud.player
+    local settings = kyohud.settings
+    if not mgr or kyohud.settings.enable_hud_foundation ~= true
+        or settings.enable_player ~= true or is_vr()
+        or self._disabled or self._freeflight or not self._mounted
+        or not P or not P._mounted or P._manager ~= mgr then
+        self:_release_reserve_replacement(true)
+        return
+    end
+
+    local binding = self._reserve_binding
+    if binding and binding.release_pending then
+        self:_release_reserve_replacement(false)
+        binding = self._reserve_binding
+        if binding and binding.release_pending then return end
+    end
+
+    local panels = mgr._teammate_panels
+    local entry = type(panels) == "table" and panels[h5_player_slot()] or nil
+    local entry_panel = type(entry) == "table" and entry._panel or nil
+    if binding and (binding.manager ~= mgr or binding.entry ~= entry
+        or binding.entry_panel ~= entry_panel
+        or binding.root_gen ~= self._generation) then
+        self:_release_reserve_replacement(true)
+        binding = self._reserve_binding
+        if binding then return end
+    end
+
+    local chain = self:_reserve_native_chain(mgr)
+    if not chain then
+        if binding then self:_release_reserve_replacement(false) end
+        return
+    end
+    if binding then
+        if binding.rip ~= chain.rip or binding.rip_bg ~= chain.rip_bg
+            or binding.radial ~= chain.radial
+            or binding.player ~= chain.player
+            or binding.entry_panel ~= chain.entry_panel then
+            self:_release_reserve_replacement(true)
+            return
+        end
+    end
+
+    local fresh_ok = P._update_ran_now == true
+        and P._verify_ok_now == true and P._render_verified == true
+    if not fresh_ok then
+        local live = reserve_live_source(P, mgr)
+        local stale = live ~= nil and reserve_receipt_stale(P, live)
+        local hidden = not dr_root_visible(P)
+        if stale then
+            local repair_ok, repaired = pcall(P._repair_and_certify, P, mgr)
+            if not repair_ok or repaired ~= true then
+                if binding then self:_release_reserve_replacement(false) end
+                return
+            end
+        elseif not (hidden and P._render_verified == true) then
+            local verify_ok, verified = pcall(P.verify, P)
+            if not verify_ok or verified ~= true then
+                if binding then self:_release_reserve_replacement(false) end
+                return
+            end
+        end
+    end
+
+    local state, reason = self:_reserve_source_state(mgr, chain)
+    if not state and reason == "owned_exposure"
+        and P._render_verified == true and not dr_root_visible(P)
+        and reserve_live_source(P, mgr) ~= nil then
+        local repair_ok, repaired = pcall(P._repair_and_certify, P, mgr)
+        if repair_ok and repaired == true then
+            state, reason = self:_reserve_source_state(mgr, chain)
+        end
+    end
+    if not state then
+        if binding then self:_release_reserve_replacement(false) end
+        return
+    end
+
+    if not binding then
+        binding = {
+            manager = mgr,
+            entry = entry,
+            entry_panel = chain.entry_panel,
+            root_gen = self._generation,
+            player = chain.player,
+            radial = chain.radial,
+            rip = chain.rip,
+            rip_bg = chain.rip_bg,
+            leased = false,
+        }
+        self._reserve_binding = binding
+    end
+
+    if not self:_reserve_acquire(binding) then
+        self:_release_reserve_replacement(false)
+        return
+    end
+    -- The lease is only authorized for a render that still certifies after the
+    -- native alpha writes; otherwise fail closed and let priority take over.
+    local verify_ok, verified = pcall(P.verify, P)
+    if not verify_ok or verified ~= true then
+        self:_release_reserve_replacement(false)
+    end
+end
+
+function RT:_reserve_replacement_post_priority_unprofiled(t)
+    local binding = self._reserve_binding
+    if not binding or not binding.leased then return end
+    local released = false
+    local function release()
+        if released then return end
+        released = true
+        self:_release_reserve_replacement(false)
+    end
+    local P = kyohud.hud.player
+    if not P or not P._root or not panel_alive(P._root) then
+        release()
+    else
+        local vs, visible = safe_call(P._root, "visible")
+        if vs ~= CALL_OK or visible ~= true then
+            release()
+        end
+    end
+    if not released then
+        local ar, rip_alpha = safe_call(binding.rip, "alpha")
+        local ab, rip_bg_alpha = safe_call(binding.rip_bg, "alpha")
+        local pr, rip_parent = safe_call(binding.rip, "parent")
+        local pbg, rip_bg_parent = safe_call(binding.rip_bg, "parent")
+        local vr, rip_visible = safe_call(binding.rip, "visible")
+        local vbg, rip_bg_visible = safe_call(binding.rip_bg, "visible")
+        if pr ~= CALL_OK or rip_parent ~= binding.radial
+            or pbg ~= CALL_OK or rip_bg_parent ~= binding.radial
+            or ar ~= CALL_OK or not dr_near(rip_alpha, 0, 0.0001)
+            or ab ~= CALL_OK or not dr_near(rip_bg_alpha, 0, 0.0001)
+            or vr ~= CALL_OK or (rip_visible ~= true and rip_visible ~= false)
+            or vbg ~= CALL_OK or (rip_bg_visible ~= true and rip_bg_visible ~= false) then
+            release()
+        end
+    end
+    if not released then
+        local alpha = _effective_alpha(P._root, {})
+        if _effective_visible(P._root, {}) ~= true
+            or alpha == nil or alpha <= 0 then
+            release()
+        end
+    end
+    if released and t ~= nil
+        and kyohud.settings.enable_hud_foundation == true then
+        self:_apply_native_priority(t, true)
+    end
+end
+
+function RT:_release_copr_replacement(clear_binding)
+    local binding = self._copr_binding
+    if not binding then return end
+    local nv = kyohud.hud.native_visibility
+    if binding.leased or binding.release_pending then
+        if nv and type(nv.release) == "function" then
+            nv:release(COPR_OWNER, binding.lease_gen)
+        end
+        if dr_pending(nv, COPR_OWNER, binding.lease_gen) then
+            binding.release_pending = true
+            binding.certified = false
+            if clear_binding then binding.clear_on_release = true end
+            return
+        end
+        binding.release_pending = false
+        dr_restore_added(binding, nv)
+        binding.leased = false
+        binding.certified = false
+        binding.lease_gen = nil
+    end
+    if clear_binding or binding.clear_on_release then
+        binding.clear_on_release = nil
+        if not dr_pending(nv, COPR_OWNER, binding.lease_gen) then
+            self._copr_binding = nil
+        end
+    end
+end
+
+function RT:_copr_native_chain(mgr, n)
+    if not mgr or type(mgr._teammate_panels) ~= "table" then return nil end
+    if type(n) ~= "number" or n < 1 or n > COPR_CHILD_MAX then return nil end
+    local entry = mgr._teammate_panels[h5_player_slot()]
+    if type(entry) ~= "table" then return nil end
+    local entry_panel = entry._panel
+    if not entry_panel or not panel_alive(entry_panel) then return nil end
+    local common = self._parent_panel
+    if not common or not panel_alive(common) then return nil end
+    if not dr_reaches_exposed(entry_panel, common) then return nil end
+
+    local js, player_panel = safe_call(entry_panel, "child", "player")
+    if js ~= CALL_OK or not player_panel or not panel_alive(player_panel) then return nil end
+    local ps, player_parent = safe_call(player_panel, "parent")
+    if ps ~= CALL_OK or player_parent ~= entry_panel then return nil end
+
+    local rs, radial = safe_call(player_panel, "child", "radial_health_panel")
+    if rs ~= CALL_OK or not radial or not panel_alive(radial) then return nil end
+    local rp, radial_parent = safe_call(radial, "parent")
+    if rp ~= CALL_OK or radial_parent ~= player_panel then return nil end
+
+    local cs, copr = safe_call(radial, "child", "copr_overlay_panel")
+    if cs ~= CALL_OK or not copr or not panel_alive(copr) then return nil end
+    local cp, copr_parent = safe_call(copr, "parent")
+    if cp ~= CALL_OK or copr_parent ~= radial then return nil end
+
+    if not dr_active_container(entry_panel) or not dr_active_container(player_panel)
+        or not dr_active_container(radial) or not dr_active_container(copr) then
+        return nil
+    end
+    if not dr_reaches(copr, common) then return nil end
+
+    -- Recreate the native population from the parent every update: the native
+    -- panel clears and rebuilds exactly the numeric children 0..n-1.
+    local leaves = {}
+    for i = 0, n - 1 do
+        local name = tostring(i)
+        local ls, leaf = safe_call(copr, "child", name)
+        if ls ~= CALL_OK or not leaf or not panel_alive(leaf) then return nil end
+        local lp, leaf_parent = safe_call(leaf, "parent")
+        if lp ~= CALL_OK or leaf_parent ~= copr then return nil end
+        if not dr_leaf_readable(leaf) then return nil end
+        if not dr_reaches(leaf, common) then return nil end
+        leaves[i + 1] = leaf
+    end
+
+    -- The census is required and must contain exactly the individually
+    -- qualified leaves, matched by object identity, with no duplicate or extra
+    -- child. This holds for table and Diesel userdata leaves, and for both
+    -- string-key maps and native arrays.
+    local chs, children = safe_call(copr, "children")
+    if chs ~= CALL_OK or type(children) ~= "table" then return nil end
+    local leaf_set = {}
+    for i = 1, n do
+        leaf_set[leaves[i]] = true
+    end
+    local seen = {}
+    local count = 0
+    for _, child in pairs(children) do
+        count = count + 1
+        if count > n then return nil end
+        if not leaf_set[child] then return nil end
+        if seen[child] then return nil end
+        seen[child] = true
+    end
+    if count ~= n then return nil end
+
+    return {
+        entry = entry,
+        entry_panel = entry_panel,
+        player = player_panel,
+        radial = radial,
+        copr = copr,
+        leaves = leaves,
+    }
+end
+
+function RT:_copr_source_state(mgr, chain, live)
+    local P = kyohud.hud.player
+    if not P or not P._root or not P._gauge or not panel_alive(P._root) then
+        return nil, "unknown"
+    end
+    live = live or copr_live_source(P, mgr)
+    if not live then return nil, "live_data_invalid" end
+    if type(chain) ~= "table" or type(chain.leaves) ~= "table"
+        or #chain.leaves ~= live.n then
+        return nil, "native_count_mismatch"
+    end
+    if copr_receipt_stale(P, live) then return nil, "receipt_stale" end
+
+    local gauge = P._gauge
+    local health_state = gauge._health
+    if type(health_state) ~= "table" or health_state.valid ~= true
+        or not dr_near(health_state.current, live.health)
+        or not dr_near(health_state.total, live.health_max)
+        or not dr_near(health_state.ratio, live.health_ratio) then
+        return nil, "rendered_data_mismatch"
+    end
+    local effects = gauge._health_effects
+    local copr = type(effects) == "table" and effects.copr or nil
+    if type(copr) ~= "table" or copr.known ~= true or copr.active ~= true
+        or not dr_near(copr.static_damage_ratio, live.ratio) then
+        return nil, "rendered_data_mismatch"
+    end
+
+    local common = self._parent_panel
+    if not common or not panel_alive(common) then return nil, "owned_ancestry" end
+    local prs, root_parent = safe_call(P._root, "parent")
+    if prs ~= CALL_OK or root_parent ~= self._root_panel then
+        return nil, "owned_ancestry"
+    end
+    if not dr_reaches_exposed(P._root, common) then
+        return nil, "owned_exposure"
+    end
+    local gauge_root = gauge.root
+    if not gauge_root or not panel_alive(gauge_root) then
+        return nil, "owned_ancestry"
+    end
+    local grs, gauge_parent = safe_call(gauge_root, "parent")
+    if grs ~= CALL_OK or gauge_parent ~= P._root then
+        return nil, "owned_ancestry"
+    end
+    if not dr_reaches_exposed(gauge_root, common) then
+        return nil, "owned_exposure"
+    end
+    local health_fill = gauge.health_fill
+    if not health_fill or not panel_alive(health_fill) then
+        return nil, "owned_ancestry"
+    end
+    local hrs, fill_parent = safe_call(health_fill, "parent")
+    if hrs ~= CALL_OK or fill_parent ~= gauge_root then
+        return nil, "owned_ancestry"
+    end
+    if not dr_reaches(health_fill, common) then return nil, "owned_ancestry" end
+    local markers = gauge._copr_markers
+    if type(markers) ~= "table" then return nil, "owned_ancestry" end
+    for i = 1, #markers do
+        local marker = markers[i]
+        if not marker or not panel_alive(marker) then
+            return nil, "owned_ancestry"
+        end
+        local mps, marker_parent = safe_call(marker, "parent")
+        if mps ~= CALL_OK or marker_parent ~= health_fill then
+            return nil, "owned_ancestry"
+        end
+        if not dr_reaches(marker, common) then return nil, "owned_ancestry" end
+    end
+
+    local vs, visible = safe_call(P._root, "visible")
+    if vs ~= CALL_OK or visible ~= true then
+        return nil, "owned_exposure"
+    end
+    if _effective_visible(P._root, {}) ~= true then
+        return nil, "owned_exposure"
+    end
+    local alpha = _effective_alpha(P._root, {})
+    if alpha == nil or alpha <= 0 then
+        return nil, "owned_exposure"
+    end
+
+    return {ratio = live.ratio, n = live.n, health_ratio = live.health_ratio},
+        "covered"
+end
+
+function RT:_copr_acquire(binding)
+    local nv = kyohud.hud.native_visibility
+    if not nv or type(nv.acquire) ~= "function" then return false end
+    local leaves = binding.leaves
+    if type(leaves) ~= "table" or #leaves < 1 or #leaves > COPR_CHILD_MAX then
+        return false
+    end
+    local added = binding.added
+    if not binding.leased or type(added) ~= "table" then
+        added = {}
+        if type(nv._whitelist) == "table" then
+            for i = 1, #leaves do
+                local leaf = leaves[i]
+                local entry = nv._whitelist[leaf]
+                if not entry then entry = {}; nv._whitelist[leaf] = entry end
+                if entry.alpha ~= true then
+                    added[leaf] = {alpha = entry.alpha}
+                    entry.alpha = true
+                end
+            end
+        end
+    end
+    local generation = binding.lease_gen
+    if not binding.leased or generation == nil then
+        self._copr_lease_generation = (self._copr_lease_generation or 0) + 1
+        generation = self._copr_lease_generation
+    end
+    binding.lease_gen = generation
+    binding.added = added
+    binding.release_pending = true
+    local requests = {}
+    for i = 1, #leaves do
+        requests[i] = {id = leaves[i], property = "alpha", value = 0}
+    end
+    local ok = nv:acquire(COPR_OWNER, generation, requests)
+    if ok then
+        binding.leased = true
+        binding.release_pending = false
+        return true
+    end
+    binding.leased = false
+    binding.release_pending = true
+    return false
+end
+
+function RT:_sync_copr_replacement_unprofiled(mgr)
+    local P = kyohud.hud.player
+    local settings = kyohud.settings
+    if not mgr or kyohud.settings.enable_hud_foundation ~= true
+        or settings.enable_player ~= true or is_vr()
+        or self._disabled or self._freeflight or not self._mounted
+        or not P or not P._mounted or P._manager ~= mgr then
+        self:_release_copr_replacement(true)
+        return
+    end
+
+    local binding = self._copr_binding
+    if binding and binding.release_pending then
+        self:_release_copr_replacement(false)
+        binding = self._copr_binding
+        if binding and binding.release_pending then return end
+    end
+
+    local panels = mgr._teammate_panels
+    local entry = type(panels) == "table" and panels[h5_player_slot()] or nil
+    local entry_panel = type(entry) == "table" and entry._panel or nil
+    if binding and (binding.manager ~= mgr or binding.entry ~= entry
+        or binding.entry_panel ~= entry_panel
+        or binding.root_gen ~= self._generation) then
+        self:_release_copr_replacement(true)
+        binding = self._copr_binding
+        if binding then return end
+    end
+
+    local live = copr_live_source(P, mgr)
+    if not live then
+        if binding then self:_release_copr_replacement(false) end
+        return
+    end
+
+    local fresh_ok = P._update_ran_now == true
+        and P._verify_ok_now == true and P._render_verified == true
+    if not fresh_ok then
+        local stale = copr_receipt_stale(P, live)
+        local hidden = not dr_root_visible(P)
+        if stale then
+            local repair_ok, repaired = pcall(P._repair_and_certify, P, mgr)
+            if not repair_ok or repaired ~= true then
+                if binding then self:_release_copr_replacement(false) end
+                return
+            end
+            live = copr_live_source(P, mgr)
+            if not live then
+                if binding then self:_release_copr_replacement(false) end
+                return
+            end
+        elseif not (hidden and P._render_verified == true) then
+            local verify_ok, verified = pcall(P.verify, P)
+            if not verify_ok or verified ~= true then
+                if binding then self:_release_copr_replacement(false) end
+                return
+            end
+        end
+    end
+
+    if binding and (binding.source_unit ~= live.unit
+        or binding.source_damage ~= live.damage) then
+        -- The effective source object changed: restore every exact notch first,
+        -- then reacquire only on a later certified update.
+        self:_release_copr_replacement(true)
+        return
+    end
+    local chain = self:_copr_native_chain(mgr, live.n)
+    if not chain then
+        if binding then self:_release_copr_replacement(false) end
+        return
+    end
+    if binding then
+        local same = binding.copr == chain.copr
+            and binding.radial == chain.radial
+            and binding.player == chain.player
+            and binding.entry_panel == chain.entry_panel
+            and type(binding.leaves) == "table"
+            and #binding.leaves == #chain.leaves
+        if same then
+            for i = 1, #chain.leaves do
+                if binding.leaves[i] ~= chain.leaves[i] then same = false; break end
+            end
+        end
+        if not same then
+            self:_release_copr_replacement(true)
+            binding = self._copr_binding
+            if binding then return end
+        end
+    end
+
+    local state, reason = self:_copr_source_state(mgr, chain, live)
+    if not state and reason == "owned_exposure"
+        and P._render_verified == true and not dr_root_visible(P)
+        and copr_live_source(P, mgr) ~= nil then
+        local repair_ok, repaired = pcall(P._repair_and_certify, P, mgr)
+        if repair_ok and repaired == true then
+            state, reason = self:_copr_source_state(mgr, chain, live)
+            chain = self:_copr_native_chain(mgr, live.n)
+            if chain and binding then
+                local same = binding.copr == chain.copr
+                    and binding.radial == chain.radial
+                    and binding.player == chain.player
+                    and binding.entry_panel == chain.entry_panel
+                    and type(binding.leaves) == "table"
+                    and #binding.leaves == #chain.leaves
+                if same then
+                    for i = 1, #chain.leaves do
+                        if binding.leaves[i] ~= chain.leaves[i] then same = false; break end
+                    end
+                end
+                if not same then state = nil end
+            elseif not chain then
+                state = nil
+            end
+        end
+    end
+    if not state then
+        if binding then self:_release_copr_replacement(false) end
+        return
+    end
+
+    if not binding then
+        binding = {
+            manager = mgr,
+            entry = entry,
+            entry_panel = chain.entry_panel,
+            root_gen = self._generation,
+            player = chain.player,
+            radial = chain.radial,
+            copr = chain.copr,
+            leaves = chain.leaves,
+            source_unit = live.unit,
+            source_damage = live.damage,
+            leased = false,
+            certified = false,
+        }
+        self._copr_binding = binding
+    else
+        binding.leaves = chain.leaves
+        binding.copr = chain.copr
+        binding.player = chain.player
+        binding.radial = chain.radial
+        binding.entry_panel = chain.entry_panel
+    end
+    binding.certified = false
+
+    if not self:_copr_acquire(binding) then
+        self:_release_copr_replacement(false)
+        return
+    end
+    -- The lease is only authorized for a render that still certifies after the
+    -- native alpha writes; otherwise fail closed and let priority take over.
+    local verify_ok, verified = pcall(P.verify, P)
+    if not verify_ok or verified ~= true then
+        self:_release_copr_replacement(false)
+        return
+    end
+    binding.certified = true
+end
+
+function RT:_copr_replacement_post_priority_unprofiled(t)
+    local binding = self._copr_binding
+    if not binding or not binding.leased then return end
+    local released = false
+    local function release()
+        if released then return end
+        released = true
+        self:_release_copr_replacement(false)
+    end
+    local P = kyohud.hud.player
+    if not P or not P._root or not panel_alive(P._root) then
+        release()
+    else
+        local vs, visible = safe_call(P._root, "visible")
+        if vs ~= CALL_OK or visible ~= true then
+            release()
+        end
+    end
+    if not released then
+        local copr = binding.copr
+        local cp, copr_parent = safe_call(copr, "parent")
+        local leaves = binding.leaves
+        if cp ~= CALL_OK or copr_parent ~= binding.radial
+            or type(leaves) ~= "table"
+            or #leaves < 1 or #leaves > COPR_CHILD_MAX then
+            release()
+        else
+            for i = 1, #leaves do
+                local leaf = leaves[i]
+                local ap, leaf_parent = safe_call(leaf, "parent")
+                local aa, alpha = safe_call(leaf, "alpha")
+                local av, vis = safe_call(leaf, "visible")
+                if ap ~= CALL_OK or leaf_parent ~= copr
+                    or aa ~= CALL_OK or not dr_near(alpha, 0, 0.0001)
+                    or av ~= CALL_OK or (vis ~= true and vis ~= false) then
+                    release()
+                    break
+                end
+            end
+        end
+    end
+    if not released then
+        local alpha = _effective_alpha(P._root, {})
+        if _effective_visible(P._root, {}) ~= true
+            or alpha == nil or alpha <= 0 then
+            release()
+        end
+    end
+    if released and t ~= nil
+        and kyohud.settings.enable_hud_foundation == true then
+        self:_apply_native_priority(t, true)
+    end
+end
+
 function RT:_sync_local_backdrop(t, crew_receipt)
+    self:_sync_delayed_replacement(self._manager)
+    self:_sync_reserve_replacement(self._manager)
+    self:_sync_copr_replacement(self._manager)
     self:_apply_native_priority(t)
+    self:_delayed_replacement_post_priority(t)
+    self:_reserve_replacement_post_priority(t)
+    self:_copr_replacement_post_priority(t)
+    if self._stoic_trace_enabled == true then self:_stoic_trace_record() end
     local certifications = self:_coordinate_h5_native_duplicates(crew_receipt)
     if t ~= nil then
         if self._last_backdrop_sync ~= nil and t >= self._last_backdrop_sync
@@ -2236,6 +5122,113 @@ function RT:_sync_local_backdrop(t, crew_receipt)
     if not self._local_backdrop_verified then
         safe_call(bg, "set_visible", false)
     end
+end
+
+-- Opt-in timing wrappers for the four harmony scopes. Each original body was
+-- renamed with the _unprofiled suffix and left byte-for-byte intact; these
+-- public methods only add the probe stamp/record around it. A public scope
+-- called outside harmony still counts (overlaps possible), and backdrop work
+-- after _coordinate_h5_native_duplicates remains unclassified residue. Errors
+-- from the original body propagate unchanged.
+function RT:_sync_delayed_replacement(mgr)
+    local probe = self._residual_probe
+    if not probe or probe.done or not probe.active
+        or type(self._residual_stamp) ~= "function"
+        or type(self._residual_record) ~= "function" then
+        return self:_sync_delayed_replacement_unprofiled(mgr)
+    end
+    local start = self:_residual_stamp()
+    self:_sync_delayed_replacement_unprofiled(mgr)
+    self:_residual_record("harmony_delayed_sync", start)
+end
+
+function RT:_apply_native_priority(t, post_release)
+    local probe = self._residual_probe
+    if not probe or probe.done or not probe.active
+        or type(self._residual_stamp) ~= "function"
+        or type(self._residual_record) ~= "function" then
+        return self:_apply_native_priority_unprofiled(t, post_release)
+    end
+    local start = self:_residual_stamp()
+    self:_apply_native_priority_unprofiled(t, post_release)
+    self:_residual_record("harmony_priority", start)
+end
+
+function RT:_delayed_replacement_post_priority(t)
+    local probe = self._residual_probe
+    if not probe or probe.done or not probe.active
+        or type(self._residual_stamp) ~= "function"
+        or type(self._residual_record) ~= "function" then
+        return self:_delayed_replacement_post_priority_unprofiled(t)
+    end
+    local start = self:_residual_stamp()
+    self:_delayed_replacement_post_priority_unprofiled(t)
+    self:_residual_record("harmony_delayed_post", start)
+end
+
+-- Aggregate reserve phase: pre-priority acquisition and post-priority release
+-- checks share one bounded counter; both calls are nested under harmony.
+function RT:_sync_reserve_replacement(mgr)
+    local probe = self._residual_probe
+    if not probe or probe.done or not probe.active
+        or type(self._residual_stamp) ~= "function"
+        or type(self._residual_record) ~= "function" then
+        return self:_sync_reserve_replacement_unprofiled(mgr)
+    end
+    local start = self:_residual_stamp()
+    self:_sync_reserve_replacement_unprofiled(mgr)
+    self:_residual_record("reserve", start)
+end
+
+function RT:_reserve_replacement_post_priority(t)
+    local probe = self._residual_probe
+    if not probe or probe.done or not probe.active
+        or type(self._residual_stamp) ~= "function"
+        or type(self._residual_record) ~= "function" then
+        return self:_reserve_replacement_post_priority_unprofiled(t)
+    end
+    local start = self:_residual_stamp()
+    self:_reserve_replacement_post_priority_unprofiled(t)
+    self:_residual_record("reserve", start)
+end
+
+-- Aggregate COPR phase: pre-priority acquisition and post-priority release
+-- checks share one bounded counter; both calls are nested under harmony.
+function RT:_sync_copr_replacement(mgr)
+    local probe = self._residual_probe
+    if not probe or probe.done or not probe.active
+        or type(self._residual_stamp) ~= "function"
+        or type(self._residual_record) ~= "function" then
+        return self:_sync_copr_replacement_unprofiled(mgr)
+    end
+    local start = self:_residual_stamp()
+    self:_sync_copr_replacement_unprofiled(mgr)
+    self:_residual_record("copr", start)
+end
+
+function RT:_copr_replacement_post_priority(t)
+    local probe = self._residual_probe
+    if not probe or probe.done or not probe.active
+        or type(self._residual_stamp) ~= "function"
+        or type(self._residual_record) ~= "function" then
+        return self:_copr_replacement_post_priority_unprofiled(t)
+    end
+    local start = self:_residual_stamp()
+    self:_copr_replacement_post_priority_unprofiled(t)
+    self:_residual_record("copr", start)
+end
+
+function RT:_coordinate_h5_native_duplicates(crew_receipt)
+    local probe = self._residual_probe
+    if not probe or probe.done or not probe.active
+        or type(self._residual_stamp) ~= "function"
+        or type(self._residual_record) ~= "function" then
+        return self:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
+    end
+    local start = self:_residual_stamp()
+    local certifications = self:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
+    self:_residual_record("harmony_duplicates", start)
+    return certifications
 end
 
 kyohud.hud._installed_hooks = kyohud.hud._installed_hooks or {}

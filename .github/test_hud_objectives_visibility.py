@@ -398,7 +398,7 @@ def _lua_native_ready():
         }
         OM:activate_objective("collect", nil, {amount = 3})
 
-        local source_hud_panel = _make_panel("source_hud_panel")
+        local source_hud_panel = _init_fp
         source_hud_panel._w = 1920; source_hud_panel._h = 1080
         local objectives_panel = source_hud_panel:panel({
             name = "objectives_panel", x = 0, y = 0, w = 500, h = 100, visible = true,

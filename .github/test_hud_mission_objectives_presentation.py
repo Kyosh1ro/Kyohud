@@ -365,8 +365,13 @@ class ObjectivesEPresentationTests(unittest.TestCase):
             local release = nv.release
             function nv:release(owner, gen)
                 if owner == O then
-                    assert(M._root_panel:y() >= 100 or not M._root_panel:visible(),
-                        "Mission vacates before native leaves are restored")
+                    if kyohud.settings.enable_objectives then
+                        assert(M._root_panel:y() == 36 and not M._root_panel:visible(),
+                            "Mission hides at its fixed anchor before native leaves are restored")
+                    else
+                        assert(M._root_panel:y() >= 100 or not M._root_panel:visible(),
+                            "Mission-only mode retains the native reservation")
+                    end
                 end
                 return release(self, owner, gen)
             end

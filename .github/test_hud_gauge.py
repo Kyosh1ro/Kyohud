@@ -77,6 +77,33 @@ end
 local Panel = {}
 Panel.__index = Panel
 Vector3 = Vector3 or function(x,y,z) return {x=x,y=y,z=z} end
+mvector3 = mvector3 or {}
+mvector3.set_static = mvector3.set_static or function(vec, x, y, z)
+    if type(vec) == "table" then
+        vec.x = x; vec.y = y; vec.z = z
+    end
+    return vec
+end
+
+-- Polygon payloads are copied eagerly: production reuses cached Vector3
+-- instances and mutates them through mvector3.set_static.
+local function _copy_vector(v)
+    if type(v) ~= "table" then return v end
+    if type(v.x) == "number" or type(v.y) == "number" or type(v.z) == "number" then
+        return {x = v.x, y = v.y, z = v.z}
+    end
+    if #v == 3 then
+        return {x = v[1], y = v[2], z = v[3]}
+    end
+    return v
+end
+
+local function _copy_triangles(triangles)
+    local out = {}
+    if type(triangles) ~= "table" then return out end
+    for i = 1, #triangles do out[i] = _copy_vector(triangles[i]) end
+    return out
+end
 
 local function _make(name, kind)
     _alloc = _alloc + 1
@@ -100,7 +127,7 @@ function Panel:polygon(cfg)
     local p=_make(cfg.name or _uniq('polygon'),'polygon')
     p._parent=self
     _apply(p,cfg)
-    p._triangles=cfg.triangles
+    p._triangles=_copy_triangles(cfg.triangles)
     self._children[p._name]=p
     return p
 end
@@ -142,6 +169,8 @@ function Panel:set_image(texture,x,y,w,h)
 end
 function Panel:texture_name() return self._texture end
 function Panel:set_font_size(s) self._font_size = s end
+function Panel:align() return self._align end
+function Panel:set_align(value) self._align = value end
 function Panel:set_visible(v) self._visible = v end
 function Panel:set_layer(l) self._layer = l end
 function Panel:set_color(c) self._color = {r=c.r, g=c.g, b=c.b, a=c.a or 1} end
@@ -197,8 +226,20 @@ function Panel:textbox(name)
     return ch
 end
 
+-- Panel clear drops children; polygon clear drops only its copied mesh payload.
 function Panel:clear()
+    if self._kind == "polygon" then
+        self._triangles = {}
+        return
+    end
     self._children = {}
+end
+
+function Panel:add_triangles(triangles)
+    if self._kind ~= "polygon" or type(triangles) ~= "table" then return end
+    local dst = self._triangles
+    if type(dst) ~= "table" then dst = {}; self._triangles = dst end
+    for i = 1, #triangles do dst[#dst + 1] = _copy_vector(triangles[i]) end
 end
 
 -- remove kills only the subtree (marks _alive=false recursively), then unlinks

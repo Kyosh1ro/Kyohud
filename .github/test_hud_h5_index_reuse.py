@@ -84,7 +84,7 @@ local function named_upvalue(fn, wanted)
     return nil
 end
 
-local coord = kyohud.hud.runtime._coordinate_h5_native_duplicates
+local coord = kyohud.hud.runtime._coordinate_h5_native_duplicates_unprofiled
 assert(type(coord) == "function", "H5 coordinator missing")
 local collect = named_upvalue(coord, "h5_collect_player_targets")
 assert(type(collect) == "function", "collector upvalue missing")

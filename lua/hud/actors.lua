@@ -626,6 +626,8 @@ local function clear_slot_metrics(i)
         _reg[i].condition_text = nil
         _reg[i]._condition_inferred = nil
         _reg[i].interaction = nil
+        _reg[i].health_effects = nil
+        _reg[i]._effect_cd = nil
     end
     _slot_color_explicit[i] = nil
 end
@@ -804,6 +806,246 @@ local function on_condition(self, i, icon, text)
     if text == nil or tt == "string" or tt == "number" or tt == "boolean" then
         entry.condition_text = text
     end
+end
+
+function ACT._is_active_manager(mgr)
+    if mgr == nil then return false end
+    local active = safe_get(function()
+        if type(managers) ~= "table" then return nil end
+        return managers.hud
+    end)
+    return active ~= nil and active == mgr
+end
+
+function ACT._seed_health_effects(cd, max_health, effects)
+    if type(effects) ~= "table" then return end
+
+    local delayed = {known = false}
+    local amount, amount_ok = safe_invoke(cd, "remaining_delayed_damage")
+    if amount_ok and type(amount) == "number" and finite(amount) and amount >= 0 then
+        delayed = {known = true, amount = amount}
+    end
+    effects.delayed_damage = delayed
+
+    local stored = {known = false}
+    local stored_amount, stored_ok = safe_invoke(cd, "armor_stored_health")
+    local max_amount, max_ok = safe_invoke(cd, "max_armor_stored_health")
+    if type(max_health) == "number" and finite(max_health) and max_health > 0
+        and stored_ok and type(stored_amount) == "number"
+        and finite(stored_amount) and stored_amount >= 0
+        and max_ok and type(max_amount) == "number"
+        and finite(max_amount) and max_amount >= 0 then
+        local ratio = stored_amount / max_health
+        if ratio > 1 then ratio = 1.0 end
+        if ratio < 0 then ratio = 0.0 end
+        local max_ratio = max_amount / max_health
+        if max_ratio > 1 then max_ratio = 1.0 end
+        if max_ratio < 0 then max_ratio = 0.0 end
+        stored = {known = true, ratio = ratio, max_ratio = max_ratio}
+    end
+    effects.stored_health = stored
+
+    local pm = safe_get(function()
+        if type(managers) ~= "table" then return nil end
+        return managers.player
+    end)
+    local pm_ok = type(pm) == "table" or type(pm) == "userdata"
+
+    local absorption = {known = false}
+    if pm_ok then
+        local absorb_amount, absorb_ok = safe_invoke(pm, "damage_absorption")
+        if absorb_ok and type(absorb_amount) == "number" and finite(absorb_amount)
+            and absorb_amount >= 0 then
+            absorption = {known = true, amount = absorb_amount}
+        end
+    end
+    effects.absorption = absorption
+
+    local info_meter = {known = false}
+    if pm_ok then
+        local stacked, stacked_ok = safe_invoke(pm, "has_category_upgrade", "player", "cocaine_stacking")
+        if stacked_ok and type(stacked) == "boolean" then
+            if stacked == false then
+                info_meter = {known = true, current = 0, total = 0, max = 1}
+            else
+                local current, current_ok = safe_invoke(pm, "get_local_cocaine_damage_absorption_ratio")
+                local total, total_ok = safe_invoke(pm, "get_local_cocaine_damage_absorption_max_ratio")
+                if current_ok and total_ok
+                    and type(current) == "number" and finite(current) and current >= 0
+                    and type(total) == "number" and finite(total) and total >= 0 then
+                    info_meter = {known = true, current = current, total = total, max = 1}
+                end
+            end
+        end
+    end
+    effects.info_meter = info_meter
+
+    local copr = {known = false}
+    if pm_ok then
+        local active, active_ok = safe_invoke(pm, "has_activate_temporary_upgrade", "temporary", "copr_ability")
+        if active_ok and type(active) == "boolean" then
+            if active == false then
+                copr = {known = true, active = false}
+            else
+                local ratio, ratio_ok = safe_invoke(pm, "upgrade_value", "player", "copr_static_damage_ratio", 0)
+                if ratio_ok and type(ratio) == "number" and finite(ratio)
+                    and ratio > 0 and ratio <= 1 then
+                    copr = {known = true, active = true, static_damage_ratio = ratio}
+                end
+            end
+        end
+    end
+    effects.copr = copr
+end
+
+function ACT._effects_target(mgr, slot)
+    if not ACT._is_active_manager(mgr) then return nil end
+    if type(slot) ~= "number" then return nil end
+
+    reconcile(mgr, slot)
+    reconcile_unit_at_slot(slot)
+    if not _is_panel_local(mgr, slot) then return nil end
+
+    local unit = resolve_local_unit()
+    if not unit then return nil end
+    local cd, cd_ok = safe_invoke(unit, "character_damage")
+    local entry = ensure_entry(slot)
+    if not cd_ok or type(cd) ~= "table" then
+        entry.health_effects = nil
+        entry._effect_cd = nil
+        return nil
+    end
+
+    if entry._effect_cd ~= cd then
+        entry.health_effects = nil
+        entry._effect_cd = cd
+    end
+
+    local effects = entry.health_effects
+    if type(effects) ~= "table" then
+        effects = {}
+        entry.health_effects = effects
+    end
+    return effects
+end
+
+function ACT._apply_stored_ratio(mgr, ratio, field)
+    local slot = player_panel_slot()
+    local effects = ACT._effects_target(mgr, slot)
+    if not effects then return end
+    local stored = effects.stored_health
+    if type(stored) ~= "table" then
+        stored = {}
+        effects.stored_health = stored
+    end
+    if type(ratio) == "number" and finite(ratio) and ratio >= 0 then
+        local clamped = ratio
+        if clamped > 1 then clamped = 1.0 end
+        stored[field] = clamped
+    else
+        stored[field] = nil
+    end
+    local ratio_ok = type(stored.ratio) == "number" and finite(stored.ratio)
+        and stored.ratio >= 0 and stored.ratio <= 1
+    local max_ratio_ok = type(stored.max_ratio) == "number" and finite(stored.max_ratio)
+        and stored.max_ratio >= 0 and stored.max_ratio <= 1
+    stored.known = (ratio_ok and max_ratio_ok)
+end
+
+function ACT._on_delayed_damage(self, i, amount)
+    if type(i) ~= "number" then return end
+    local effects = ACT._effects_target(self, i)
+    if not effects then return end
+    if type(amount) == "number" and finite(amount) and amount >= 0 then
+        effects.delayed_damage = {known = true, amount = amount}
+    else
+        effects.delayed_damage = {known = false}
+    end
+end
+
+function ACT._on_stored_health(self, ratio)
+    ACT._apply_stored_ratio(self, ratio, "ratio")
+end
+
+function ACT._on_stored_health_max(self, ratio)
+    ACT._apply_stored_ratio(self, ratio, "max_ratio")
+end
+
+function ACT._on_absorb(self, i, amount)
+    if i == nil then i = player_panel_slot() end
+    if type(i) ~= "number" then return end
+    local effects = ACT._effects_target(self, i)
+    if not effects then return end
+    if type(amount) == "number" and finite(amount) and amount >= 0 then
+        effects.absorption = {known = true, amount = amount}
+    else
+        effects.absorption = {known = false}
+    end
+end
+
+function ACT._on_info_meter(self, i, data)
+    if i == nil then i = player_panel_slot() end
+    if type(i) ~= "number" then return end
+    local effects = ACT._effects_target(self, i)
+    if not effects then return end
+    local entry = {known = false}
+    if type(data) == "table" then
+        local current = data.current
+        local total = data.total
+        local max = data.max
+        if finite(current) and current >= 0
+            and finite(total) and total >= 0
+            and finite(max) and max > 0 then
+            entry = {known = true, current = current, total = total, max = max}
+        end
+    end
+    effects.info_meter = entry
+end
+
+function ACT._on_copr(self, enabled, ratio)
+    local slot = player_panel_slot()
+    if type(slot) ~= "number" then return end
+    local effects = ACT._effects_target(self, slot)
+    if not effects then return end
+    if enabled == true then
+        if type(ratio) == "number" and finite(ratio) and ratio > 0 and ratio <= 1 then
+            effects.copr = {known = true, active = true, static_damage_ratio = ratio}
+        else
+            effects.copr = {known = false}
+        end
+    elseif enabled == false then
+        effects.copr = {known = true, active = false}
+    else
+        effects.copr = {known = false}
+    end
+end
+
+local function _apply_radial(self, i, data, field)
+    if type(i) ~= "number" then return end
+    local effects = ACT._effects_target(self, i)
+    if not effects then return end
+    local entry = {known = false}
+    if type(data) == "table" then
+        local cur = capture_num(data, "current")
+        local tot = capture_num(data, "total")
+        if finite(cur) and cur >= 0 and finite(tot) and tot > 0 then
+            local ratio = cur / tot
+            if finite(ratio) then
+                if ratio < 0 then ratio = 0.0 end
+                if ratio > 1 then ratio = 1.0 end
+                entry = {known = true, current = cur, total = tot, ratio = ratio}
+            end
+        end
+    end
+    effects[field] = entry
+end
+
+function ACT._on_custom_radial(self, i, data)
+    _apply_radial(self, i, data, "custom_radial")
+end
+
+function ACT._on_ability_radial(self, i, data)
+    _apply_radial(self, i, data, "ability_radial")
 end
 
 local function _reset_crew_roster()
@@ -1349,6 +1591,8 @@ function ACT:refresh(manager)
         entry.armor = nil
         entry.revives = nil
         entry.downs = nil
+        entry.health_effects = nil
+        entry._effect_cd = nil
         return
     end
 
@@ -1378,6 +1622,17 @@ function ACT:refresh(manager)
         entry.revives = nil
         entry.downs = nil
     end
+
+    if entry._effect_cd ~= cd then
+        entry.health_effects = nil
+    end
+    entry._effect_cd = cd
+    local effects = entry.health_effects
+    if type(effects) ~= "table" then
+        effects = {}
+        entry.health_effects = effects
+    end
+    ACT._seed_health_effects(cd, mh, effects)
 end
 
 function ACT:refresh_crew(manager, t)
@@ -1416,7 +1671,8 @@ function ACT:get_actor(slot)
     local r = _reg[slot]
     if not r then return nil end
     if not r.health and not r.armor and r.revives == nil and r.downs == nil
-        and r.condition_icon == nil and r.condition_text == nil then
+        and r.condition_icon == nil and r.condition_text == nil
+        and r.health_effects == nil then
         return nil
     end
     local snap = {}
@@ -1442,6 +1698,63 @@ function ACT:get_actor(slot)
     if r.downs ~= nil then snap.downs = r.downs end
     if r.condition_icon ~= nil then snap.condition_icon = r.condition_icon end
     if r.condition_text ~= nil then snap.condition_text = r.condition_text end
+    if r.health_effects then
+        local effects = r.health_effects
+        local copy = {}
+        if effects.delayed_damage then
+            local dd = effects.delayed_damage
+            local dd_copy = {known = dd.known == true}
+            if dd.amount ~= nil then dd_copy.amount = dd.amount end
+            copy.delayed_damage = dd_copy
+        end
+        if effects.stored_health then
+            local sh = effects.stored_health
+            local sh_copy = {known = sh.known == true}
+            if sh.ratio ~= nil then sh_copy.ratio = sh.ratio end
+            if sh.max_ratio ~= nil then sh_copy.max_ratio = sh.max_ratio end
+            copy.stored_health = sh_copy
+        end
+        if effects.absorption then
+            local ab = effects.absorption
+            local ab_copy = {known = ab.known == true}
+            if ab.amount ~= nil then ab_copy.amount = ab.amount end
+            copy.absorption = ab_copy
+        end
+        if effects.info_meter then
+            local im = effects.info_meter
+            local im_copy = {known = im.known == true}
+            if im.current ~= nil then im_copy.current = im.current end
+            if im.total ~= nil then im_copy.total = im.total end
+            if im.max ~= nil then im_copy.max = im.max end
+            copy.info_meter = im_copy
+        end
+        if effects.copr then
+            local cp = effects.copr
+            local cp_copy = {known = cp.known == true}
+            if cp.active ~= nil then cp_copy.active = cp.active end
+            if cp.static_damage_ratio ~= nil then
+                cp_copy.static_damage_ratio = cp.static_damage_ratio
+            end
+            copy.copr = cp_copy
+        end
+        if effects.custom_radial then
+            local cr = effects.custom_radial
+            local cr_copy = {known = cr.known == true}
+            if cr.current ~= nil then cr_copy.current = cr.current end
+            if cr.total ~= nil then cr_copy.total = cr.total end
+            if cr.ratio ~= nil then cr_copy.ratio = cr.ratio end
+            copy.custom_radial = cr_copy
+        end
+        if effects.ability_radial then
+            local ar = effects.ability_radial
+            local ar_copy = {known = ar.known == true}
+            if ar.current ~= nil then ar_copy.current = ar.current end
+            if ar.total ~= nil then ar_copy.total = ar.total end
+            if ar.ratio ~= nil then ar_copy.ratio = ar.ratio end
+            copy.ability_radial = ar_copy
+        end
+        snap.health_effects = copy
+    end
     if r.slot ~= nil then snap.slot = r.slot end
     if r.peer_id ~= nil then snap.peer_id = r.peer_id end
     snap.ai = (r.ai == true)
@@ -2083,6 +2396,14 @@ if RequiredScript == REQUIRED_CONTEXT then
     safe_post(HUDManager, "set_teammate_armor", "KyohHUD_Actors_Armor", on_armor)
     safe_post(HUDManager, "set_teammate_revives", "KyohHUD_Actors_Revives", on_revives)
     safe_post(HUDManager, "set_teammate_condition", "KyohHUD_Actors_Condition", on_condition)
+    safe_post(HUDManager, "set_teammate_delayed_damage", "KyohHUD_Actors_DelayedDamage", ACT._on_delayed_damage)
+    safe_post(HUDManager, "set_stored_health", "KyohHUD_Actors_StoredHealth", ACT._on_stored_health)
+    safe_post(HUDManager, "set_stored_health_max", "KyohHUD_Actors_StoredHealthMax", ACT._on_stored_health_max)
+    safe_post(HUDManager, "set_absorb_active", "KyohHUD_Actors_Absorb", ACT._on_absorb)
+    safe_post(HUDManager, "set_info_meter", "KyohHUD_Actors_InfoMeter", ACT._on_info_meter)
+    safe_post(HUDManager, "set_copr_indicator", "KyohHUD_Actors_Copr", ACT._on_copr)
+    safe_post(HUDManager, "set_teammate_custom_radial", "KyohHUD_Actors_CustomRadial", ACT._on_custom_radial)
+    safe_post(HUDManager, "set_teammate_ability_radial", "KyohHUD_Actors_AbilityRadial", ACT._on_ability_radial)
     safe_post(HUDManager, "set_teammate_callsign", "KyohHUD_Actors_Callsign", on_set_callsign_post)
     safe_post(HUDManager, "teammate_progress", "KyohHUD_Actors_Progress", on_progress)
     safe_post(HUDManager, "_set_teammate_weapon_selected", "KyohHUD_Actors_WeaponSelected", on_crew_weapon_selected)

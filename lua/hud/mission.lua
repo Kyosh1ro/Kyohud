@@ -49,6 +49,10 @@ M._cached_timer_visible = M._cached_timer_visible
 M._cached_title_visible = M._cached_title_visible
 M._cached_bags_visible = M._cached_bags_visible
 M._cached_bags_label_visible = M._cached_bags_label_visible
+M._trace_checked = M._trace_checked or false
+M._trace_enabled = M._trace_enabled or false
+M._trace_state = M._trace_state
+M._trace_native_reason = M._trace_native_reason
 
 local REQUIRED_CONTEXT = "lib/managers/hudmanagerpd2"
 local LOOT_CONTEXT = "lib/managers/lootmanager"
@@ -67,6 +71,39 @@ local MIN_FONT_SIZE = 12
 local TIMER_COLOR = Color(242/255, 194/255, 48/255)
 local TITLE_COLOR = Color(238/255, 241/255, 244/255)
 local LABEL_COLOR = Color(1, 1, 1)
+
+local TRACE_SENTINEL = "KYO_MISSION_TRACE"
+local TRACE_PREFIX = "[KyoHUD][MissionTrace]"
+local TRACE_LINE_CAP = 24
+local OBJECTIVE_LEAF_SPECS = {
+    {"objective_text", "title"},
+    {"amount_text", "amount"}
+}
+local FRAME_LEAF_SPECS = {
+    {"bg", "bg"},
+    {"left_top", "framecorners"},
+    {"left_bottom", "framecorners"},
+    {"right_top", "framecorners"},
+    {"right_bottom", "framecorners"}
+}
+
+if not M._trace_checked then
+    M._trace_checked = true
+    local open_ok, handle = pcall(function()
+        if type(ModPath) ~= "string" then return nil end
+        return io.open(ModPath .. TRACE_SENTINEL, "r")
+    end)
+    if open_ok and handle ~= nil then
+        M._trace_enabled = true
+        pcall(function()
+            if type(handle) == "table" and type(handle.close) == "function" then
+                handle:close()
+            elseif type(handle) == "userdata" then
+                io.close(handle)
+            end
+        end)
+    end
+end
 
 local function is_valid_time_value(v)
     if type(v) ~= "number" then return false end
@@ -124,6 +161,76 @@ local function safe_call(obj, method_name, ...)
     return CALL_OK, result
 end
 
+local function trace_scalar(v)
+    if v == nil then return "nil" end
+    local kind = type(v)
+    if kind == "boolean" then return v and "true" or "false" end
+    if kind == "number" then
+        if v ~= v then return "nan" end
+        if v == math.huge then return "inf" end
+        if v == -math.huge then return "-inf" end
+        return string.format("%.17g", v)
+    end
+    return kind
+end
+
+local function trace_read(obj, method_name)
+    local status, value = safe_call(obj, method_name)
+    if status ~= CALL_OK then return nil end
+    return value
+end
+
+local function mission_trace_line(self, reason)
+    local want = self._layout_cache
+    local root = panel_alive(self._root_panel) and self._root_panel or nil
+    local parts = {
+        TRACE_PREFIX,
+        "reason=" .. tostring(reason),
+        "render_failed=" .. trace_scalar(self._render_failed),
+        "native_acquired=" .. trace_scalar(self._native_acquired),
+        "root_visible=" .. trace_scalar(trace_read(root, "visible")),
+        "root_x=" .. trace_scalar(trace_read(root, "x")),
+        "root_y=" .. trace_scalar(trace_read(root, "y")),
+        "root_w=" .. trace_scalar(trace_read(root, "w")),
+        "root_h=" .. trace_scalar(trace_read(root, "h")),
+        "want_x=" .. trace_scalar(want and want.root_x or nil),
+        "want_y=" .. trace_scalar(want and want.root_y or nil),
+        "want_w=" .. trace_scalar(want and want.root_w or nil),
+        "want_h=" .. trace_scalar(want and want.root_h or nil),
+    }
+    return table.concat(parts, " ")
+end
+
+function M:_mission_trace_verdict(ok, reason)
+    local result = ok == true
+    if not self._trace_enabled then return result end
+    local early_state = self._trace_state
+    if early_state and early_state.total >= TRACE_LINE_CAP then return result end
+    pcall(function()
+        local state = self._trace_state
+        if not state then
+            state = { last_reason = nil, total = 0 }
+            self._trace_state = state
+        end
+        local verdict_reason = result and "ok" or tostring(reason)
+        local should_emit = false
+        if result then
+            if state.last_reason ~= nil and state.last_reason ~= "ok" then
+                should_emit = true
+            end
+        elseif state.last_reason ~= verdict_reason then
+            should_emit = true
+        end
+        state.last_reason = verdict_reason
+        if not should_emit or state.total >= TRACE_LINE_CAP then return end
+        state.total = state.total + 1
+        local format_ok, line = pcall(mission_trace_line, self, verdict_reason)
+        if not format_ok or type(line) ~= "string" then return end
+        pcall(log, line)
+    end)
+    return result
+end
+
 local function get_title_fallback()
     local ok_loc, loc = pcall(function() return managers.localization end)
     if ok_loc and loc then
@@ -162,9 +269,7 @@ function M:_compute_layout(parent_w, parent_h, scale)
     -- The legacy native reservation is deliberately not rescaled or repurposed.
     local region = layout.objectives_region(parent_w,parent_h)
     if not region then return nil end
-    local rt = kyohud.hud.runtime
     local reserve = kyohud.settings.enable_objectives ~= true
-        or (self._mounted and not (rt and rt._objectives_covered))
     local g = layout.mission_objectives(parent_w,parent_h,scale,true,
         kyohud.settings.enable_objectives == true,reserve)
     if not g then return nil end
@@ -356,6 +461,22 @@ function M:_sync_inks()
     end
 end
 
+local function bg_color_channels(prim)
+    local c = prim:color()
+    return c.r, c.g, c.b
+end
+
+local function bg_color_matches(prim, r, g, b)
+    if not panel_alive(prim) then return false end
+    local ok, cr, cg, cb = pcall(bg_color_channels, prim)
+    if not ok or not is_finite_num(cr) or not is_finite_num(cg) or not is_finite_num(cb) then
+        return false
+    end
+    return math.abs(cr - r) < 0.001
+        and math.abs(cg - g) < 0.001
+        and math.abs(cb - b) < 0.001
+end
+
 function M:_sync_backgrounds()
     local g = self._layout_cache
     if not g or not panel_alive(self._root_panel) then return end
@@ -364,21 +485,33 @@ function M:_sync_backgrounds()
     for _, key in ipairs({"timer", "title", "bags"}) do
         local shape = g[key .. "_bg"]
         local p = self._backgrounds[key]
-        local color = key == "timer" and Color(0, 0, 0) or Color(11/255, 13/255, 17/255)
+        local expected_r = key == "timer" and 0 or 11/255
+        local expected_g = key == "timer" and 0 or 13/255
+        local expected_b = key == "timer" and 0 or 17/255
         local alpha = key == "timer" and 0.86 or 0.80
         local visible = not self._render_failed and (key ~= "timer" or (self._timer_known and self:_is_timer_enabled()))
         if not panel_alive(p) then
             local status, created = safe_call(self._root_panel, "rect", {
                 name = "mission_" .. key .. "_bg", x = shape.x, y = shape.y,
-                w = shape.w, h = shape.h, color = color, alpha = alpha, visible = visible, layer = -1
+                w = shape.w, h = shape.h, color = Color(expected_r, expected_g, expected_b),
+                alpha = alpha, visible = visible, layer = -1
             })
             if status == CALL_OK then p = created; self._backgrounds[key] = p end
         end
         if panel_alive(p) then
             if not actual_shape_matches(p, shape) then safe_call(p, "set_shape", shape.x, shape.y, shape.w, shape.h) end
-            safe_call(p, "set_color", color)
-            safe_call(p, "set_alpha", alpha)
-            safe_call(p, "set_visible", visible == true)
+            if not bg_color_matches(p, expected_r, expected_g, expected_b) then
+                safe_call(p, "set_color", Color(expected_r, expected_g, expected_b))
+            end
+            local alpha_status, actual_alpha = safe_call(p, "alpha")
+            if alpha_status ~= CALL_OK or not is_finite_num(actual_alpha)
+                or math.abs(actual_alpha - alpha) >= 0.001 then
+                safe_call(p, "set_alpha", alpha)
+            end
+            local visible_status, actual_visible = safe_call(p, "visible")
+            if visible_status ~= CALL_OK or actual_visible ~= (visible == true) then
+                safe_call(p, "set_visible", visible == true)
+            end
         end
     end
 end
@@ -437,29 +570,263 @@ function M:_verify_labels()
     return true
 end
 
-function M:_verify_render()
+local function trace_native_reject(self, diag, failure, role, stage, depth)
+    if not diag then return end
+    local reason = "native:" .. tostring(failure or "reject")
+    if role then reason = reason .. ":" .. role end
+    if stage then reason = reason .. ":" .. stage end
+    if depth ~= nil then reason = reason .. "@" .. tostring(depth) end
+    self._trace_native_reason = reason
+end
+
+local function reject_native(self, diag, failure, role, stage, depth)
+    trace_native_reject(self, diag, failure, role, stage, depth)
+    return true
+end
+
+local function reject_bounds(self, diag)
+    if not diag then return true end
+    return reject_native(self, diag, diag.failure or "bounds", diag.role,
+        diag.stage, diag.depth)
+end
+
+-- Native objective observations are read-only and bounded to known leaves.
+-- During a release handshake, observe the values about to be restored, not
+-- merely the still-masked values. This prevents a one-frame overlap.
+local function objective_node_state(node, restoring, owner, entries, diag, common)
+    if diag then diag.stage = "visible" end
+    local visible = node:visible()
+    if diag then diag.stage = "alpha" end
+    local alpha = node:alpha()
+    if restoring and owner and entries then
+        for _, entry in ipairs(entries) do
+            if entry.owner == owner and entry.generation == owner._native_generation and entry.object == node then
+                if entry.property == "visible" then visible = entry.old_value end
+                if entry.property == "alpha" then alpha = entry.old_value end
+            end
+        end
+    end
+    if diag then diag.stage = "x" end
+    local x = node:x()
+    if diag then diag.stage = "y" end
+    local y = node:y()
+    if diag then diag.stage = "w" end
+    local w = node:w()
+    if diag then diag.stage = "h" end
+    local h = node:h()
+    if diag then diag.stage = "parent" end
+    local parent = nil
+    if node ~= common then
+        parent = node:parent()
+    end
+    return visible, alpha, x, y, w, h, parent
+end
+
+local function objective_bounds(node, restoring, owner, entries, diag, common)
+    local x, y, w, h = 0, 0, nil, nil
+    local shown = true
+    for depth = 1, 16 do
+        if not panel_alive(node) then
+            if diag then diag.failure = "missing"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        local ok, visible, alpha, nx, ny, nw, nh, parent =
+            pcall(objective_node_state, node, restoring, owner, entries, diag, common)
+        if not ok then
+            if diag then diag.failure = "read_error"; diag.depth = depth end
+            return nil
+        end
+        if type(visible) ~= "boolean" then
+            if diag then diag.failure = "visible_type"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if not is_finite_num(alpha) then
+            if diag then diag.failure = "alpha_invalid"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if not is_finite_num(nx) then
+            if diag then diag.failure = "x_invalid"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if not is_finite_num(ny) then
+            if diag then diag.failure = "y_invalid"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if not is_finite_num(nw) then
+            if diag then diag.failure = "w_invalid"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if not is_finite_num(nh) then
+            if diag then diag.failure = "h_invalid"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if nw < 0 or nh < 0 then
+            if diag then diag.failure = "negative_size"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if not visible or alpha <= 0 or nw == 0 or nh == 0 then shown = false end
+        x, y = x + nx, y + ny
+        if not is_finite_num(x) then
+            if diag then diag.failure = "coordinate_overflow_x"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if not is_finite_num(y) then
+            if diag then diag.failure = "coordinate_overflow_y"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        if depth == 1 then w, h = nw, nh end
+        if node == common then return x, y, w, h, node, shown end
+        if parent == nil then
+            if diag then diag.failure = "root_mismatch"; diag.stage = nil; diag.depth = depth end
+            return nil
+        end
+        node = parent
+    end
+    if diag then diag.failure = "depth_limit"; diag.stage = nil; diag.depth = 16 end
+    return nil
+end
+
+local function observed_bounds(node, restoring, owner, entries, diag, role, common)
+    if diag then
+        diag.role = role
+        diag.stage = nil
+        diag.depth = nil
+        diag.failure = nil
+    end
+    return objective_bounds(node, restoring, owner, entries, diag, common)
+end
+
+local function objective_source(manager)
+    local source = manager and manager._hud_objectives
+    if not source then return nil end
+    return source, source._hud_panel, source._bg_box,
+        kyohud.hud.runtime and kyohud.hud.runtime._parent_panel or nil
+end
+
+function M:_native_objectives_conflict(restoring)
+    if kyohud.settings.enable_objectives ~= true then return false end
+    local diag = nil
+    local trace_state = self._trace_state
+    if self._trace_enabled and not (trace_state and trace_state.total >= TRACE_LINE_CAP) then
+        diag = { role = nil, stage = nil, depth = nil, failure = nil }
+        self._trace_native_reason = nil
+    end
+    local ok, source, hud_panel, box, common = pcall(objective_source, self._manager)
+    if not ok then return reject_native(self, diag, "source_read_error") end
+    if not source then return false end
+    if not common or not panel_alive(common) then
+        return reject_native(self, diag, "root_mismatch")
+    end
+    local owner = kyohud.hud.objectives
+    local nv = kyohud.hud.native_visibility
+    local entries = nv and nv._entries
+    local _, _, _, _, _, hud_shown = observed_bounds(hud_panel, restoring, owner, entries, diag, "hud", common)
+    if hud_shown == false then return false end
+    if hud_shown == nil then return reject_bounds(self, diag) end
+    local status, panel = safe_call(hud_panel, "child", "objectives_panel")
+    if status ~= CALL_OK or not panel then
+        return reject_native(self, diag,
+            status == CALL_ERROR and "leaf_read_error" or "leaf_missing", "panel")
+    end
+    local _, _, _, _, _, panel_shown = observed_bounds(panel, restoring, owner, entries, diag, "panel", common)
+    if panel_shown == false then return false end
+    if panel_shown == nil then return reject_bounds(self, diag) end
+    local mx, my, mw, mh = observed_bounds(self._root_panel, nil, nil, nil, diag, "missionroot", common)
+    if mx == nil then return reject_bounds(self, diag) end
+    for _, spec in ipairs(OBJECTIVE_LEAF_SPECS) do
+        local name, role = spec[1], spec[2]
+        local leaf_status, leaf = safe_call(panel, "child", name)
+        if leaf_status ~= CALL_OK or not leaf then
+            return reject_native(self, diag,
+                leaf_status == CALL_ERROR and "leaf_read_error" or "leaf_missing", role)
+        end
+        local x, y, w, h, root, shown = observed_bounds(leaf, restoring, owner, entries, diag, role, common)
+        if shown == nil then return reject_bounds(self, diag) end
+        if shown then
+            local text_status, text = safe_call(leaf, "text")
+            if text_status ~= CALL_OK or type(text) ~= "string" then
+                return reject_native(self, diag,
+                    text_status == CALL_ERROR and "text_read_error" or "text_type", role)
+            end
+            if text ~= "" then
+                if root ~= common then return reject_native(self, diag, "root_mismatch", role) end
+                if x < mx + mw and mx < x + w and y < my + mh and my < y + h then
+                    return reject_native(self, diag, "overlap", role)
+                end
+            end
+        end
+    end
+    -- An opening/closing frame can remain after its text has disappeared.
+    if not box then return reject_native(self, diag, "frame_box_missing", "frame") end
+    local x, y, w, h, root, shown = observed_bounds(box, restoring, owner, entries, diag, "frame", common)
+    if shown == nil then return reject_bounds(self, diag) end
+    if shown then
+        for _, spec in ipairs(FRAME_LEAF_SPECS) do
+            local name, role = spec[1], spec[2]
+            local leaf_status, leaf = safe_call(box, "child", name)
+            if leaf_status ~= CALL_OK or not leaf then
+                return reject_native(self, diag,
+                    leaf_status == CALL_ERROR and "leaf_read_error" or "leaf_missing", role)
+            end
+            local _, _, _, _, _, leaf_shown = observed_bounds(leaf, restoring, owner, entries, diag, role, common)
+            if leaf_shown == nil then return reject_bounds(self, diag) end
+            if leaf_shown and (root ~= common
+                or (x < mx + mw and mx < x + w and y < my + mh and my < y + h)) then
+                return reject_native(self, diag,
+                    root ~= common and "root_mismatch" or "overlap", role)
+            end
+        end
+    end
+    return false
+end
+
+function M:_verify_render(restoring_objectives)
     if not self._layout_cache then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "layout_missing")
     end
-    if not self:_verify_backgrounds() or not self:_verify_labels() then self._render_verified = false; return false end
+    if not self:_verify_backgrounds() then
+        self._render_verified = false
+        return self:_mission_trace_verdict(false, "backgrounds")
+    end
+    if not self:_verify_labels() then
+        self._render_verified = false
+        return self:_mission_trace_verdict(false, "labels")
+    end
     local root_geom = self._layout_cache
+    if not panel_alive(self._root_panel) then
+        self._render_verified = false
+        return self:_mission_trace_verdict(false, "root_missing")
+    end
+    local visible_status, root_visible = safe_call(self._root_panel, "visible")
+    if visible_status ~= CALL_OK or root_visible ~= true then
+        self._render_verified = false
+        return self:_mission_trace_verdict(false, "root_visible")
+    end
     if not panel_alive(self._root_panel) or not actual_shape_matches(self._root_panel, {
         x=root_geom.root_x, y=root_geom.root_y, w=root_geom.root_w, h=root_geom.root_h
-    }) then self._render_verified = false; return false end
+    }) then
+        self._render_verified = false
+        return self:_mission_trace_verdict(false, "root_shape")
+    end
     local timer_enabled = self:_is_timer_enabled()
     if not self._timer_known or not timer_enabled then
+        if self:_native_objectives_conflict(restoring_objectives) then
+            self._render_verified = false
+            return self:_mission_trace_verdict(false,
+                self._trace_native_reason or "native_conflict")
+        end
         self._render_verified = true
-        return true
+        return self:_mission_trace_verdict(true, "ok")
     end
     if not self._timer_prim or not panel_alive(self._timer_prim) then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "timer_missing")
     end
     local geom = self._layout_cache
     if geom.timer.w <= 0 or geom.timer.h <= 0 or geom.font_size <= 0 then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "timer_geometry")
     end
     if self._root_panel and panel_alive(self._root_panel) then
         if not actual_shape_matches(self._root_panel, {
@@ -467,62 +834,68 @@ function M:_verify_render()
             w = geom.root_w, h = geom.root_h
         }) then
             self._render_verified = false
-            return false
+            return self:_mission_trace_verdict(false, "root_shape")
         end
     end
     if not actual_shape_matches(self._timer_prim, geom.timer) then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "timer_shape")
     end
     local ok_text, text = pcall(function() return self._timer_prim:text() end)
     if not ok_text or type(text) ~= "string" then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "timer_text_read")
     end
     local expected = self._timer_text or ""
     if text ~= expected then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "timer_text")
     end
     local ok_vis, vis = pcall(function() return self._timer_prim:visible() end)
     if not ok_vis or vis ~= true then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "timer_visible")
     end
     local ok_fs, fs = pcall(function() return self._timer_prim:font_size() end)
     if not ok_fs or type(fs) ~= "number" or fs <= 0 then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "timer_font_size")
     end
     if math.abs(fs - geom.font_size) > 0.5 then
         self._render_verified = false
-        return false
+        return self:_mission_trace_verdict(false, "timer_font_size")
     end
     if self._title_prim and panel_alive(self._title_prim) then
         if not actual_shape_matches(self._title_prim, geom.title) then
             self._render_verified = false
-            return false
+            return self:_mission_trace_verdict(false, "title_shape")
         end
     end
     if self._bags_prim and panel_alive(self._bags_prim) then
         if not actual_shape_matches(self._bags_prim, geom.bags) then
             self._render_verified = false
-            return false
+            return self:_mission_trace_verdict(false, "bags_shape")
         end
     end
     if self._bags_label_prim and panel_alive(self._bags_label_prim) then
         if not actual_shape_matches(self._bags_label_prim, geom.bags_label) then
             self._render_verified = false
-            return false
+            return self:_mission_trace_verdict(false, "bags_label_shape")
         end
     end
+    if self:_native_objectives_conflict(restoring_objectives) then
+        self._render_verified = false
+        return self:_mission_trace_verdict(false,
+            self._trace_native_reason or "native_conflict")
+    end
     self._render_verified = true
-    return true
+    return self:_mission_trace_verdict(true, "ok")
 end
 
 function M:_handle_render_failure()
     self._render_failed = true
     self._render_verified = false
+    if panel_alive(self._root_panel) then safe_call(self._root_panel, "set_visible", false) end
     self._layout_cache = nil
     if self._backgrounds then
         for _, p in pairs(self._backgrounds) do
@@ -969,6 +1342,10 @@ function M:_sync_bags_label_prim()
 end
 
 function M:_sync_primitives()
+    if not self._render_failed and panel_alive(self._root_panel) then
+        local status, visible = safe_call(self._root_panel, "visible")
+        if status ~= CALL_OK or visible ~= true then safe_call(self._root_panel, "set_visible", true) end
+    end
     self:_sync_timer_prim()
     self:_sync_title_prim()
     self:_sync_bags_label_prim()
@@ -1506,7 +1883,24 @@ if RequiredScript == REQUIRED_CONTEXT then
         end
     end
 
-    safe_hook(HUDManager, "feed_heist_time", "KyohHUD_Mission_FeedHeistTime", cb_feed)
+    local function wrapped_feed(self, time)
+        local rt = kyohud.hud.runtime
+        if not rt or type(rt._residual_stamp) ~= "function"
+            or type(rt._residual_record) ~= "function" then
+            cb_feed(self, time)
+            return
+        end
+        local probe = rt._residual_probe
+        if not probe or probe.done or not probe.active then
+            cb_feed(self, time)
+            return
+        end
+        local start = rt:_residual_stamp()
+        cb_feed(self, time)
+        rt:_residual_record("mission_feed", start)
+    end
+
+    safe_hook(HUDManager, "feed_heist_time", "KyohHUD_Mission_FeedHeistTime", wrapped_feed)
     safe_hook(HUDManager, "modify_heist_time", "KyohHUD_Mission_ModifyHeistTime", cb_modify)
     safe_hook(HUDManager, "loot_value_updated", "KyohHUD_Mission_LootValueUpdated", cb_loot_value)
     safe_hook(HUDManager, "_create_heist_timer", "KyohHUD_Mission_CreateHeistTimer", cb_create_timer)
@@ -1552,3 +1946,60 @@ if RequiredScript == GPC_CONTEXT then
     safe_hook(GamePlayCentralManager, "load", "KyohUD_Mission_GPCLoad", cb_gpc_load)
     safe_hook(GamePlayCentralManager, "sync_heist_time", "KyohUD_Mission_GPCSync", cb_gpc_sync)
 end
+
+local function install_residual_phase_wrappers()
+    local wrappers = M._residual_phase_wrappers
+    if type(wrappers) ~= "table" then
+        wrappers = {}
+        M._residual_phase_wrappers = wrappers
+    end
+    local function install(name, phase, returns_value)
+        local current = M[name]
+        if type(current) ~= "function" then return end
+        if current == wrappers[name] then return end
+        local original = current
+        local wrapper
+        if returns_value then
+            wrapper = function(self, ...)
+                local rt = kyohud.hud.runtime
+                if not rt or type(rt._residual_stamp) ~= "function"
+                    or type(rt._residual_record) ~= "function" then
+                    return original(self, ...)
+                end
+                local probe = rt._residual_probe
+                if not probe or probe.done or not probe.active then
+                    return original(self, ...)
+                end
+                local start = rt:_residual_stamp()
+                local result = original(self, ...)
+                rt:_residual_record(phase, start)
+                return result
+            end
+        else
+            wrapper = function(self, ...)
+                local rt = kyohud.hud.runtime
+                if not rt or type(rt._residual_stamp) ~= "function"
+                    or type(rt._residual_record) ~= "function" then
+                    original(self, ...)
+                    return
+                end
+                local probe = rt._residual_probe
+                if not probe or probe.done or not probe.active then
+                    original(self, ...)
+                    return
+                end
+                local start = rt:_residual_stamp()
+                original(self, ...)
+                rt:_residual_record(phase, start)
+            end
+        end
+        wrappers[name] = wrapper
+        M[name] = wrapper
+    end
+    install("_sync_primitives", "mission_sync", false)
+    install("_sync_title_prim", "mission_title_sync", false)
+    install("_update_layout", "mission_layout", false)
+    install("_verify_render", "mission_verify", true)
+    install("_verify_labels", "mission_labels_verify", true)
+end
+install_residual_phase_wrappers()

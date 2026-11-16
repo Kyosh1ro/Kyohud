@@ -944,6 +944,10 @@ function O:_capture_completion(entry_id)
     if not slot_idx then return end
     local slot = self._slot_prims[slot_idx]
     if not slot then return end
+    local rt = kyohud.hud.runtime
+    if rt and type(rt._residual_note_completion) == "function" then
+        rt:_residual_note_completion()
+    end
     local ly = self._layout_cache
     local text_w = ly.text_w
     local row_h = ly.row_h
@@ -1050,6 +1054,15 @@ function O:animate(t, dt)
     if not self._layout_cache then return end
     if type(dt) ~= "number" or dt ~= dt or dt == math.huge or dt == -math.huge or dt < 0 then dt = 0 end
     if dt > COMPLETION_TOTAL_T then dt = COMPLETION_TOTAL_T end
+    local rt = kyohud.hud.runtime
+    local phase_start = nil
+    if rt and type(rt._residual_stamp) == "function"
+        and type(rt._residual_record) == "function" then
+        local probe = rt._residual_probe
+        if probe and not probe.done and probe.active then
+            phase_start = rt:_residual_stamp()
+        end
+    end
     local any_active = false
     local needs_sync = false
     for i = 1, MAX_SLOTS do
@@ -1132,6 +1145,13 @@ function O:animate(t, dt)
         self:_sync_decorations()
         if not self:_verify_render() then
             self:_release_native()
+        end
+    end
+    if phase_start ~= nil then
+        if any_active then
+            rt:_residual_record("objectives_anim_active", phase_start)
+        else
+            rt:_residual_record("objectives_anim_idle", phase_start)
         end
     end
 end
@@ -3215,11 +3235,29 @@ local HUD_OBJ_CONTEXT = "lib/managers/hud/hudobjectives"
 
 kyohud.hud._installed_hooks = kyohud.hud._installed_hooks or {}
 
+local function residual_wrap_callback(fn)
+    return function(...)
+        local rt = kyohud.hud.runtime
+        if not rt or type(rt._residual_stamp) ~= "function"
+            or type(rt._residual_record) ~= "function" then
+            return fn(...)
+        end
+        local probe = rt._residual_probe
+        if not probe or probe.done or not probe.active then
+            return fn(...)
+        end
+        local start = rt:_residual_stamp()
+        local a, b, c, d, e = fn(...)
+        rt:_residual_record("objectives_callback", start)
+        return a, b, c, d, e
+    end
+end
+
 local function safe_hook(class, method, id, fn)
     if type(class) ~= "table" then return end
     if kyohud.hud._installed_hooks[id] then return end
     if type(class[method]) ~= "function" then return end
-    Hooks:PostHook(class, method, id, fn)
+    Hooks:PostHook(class, method, id, residual_wrap_callback(fn))
     kyohud.hud._installed_hooks[id] = true
 end
 
@@ -3227,7 +3265,7 @@ local function safe_pre_hook(class, method, id, fn)
     if type(class) ~= "table" then return end
     if kyohud.hud._installed_hooks[id] then return end
     if type(class[method]) ~= "function" then return end
-    Hooks:PreHook(class, method, id, fn)
+    Hooks:PreHook(class, method, id, residual_wrap_callback(fn))
     kyohud.hud._installed_hooks[id] = true
 end
 

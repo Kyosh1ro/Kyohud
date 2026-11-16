@@ -37,6 +37,13 @@ local function is_valid_known_quantity(v)
     return true
 end
 
+local function finite(v)
+    if type(v) ~= "number" then return false end
+    if v ~= v then return false end
+    if v == math.huge or v == -math.huge then return false end
+    return true
+end
+
 local function is_finite_positive_integer(v, max)
     if type(v) ~= "number" then return false end
     if v ~= v then return false end
@@ -52,6 +59,18 @@ local function safe_call(obj, method, ...)
     local ok_get, fn = pcall(function() return obj[method] end)
     if not ok_get or type(fn) ~= "function" then return false, nil end
     return pcall(fn, obj, ...)
+end
+
+local function residual_context()
+    local rt = kyohud.hud.runtime
+    if not rt then return nil end
+    if type(rt._residual_stamp) ~= "function"
+        or type(rt._residual_record) ~= "function" then
+        return nil
+    end
+    local probe = rt._residual_probe
+    if not probe or probe.done or not probe.active then return nil end
+    return rt
 end
 
 function M:refresh(manager)
@@ -267,6 +286,35 @@ local function quantity(raw)
     return {raw = type(raw) == "number" and raw or nil, known = is_valid_known_quantity(raw)}
 end
 
+local function current_game_time()
+    local clock_ok, timer = safe_call(TimerManager, "game")
+    local time_ok, now = safe_call(clock_ok and timer or nil, "time")
+    if not time_ok or not is_valid_known_quantity(now) then return nil, clock_ok and timer or nil end
+    return now, timer
+end
+
+local function observe_game_time(self)
+    local now, timer = current_game_time()
+    if now == nil then return nil, timer end
+    local guard = self._cooldown_clock_guard
+    if type(guard) ~= "table" or guard.clock ~= timer or guard.generation ~= self._source_generation then
+        self._cooldown_clock_guard = {clock = timer, generation = self._source_generation, last = now}
+        return now, timer
+    end
+    if now < guard.last then return nil, timer end
+    if now > guard.last then guard.last = now end
+    return now, timer
+end
+
+local function establish_clock_epoch(self, timer, now)
+    if timer == nil or not is_valid_known_quantity(now) then return end
+    self._cooldown_clock_guard = {clock = timer, generation = self._source_generation, last = now}
+end
+
+local function unknown_cooldown()
+    return {known = false, active = false, clock_kind = "game"}
+end
+
 function M:_capture_consumables(pm, peer_id)
     local snap = self._snapshot
     local specials = self._equipment_table.specials
@@ -303,33 +351,61 @@ function M:_capture_consumables(pm, peer_id)
     snap.projectile = projectile
     local gpc = managers.game_play_central
     local registry = pm._global and pm._global.synced_grenades
+    local timers = pm._timers
+    local record = timers and timers.replenish_grenades
     if self._projectile_id ~= projectile.projectile_id or self._gpc ~= gpc or self._grenade_registry ~= registry then
         self._activity = nil
-        self._cooldown_event = nil
+        local event = self._cooldown_event
+        local keep_event = type(event) == "table" and not event.cancelled
+            and event.manager == pm and event.timers == timers and record ~= nil
+            and event.record == record and event.registry == registry and event.gpc == gpc
+            and event.projectile_id == projectile.projectile_id
+        if not keep_event then self._cooldown_event = nil end
         self._projectile_id = projectile.projectile_id
         self._gpc = gpc
         self._grenade_registry = registry
     end
     local cooldown = {known = false, active = false, clock_kind = "game"}
+    local base_duration
     if projectile.projectile_id then
-        local good, remaining = safe_call(pm, "get_timer_remaining", "replenish_grenades")
-        if good and (remaining == nil or is_valid_known_quantity(remaining)) then
+        local good, value = safe_call(pm, "get_timer_remaining", "replenish_grenades")
+        if good and (value == nil or is_valid_known_quantity(value)) then
             cooldown.known = true
-            cooldown.active = remaining ~= nil and remaining > 0
-            cooldown.remaining = remaining
+            cooldown.active = value ~= nil and value > 0
+            cooldown.remaining = value
         end
-        if td and is_valid_positive_quantity(td.base_cooldown) then cooldown.duration = td.base_cooldown end
+        if td and is_valid_positive_quantity(td.base_cooldown) then
+            base_duration = td.base_cooldown
+            cooldown.duration = base_duration
+        end
     end
+    cooldown.base_duration = base_duration
     snap.cooldown = cooldown
-    local clock_ok, timer = safe_call(TimerManager, "game")
-    local time_ok, now = safe_call(clock_ok and timer or nil, "time")
-    if time_ok and is_valid_known_quantity(now) then
+    local now, clock = observe_game_time(self)
+    local event = self._cooldown_event
+    if type(event) == "table" and event.cancelled then
+        cooldown.known = true
+        cooldown.active = false
+        cooldown.remaining = nil
+    elseif now == nil then
+        cooldown.known = false
+        cooldown.active = false
+        cooldown.remaining = nil
+    else
         cooldown.sampled_at = now
-        local event = self._cooldown_event
-        if event and is_valid_positive_quantity(event.duration) then cooldown.duration = event.duration end
-    end
-    if self._cooldown_event and self._cooldown_event.cancelled then
-        cooldown.known=true;cooldown.active=false;cooldown.remaining=nil
+        if type(event) == "table" and is_valid_positive_quantity(event.duration)
+            and event.manager == pm and event.timers == timers and record ~= nil
+            and event.record == record and event.registry == registry and event.gpc == gpc
+            and event.projectile_id == projectile.projectile_id
+            and event.clock == clock and event.generation == self._source_generation
+            and (projectile.kind == "ability" or projectile.kind == "throwable")
+            and projectile.charges and projectile.charges.known == true then
+            cooldown.duration = event.duration
+            if cooldown.known and cooldown.active and is_valid_positive_quantity(cooldown.remaining)
+                and event.duration >= cooldown.remaining then
+                cooldown.integrated = true
+            end
+        end
     end
     snap.activity = self._activity or {known = false, active = false}
 end
@@ -339,6 +415,86 @@ local function detached(value)
     local result = {}
     for k, v in pairs(value) do result[k] = detached(v) end
     return result
+end
+
+function M:_fresh_cooldown()
+    local snap = self._snapshot
+    if not snap then return unknown_cooldown() end
+    local stored = snap.cooldown
+    local projectile = snap.projectile
+    if type(stored) ~= "table" or type(projectile) ~= "table" then return unknown_cooldown() end
+
+    local pm = managers and managers.player
+    if not pm or self._player_manager ~= pm or self._hud_manager ~= (managers and managers.hud) then
+        return unknown_cooldown()
+    end
+    local ok_unit, unit = safe_call(pm, "player_unit")
+    if not ok_unit or unit == nil or unit ~= self._player_unit then return unknown_cooldown() end
+    if type(alive) == "function" then
+        local ok_alive, is_alive = pcall(alive, unit)
+        if not ok_alive or is_alive ~= true then return unknown_cooldown() end
+    end
+    local ok_session, session = safe_call(managers.network, "session")
+    if not ok_session or session == nil or session ~= self._session then return unknown_cooldown() end
+    local ok_peer, peer = safe_call(session, "local_peer")
+    if not ok_peer or peer == nil then return unknown_cooldown() end
+    local ok_id, peer_id = safe_call(peer, "id")
+    if not ok_id or peer_id ~= self._peer_id then return unknown_cooldown() end
+    local equipment = pm._equipment
+    if not equipment or equipment ~= self._equipment_table then return unknown_cooldown() end
+    if equipment.selections ~= self._selections_table then return unknown_cooldown() end
+    local registry = pm._global and pm._global.synced_grenades
+    if not registry or registry ~= self._grenade_registry then return unknown_cooldown() end
+    if managers.game_play_central ~= self._gpc then return unknown_cooldown() end
+    local got, entry = safe_call(pm, "get_synced_grenades", peer_id)
+    if not got or type(entry) ~= "table" or type(entry.grenade) ~= "string" then
+        return unknown_cooldown()
+    end
+    if entry.grenade ~= self._projectile_id or projectile.projectile_id ~= self._projectile_id then
+        return unknown_cooldown()
+    end
+
+    local event = self._cooldown_event
+    local cooldown = {known = true, active = false, clock_kind = "game"}
+    if is_valid_positive_quantity(stored.base_duration) then
+        cooldown.duration = stored.base_duration
+    end
+    if type(event) == "table" and event.cancelled then
+        cooldown.remaining = nil
+        return cooldown
+    end
+
+    local now, clock = observe_game_time(self)
+    if now == nil then return unknown_cooldown() end
+    if stored.sampled_at ~= nil and now < stored.sampled_at then return unknown_cooldown() end
+
+    local value_ok, value = safe_call(pm, "get_timer_remaining", "replenish_grenades")
+    if not value_ok or not (value == nil or is_valid_known_quantity(value)) then
+        return unknown_cooldown()
+    end
+    cooldown.sampled_at = now
+    if value ~= nil then
+        cooldown.remaining = value
+        cooldown.active = value > 0
+    end
+
+    local timers = pm._timers
+    local record = timers and timers.replenish_grenades
+    if type(event) == "table" and is_valid_positive_quantity(event.duration)
+        and event.manager == pm and event.timers == timers and record ~= nil
+        and event.record == record and event.registry == registry
+        and event.gpc == managers.game_play_central
+        and event.projectile_id == self._projectile_id
+        and event.clock == clock and event.generation == self._source_generation
+        and (projectile.kind == "ability" or projectile.kind == "throwable")
+        and projectile.charges and projectile.charges.known == true then
+        cooldown.duration = event.duration
+        if cooldown.active and is_valid_positive_quantity(value)
+            and event.duration >= value then
+            cooldown.integrated = true
+        end
+    end
+    return cooldown
 end
 
 function M:get_snapshot()
@@ -375,7 +531,7 @@ function M:get_snapshot()
         unsupported = self._snapshot.unsupported,
         cables = detached(self._snapshot.cables),
         projectile = detached(self._snapshot.projectile),
-        cooldown = self:_timed_snapshot(self._snapshot.cooldown),
+        cooldown = self:_fresh_cooldown(),
         activity = self:_timed_snapshot(self._snapshot.activity)
     }
 end
@@ -399,10 +555,14 @@ function M:invalidate()
     self._invalidated = true
     self._activity = nil
     self._cooldown_event = nil
+    self._cooldown_clock_guard = nil
     self._cable_zero = nil
     self._equipment_table = nil
     self._projectile_id = nil
     self._amount_text = nil
+    self._grenade_flash_ok = false
+    self._grenade_flash_source = nil
+    self._grenade_flash_rejected = nil
     self._dirty = true
 end
 
@@ -520,6 +680,9 @@ function M:unmount()
     self._last_ui=nil;self._last_poll=nil
     self._icon_cache=nil
     self._required_width=nil;self._required_scale=nil
+    self._grenade_flash_ok=false
+    self._grenade_flash_source=nil
+    self._grenade_flash_rejected=nil
 end
 
 function M:_name(id, key, fallback)
@@ -531,21 +694,273 @@ function M:_name(id, key, fallback)
     return cached.text
 end
 
+local PROJECTILE_ICON_DEFAULT = {0, 0, 32, 32}
+local FLASH_GROUP = "local_p_grenade_flash"
+local FLASH_BASE_LEASE = "local_p_cooldown"
+local FLASH_SOURCES = {
+    {base = "grenades_radial", ghost = "grenades_radial_ghost"},
+    {base = "grenades_icon", ghost = "grenades_icon_ghost"},
+}
+
 -- Resource lookup is bounded to a new icon identifier, never repeated per draw.
-function M:_icon(id)
+-- The projectile channel forwards the native 32x32 default rect and keeps its
+-- own cache bucket so it never aliases an ordinary default-rect lookup.
+function M:_icon(id, projectile_default)
     if type(id)~="string" then return nil end
     self._icon_cache=self._icon_cache or {}
-    if self._icon_cache[id]~=nil then return self._icon_cache[id] or nil end
+    local bucket_key=projectile_default and "projectile32" or "default"
+    local bucket=self._icon_cache[bucket_key]
+    if type(bucket)~="table" then bucket={};self._icon_cache[bucket_key]=bucket end
+    if bucket[id]~=nil then return bucket[id] or nil end
+    local default_rect
+    if projectile_default then
+        default_rect={projectile_default[1],projectile_default[2],projectile_default[3],projectile_default[4]}
+    end
     local ok,result=pcall(function()
-        local texture,rect=tweak_data.hud_icons:get_icon_data(id)
+        local texture,rect=tweak_data.hud_icons:get_icon_data(id,default_rect)
         if type(texture)~="string" or type(rect)~="table" then return nil end
         for i=1,4 do if type(rect[i])~="number" or rect[i]~=rect[i] or math.abs(rect[i])==math.huge then return nil end end
         if rect[3]<=0 or rect[4]<=0 then return nil end
         if not DB:has(Idstring("texture"),Idstring(texture)) then return nil end
         return {texture=texture,rect={rect[1],rect[2],rect[3],rect[4]}}
     end)
-    self._icon_cache[id]=ok and result or false
+    bucket[id]=ok and result or false
     return ok and result or nil
+end
+
+local function flash_child(parent, name)
+    if not live(parent) then return nil end
+    local ok, child = safe_call(parent, "child", name)
+    if not ok or not live(child) then return nil end
+    local ok_parent, immediate = safe_call(child, "parent")
+    if not ok_parent or immediate ~= parent then return nil end
+    return child
+end
+
+local function flash_group_holds_visible(group_key, panel)
+    local rt = kyohud.hud.runtime
+    if not rt or type(rt._h5_group_holds_visible) ~= "function" then return false end
+    local ok, held = pcall(rt._h5_group_holds_visible, rt, group_key, panel)
+    return ok and held == true
+end
+
+local function flash_leaf_state(panel, require_white, lease_group)
+    if not live(panel) then return nil end
+    local ok_visible, visible = safe_call(panel, "visible")
+    if not ok_visible or (visible ~= true and visible ~= false) then return nil end
+    if visible ~= true and not flash_group_holds_visible(lease_group, panel) then return nil end
+    local ok_alpha, alpha = safe_call(panel, "alpha")
+    if not ok_alpha or not finite(alpha) or alpha < 0 or alpha > 1 then return nil end
+    local ok_x, x = safe_call(panel, "x")
+    local ok_y, y = safe_call(panel, "y")
+    local ok_w, w = safe_call(panel, "w")
+    local ok_h, h = safe_call(panel, "h")
+    if not ok_x or not ok_y or not ok_w or not ok_h then return nil end
+    if not finite(x) or not finite(y) or not finite(w) or not finite(h) then return nil end
+    if w <= 0 or h <= 0 then return nil end
+    local phase_alpha = alpha
+    if require_white then
+        local ok_color, color = safe_call(panel, "color")
+        if not ok_color or not color then return nil end
+        if not finite(color.r) or not finite(color.g) or not finite(color.b) then return nil end
+        if math.abs(color.r - 1) > 0.001 or math.abs(color.g - 1) > 0.001
+            or math.abs(color.b - 1) > 0.001 then return nil end
+        if not finite(color.a) or color.a < 0 or color.a > 1 then return nil end
+        phase_alpha = color.a
+    end
+    return {alpha = phase_alpha, x = x, y = y, w = w, h = h}
+end
+
+local function flash_centered_scaled(ghost, base, scale)
+    local function close(a, b) return finite(a) and finite(b) and math.abs(a - b) <= 0.05 end
+    return close(ghost.w, base.w * scale) and close(ghost.h, base.h * scale)
+        and close(ghost.x + ghost.w * .5, base.x + base.w * .5)
+        and close(ghost.y + ghost.h * .5, base.y + base.h * .5)
+end
+
+function M:_grenade_flash_chain()
+    local mgr = self._hud_manager or (managers and managers.hud)
+    local panels = mgr and mgr._teammate_panels
+    local slot = HUDManager and HUDManager.PLAYER_PANEL or nil
+    if not finite(slot) then return nil end
+    local entry = type(panels) == "table" and panels[slot] or nil
+    local entry_panel = type(entry) == "table" and entry._panel or nil
+    if not live(entry_panel) then return nil end
+    local player = flash_child(entry_panel, "player")
+    if not player then return nil end
+    local grenades = flash_child(player, "grenades_panel")
+    if not grenades then return nil end
+    local base1 = flash_child(grenades, FLASH_SOURCES[1].base)
+    local ghost1 = flash_child(grenades, FLASH_SOURCES[1].ghost)
+    local base2 = flash_child(grenades, FLASH_SOURCES[2].base)
+    local ghost2 = flash_child(grenades, FLASH_SOURCES[2].ghost)
+    if not base1 or not ghost1 or not base2 or not ghost2 then return nil end
+    return entry_panel, grenades, {base1, base2}, {ghost1, ghost2}
+end
+
+function M:_grenade_flash_fresh(snap, projectile)
+    local pm = managers and managers.player
+    if not pm or self._player_manager ~= pm or self._hud_manager ~= (managers and managers.hud) then
+        return false
+    end
+    local ok_unit, unit = safe_call(pm, "player_unit")
+    if not ok_unit or unit == nil or unit ~= self._player_unit then return false end
+    if type(alive) == "function" then
+        local ok_alive, is_alive = pcall(alive, unit)
+        if not ok_alive or is_alive ~= true then return false end
+    end
+    local ok_session, session = safe_call(managers.network, "session")
+    if not ok_session or session == nil or session ~= self._session then return false end
+    local ok_peer, peer = safe_call(session, "local_peer")
+    if not ok_peer or peer == nil then return false end
+    local ok_id, peer_id = safe_call(peer, "id")
+    if not ok_id or peer_id ~= self._peer_id then return false end
+    local equipment = pm._equipment
+    if not equipment or equipment ~= self._equipment_table then return false end
+    if equipment.selections ~= self._selections_table then return false end
+    local registry = pm._global and pm._global.synced_grenades
+    if not registry or registry ~= self._grenade_registry then return false end
+    if managers.game_play_central ~= self._gpc then return false end
+    local got, entry = safe_call(pm, "get_synced_grenades", peer_id)
+    if not got or type(entry) ~= "table" or type(entry.grenade) ~= "string" then return false end
+    if entry.grenade ~= self._projectile_id
+        or projectile.projectile_id ~= self._projectile_id then return false end
+    local amount_ok, amount = safe_call(pm, "get_grenade_amount", peer_id)
+    if not amount_ok or not is_valid_known_quantity(amount) then return false end
+    local maximum_ok, maximum = safe_call(pm, "get_max_grenades", entry.grenade)
+    if not maximum_ok or not is_valid_known_quantity(maximum) then return false end
+    if type(snap) ~= "table" or type(snap.projectile) ~= "table" then return false end
+    local snapshot = snap.projectile
+    local charges = snapshot.charges
+    local snapshot_maximum = snapshot.maximum
+    if type(charges) ~= "table" or charges.known ~= true or charges.raw ~= amount then return false end
+    if type(snapshot_maximum) ~= "table" or snapshot_maximum.known ~= true
+        or snapshot_maximum.raw ~= maximum then return false end
+    local projectiles = tweak_data and tweak_data.blackmarket and tweak_data.blackmarket.projectiles
+    local td = projectiles and projectiles[entry.grenade]
+    if type(td) ~= "table" then return false end
+    local ability = td.ability == true or (type(td.ability) == "string" and td.ability ~= "")
+    local throwable = td.throwable == true or td.is_a_grenade == true
+    local kind
+    if ability and not throwable then kind = "ability"
+    elseif throwable and not ability then kind = "throwable" end
+    if kind ~= projectile.kind then return false end
+    return true
+end
+
+function M:_read_grenade_flash_source(snap)
+    local row = type(self._rows) == "table" and self._rows[4] or nil
+    if not row or not row._tile or type(row._icon_descriptor) ~= "table" then return nil end
+    local entry_panel, grenades, bases, ghosts = self:_grenade_flash_chain()
+    if not entry_panel then return nil end
+    snap = snap or self:get_snapshot()
+    if type(snap) ~= "table" or snap.source_known ~= true or snap.unsupported then return nil end
+    if snap.source_generation ~= self._source_generation then return nil end
+    local projectile = snap.projectile
+    if type(projectile) ~= "table" then return nil end
+    if projectile.kind ~= "ability" and projectile.kind ~= "throwable" then return nil end
+    if not (projectile.charges and projectile.charges.known == true) then return nil end
+    if not self:_grenade_flash_fresh(snap, projectile) then return nil end
+    local states = {}
+    for i = 1, 2 do
+        local ghost = flash_leaf_state(ghosts[i], true, FLASH_GROUP)
+        local base = flash_leaf_state(bases[i], false, FLASH_BASE_LEASE)
+        if not ghost or not base then return nil end
+        states[i] = {ghost = ghost, base = base}
+    end
+    local alpha = states[1].ghost.alpha
+    if math.abs(alpha - states[2].ghost.alpha) > 0.005 then return nil end
+    local scale = 1 + (1 - alpha)
+    if not flash_centered_scaled(states[1].ghost, states[1].base, scale)
+        or not flash_centered_scaled(states[2].ghost, states[2].base, scale) then
+        return nil
+    end
+    return {
+        entry_panel = entry_panel,
+        parent = grenades,
+        manager = self._hud_manager or (managers and managers.hud),
+        targets = {ghosts[1], ghosts[2]},
+        bases = {bases[1], bases[2]},
+        ghost_names = {FLASH_SOURCES[1].ghost, FLASH_SOURCES[2].ghost},
+        base_names = {FLASH_SOURCES[1].base, FLASH_SOURCES[2].base},
+        alpha = alpha,
+        scale = scale,
+    }
+end
+
+function M:_sync_grenade_flash(snap)
+    self._grenade_flash_rejected = false
+    local row = type(self._rows) == "table" and self._rows[4] or nil
+    if not row or not row._tile then
+        self._grenade_flash_ok = false
+        self._grenade_flash_source = nil
+        return false
+    end
+    local source = self:_read_grenade_flash_source(snap)
+    self._grenade_flash_source = source
+    if not source or source.alpha <= 0 then
+        row:_hide_grenade_flash()
+        self._grenade_flash_ok = false
+        self._grenade_flash_source = nil
+        return false
+    end
+    local pcall_ok, rendered = pcall(function() return row:render_grenade_flash(source.alpha, source.scale) end)
+    self._grenade_flash_ok = pcall_ok and rendered == true and row:_verify_grenade_flash() == true
+    if not self._grenade_flash_ok then
+        row:_hide_grenade_flash()
+        self._grenade_flash_source = nil
+    end
+    return self._grenade_flash_ok
+end
+
+function M:_throttle_grenade_flash()
+    local row = type(self._rows) == "table" and self._rows[4] or nil
+    if not row or not row._tile then
+        self._grenade_flash_ok = false
+        self._grenade_flash_source = nil
+        return false
+    end
+    if self._grenade_flash_rejected == true then
+        return false
+    end
+    if self._grenade_flash_ok == true then
+        if not row:_verify_grenade_flash() then
+            self._grenade_flash_ok = false
+            self._grenade_flash_source = nil
+            self._grenade_flash_rejected = true
+            return false
+        end
+    elseif not row:_verify_grenade_flash() then
+        self._grenade_flash_rejected = true
+        return false
+    end
+    local source = self:_read_grenade_flash_source()
+    self._grenade_flash_source = source
+    if not source or source.alpha <= 0 then
+        row:_hide_grenade_flash()
+        self._grenade_flash_ok = false
+        self._grenade_flash_source = nil
+        return false
+    end
+    local pcall_ok, rendered = pcall(function() return row:render_grenade_flash(source.alpha, source.scale) end)
+    self._grenade_flash_ok = pcall_ok and rendered == true and row:_verify_grenade_flash() == true
+    if not self._grenade_flash_ok then
+        row:_hide_grenade_flash()
+        self._grenade_flash_source = nil
+    end
+    return self._grenade_flash_ok
+end
+
+function M:_verify_grenade_flash()
+    local row = type(self._rows) == "table" and self._rows[4] or nil
+    if not row or not row._tile or self._grenade_flash_ok ~= true then return false end
+    if row._flash_active ~= true then return false end
+    local ok_visible, visible = safe_call(row._grenade_flash, "visible")
+    if not ok_visible or visible ~= true then return false end
+    local source = self._grenade_flash_source
+    if type(source) ~= "table" or not finite(source.alpha) or source.alpha <= 0 then return false end
+    if type(source.targets) ~= "table" or #source.targets ~= 2 then return false end
+    return row:_verify_grenade_flash() == true
 end
 
 local function temporal_eligible(channel, projectile_kind, channel_index)
@@ -592,11 +1007,25 @@ function M:_present()
     local kind=projectile.kind=="ability" and texts.ability or projectile.kind=="throwable" and texts.throwable or "--"
     local label=self:_name(projectile.projectile_id,projectile.name_id,kind)
     local td=tweak_data and tweak_data.blackmarket and tweak_data.blackmarket.projectiles and tweak_data.blackmarket.projectiles[projectile.projectile_id]
-    cells[#cells+1]={i=4,label=label,value=count_text(projectile.charges),icon=self:_icon(td and td.icon)}
+    local cooldown=snap.cooldown
+    local integrated=cooldown and cooldown.integrated==true and cooldown.active==true
+    local grenade_value=count_text(projectile.charges)
+    local grenade_progress
+    if integrated then
+        local remaining=cooldown.remaining
+        if is_valid_positive_quantity(remaining) and is_valid_positive_quantity(cooldown.duration)
+            and remaining<=cooldown.duration then
+            grenade_value=string.format("%ds",math.ceil(remaining))
+            grenade_progress=math.min(1,math.max(0,1-remaining/cooldown.duration))
+        else
+            integrated=false
+        end
+    end
+    cells[#cells+1]={i=4,label=label,value=grenade_value,width_value=count_text(projectile.charges),progress=grenade_progress,icon=self:_icon(td and td.icon,PROJECTILE_ICON_DEFAULT)}
     local required=math.max(0,#cells-1)*2*base.e
     for position,cell in ipairs(cells) do
         cell.both=true
-        cell.w=self._rows[cell.i]:cell_width(cell.value,base.e,cell.both)
+        cell.w=self._rows[cell.i]:cell_width(cell.width_value or cell.value,base.e,cell.both)
         if not cell.w then safe_call(self._root,"set_visible",false);return end
         required=required+cell.w
     end
@@ -609,7 +1038,9 @@ function M:_present()
     end
     local temporal_count=0
     for i,ch in ipairs({snap.cooldown,snap.activity}) do
-        if temporal_eligible(ch,projectile.kind,i) then temporal_count=temporal_count+1 end
+        if not (i==1 and integrated) and temporal_eligible(ch,projectile.kind,i) then
+            temporal_count=temporal_count+1
+        end
     end
     self._temporal_height=temporal_count*18*base.e
     local geom=self:_geometry()
@@ -621,7 +1052,7 @@ function M:_present()
     for _,cell in ipairs(cells) do
         local row=self._rows[cell.i]
         row:cell_layout(x,self._temporal_height+12*base.e,cell.w,base.h-22*base.e,geom.e,cell.both)
-        row:render(cell.label,cell.value,nil,cell.selected,cell.icon)
+        row:render(cell.label,cell.value,cell.progress,cell.selected,cell.icon)
         self._visible_rows[cell.i]=true
         x=x+cell.w+2*geom.e
     end
@@ -635,6 +1066,7 @@ function M:_present()
             if channel.active and is_valid_positive_quantity(channel.duration) then progress=channel.remaining/channel.duration end
         end
         local shown=temporal_eligible(channel,projectile.kind,i)
+        if i==1 and integrated then shown=false end
         self._visible_rows[4+i]=shown==true
         if shown then
             self._rows[4+i]:layout(0,temporal_y,geom.w,18*geom.e)
@@ -643,6 +1075,7 @@ function M:_present()
         else safe_call(self._rows[4+i]._root,"set_visible",false) end
     end
     safe_call(self._root,"set_visible",true)
+    self:_sync_grenade_flash(snap)
     if not self:verify() then safe_call(self._root,"set_visible",false) end
 end
 
@@ -691,10 +1124,41 @@ function M:destroy(manager)
     self:unmount();self:invalidate();self._manager=nil
 end
 
+function M:_animate_recharge()
+    if not enabled() then return end
+    if not live(self._root) or type(self._rows)~="table" then return end
+    local shown,visible=safe_call(self._root,"visible")
+    if not shown or visible~=true then return end
+    local row=self._rows[4]
+    if not row or not row._tile or not live(row._recharge_reveal) or row._progress==nil then return end
+    local cooldown=self:_fresh_cooldown()
+    if type(cooldown)~="table" or cooldown.known~=true then
+        safe_call(self._root,"set_visible",false)
+        return
+    end
+    if cooldown.integrated~=true or cooldown.active~=true then return end
+    local remaining=cooldown.remaining
+    if not (is_valid_positive_quantity(remaining) and is_valid_positive_quantity(cooldown.duration)
+        and remaining<=cooldown.duration) then return end
+    local progress=math.min(1,math.max(0,1-remaining/cooldown.duration))
+    local value=string.format("%ds",math.ceil(remaining))
+    if not row:animate_recharge(value,progress) then
+        safe_call(self._root,"set_visible",false)
+    end
+end
+
 function M:update(manager,t,dt)
     -- quality split approved 2026-11-10
     self._update_ran_now = false
     self._verify_ok_now = false
+    local residual_rt, residual_start
+    local runtime = kyohud.hud.runtime
+    local probe = runtime and runtime._residual_probe
+    if probe and probe.active and not probe.done
+        and type(runtime._residual_stamp) == "function" then
+        residual_rt = runtime
+        residual_start = runtime:_residual_stamp()
+    end
     if not managers or manager~=managers.hud or not is_valid_known_quantity(t) then return end
     if not enabled() then self:unmount();return end
     if not live(self._root) then
@@ -702,7 +1166,15 @@ function M:update(manager,t,dt)
         self._last_mount=t;self:mount(manager)
     end
     if not live(self._root) then return end
-    if self._last_ui and t>=self._last_ui and t-self._last_ui<.05 then return end
+    if self._last_ui and t>=self._last_ui and t-self._last_ui<.05 then
+        if residual_rt and residual_start ~= nil
+            and type(residual_rt._residual_record) == "function" then
+            residual_rt:_residual_record("equipment_throttled", residual_start)
+        end
+        self:_throttle_grenade_flash()
+        self:_animate_recharge()
+        return
+    end
     self._last_ui=t
     -- quality split approved 2026-11-10: main block ran, not a throttle return.
     self._update_ran_now = true
@@ -781,8 +1253,25 @@ elseif RequiredScript == "lib/managers/hudmanagerpd2" then
     install(HUDManager, "set_teammate_grenade_cooldown", function(self, i, data)
         if not local_panel(self, i) then return end
         notify()
-        M._cooldown_event = type(data) == "table" and {duration = data.duration} or {cancelled = true}
-        M._dirty = true
+        local pm = managers.player
+        local timers = pm and pm._timers
+        local registry = pm and pm._global and pm._global.synced_grenades
+        local got, entry = safe_call(pm, "get_synced_grenades", M._peer_id)
+        local projectile_id = got and type(entry) == "table" and entry.grenade or nil
+        if type(data) == "table" then
+            local now, clock = current_game_time()
+            if is_valid_positive_quantity(data.duration) and now ~= nil then
+                establish_clock_epoch(M, clock, now)
+            end
+            M._cooldown_event = {duration = data.duration, manager = pm, timers = timers,
+                record = timers and timers.replenish_grenades,
+                registry = registry, gpc = managers.game_play_central,
+                projectile_id = projectile_id, clock = clock,
+                generation = M._source_generation}
+        else
+            M._cooldown_event = {cancelled = true}
+        end
+        notify()
     end)
     for _, method in ipairs({"set_cable_tie", "set_cable_ties_amount", "set_deployable_equipment",
         "set_teammate_deployable_equipment_amount", "set_teammate_grenades",
@@ -808,3 +1297,50 @@ elseif RequiredScript == "lib/managers/hudmanagerpd2" then
         if index then capture_text(self, i, index, data) end
     end)
 end
+
+-- Opt-in residual instrumentation only: the wrappers resolve the runtime probe
+-- on each call, add no diagnostics when it is absent/done, and are reinstalled
+-- over the fresh method definitions on each chunk load. Phases are inclusive;
+-- snapshot/verify nest inside present and must never be summed.
+local function install_residual_phase_wrappers()
+    local wrappers = M._residual_phase_wrappers
+    if type(wrappers) ~= "table" then
+        wrappers = {}
+        M._residual_phase_wrappers = wrappers
+    end
+    local function install(name, phase, returns_value)
+        local current = M[name]
+        if type(current) ~= "function" then return end
+        if current == wrappers[name] then return end
+        local original = current
+        local wrapper
+        if returns_value then
+            wrapper = function(self, ...)
+                local rt = residual_context()
+                if not rt then return original(self, ...) end
+                local start = rt:_residual_stamp()
+                local result = original(self, ...)
+                rt:_residual_record(phase, start)
+                return result
+            end
+        else
+            wrapper = function(self, ...)
+                local rt = residual_context()
+                if not rt then original(self, ...); return end
+                local start = rt:_residual_stamp()
+                original(self, ...)
+                rt:_residual_record(phase, start)
+            end
+        end
+        wrappers[name] = wrapper
+        M[name] = wrapper
+    end
+    install("refresh", "equipment_collect", false)
+    install("_fresh_cooldown", "equipment_snapshot", true)
+    install("_present", "equipment_present", false)
+    install("_animate_recharge", "equipment_present", true)
+    install("_sync_grenade_flash", "equipment_present", true)
+    install("_throttle_grenade_flash", "equipment_present", true)
+    install("verify", "equipment_verify", true)
+end
+install_residual_phase_wrappers()

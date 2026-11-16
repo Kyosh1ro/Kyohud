@@ -488,16 +488,51 @@ class ActorsConditionWithLocalUnitSurvivesRefreshAndReloadTests(unittest.TestCas
             _uid = after_refresh and after_refresh.unit_id or nil
             _gen = after_refresh and after_refresh.generation or nil
 
-            -- No raw reference source table in snapshot.
+            -- No raw reference source table in snapshot. health/armor and the
+            -- detached public health_effects copy are the only allowed tables.
             _raw_ref_keys = {}
             if after_refresh then
                 for k, v in pairs(after_refresh) do
-                    if type(v) == "table" and k ~= "health" and k ~= "armor" then
+                    if type(v) == "table" and k ~= "health" and k ~= "armor"
+                        and k ~= "health_effects" then
                         table.insert(_raw_ref_keys, k)
                     end
                 end
             end
             _raw_ref_count = #_raw_ref_keys
+
+            -- Detached health_effects: mutate the returned public tables, then
+            -- reread WITHOUT refresh; values must not leak back.
+            local fx = after_refresh and after_refresh.health_effects or nil
+            local fx_dd = fx and fx.delayed_damage or nil
+            local fx_sh = fx and fx.stored_health or nil
+            _fx_present = fx ~= nil and fx_dd ~= nil and fx_sh ~= nil
+            _fx_dd_known_before = fx_dd and fx_dd.known
+            _fx_dd_amount_before = fx_dd and fx_dd.amount or nil
+            _fx_sh_known_before = fx_sh and fx_sh.known
+            _fx_sh_ratio_before = fx_sh and fx_sh.ratio or nil
+            _fx_sh_max_ratio_before = fx_sh and fx_sh.max_ratio or nil
+            if _fx_present then
+                fx_dd.known = true
+                fx_dd.amount = 999
+                fx_sh.known = true
+                fx_sh.ratio = 0.99
+                fx_sh.max_ratio = 0.99
+            end
+
+            local fx_reread = kyohud.hud.actors:get_actor(HUDManager.PLAYER_PANEL)
+            local rfx = fx_reread and fx_reread.health_effects or nil
+            local rdd = rfx and rfx.delayed_damage or nil
+            local rsh = rfx and rfx.stored_health or nil
+            _fx_reread_present = rfx ~= nil and rdd ~= nil and rsh ~= nil
+            _fx_distinct = fx ~= nil and rfx ~= nil and rfx ~= fx
+            _fx_dd_distinct = fx_dd ~= nil and rdd ~= nil and rdd ~= fx_dd
+            _fx_sh_distinct = fx_sh ~= nil and rsh ~= nil and rsh ~= fx_sh
+            _fx_dd_known_after = rdd and rdd.known
+            _fx_dd_amount_after = rdd and rdd.amount or nil
+            _fx_sh_known_after = rsh and rsh.known
+            _fx_sh_ratio_after = rsh and rsh.ratio or nil
+            _fx_sh_max_ratio_after = rsh and rsh.max_ratio or nil
         ''')
 
         # Chunk reload: re-execute actors.lua source.
@@ -543,6 +578,38 @@ class ActorsConditionWithLocalUnitSurvivesRefreshAndReloadTests(unittest.TestCas
 
         self.assertEqual(int(g._raw_ref_count), 0,
             "RED: snapshot must not expose raw references to source tables")
+
+        self.assertTrue(bool(g._fx_present),
+            "precondition: health_effects must expose both nested tables")
+        self.assertEqual(g._fx_dd_known_before, False,
+            "precondition: delayed_damage.known must be false without a getter")
+        self.assertIsNone(g._fx_dd_amount_before,
+            "precondition: delayed_damage.amount must be nil without a getter")
+        self.assertEqual(g._fx_sh_known_before, False,
+            "precondition: stored_health.known must be false without getters")
+        self.assertIsNone(g._fx_sh_ratio_before,
+            "precondition: stored_health.ratio must be nil without getters")
+        self.assertIsNone(g._fx_sh_max_ratio_before,
+            "precondition: stored_health.max_ratio must be nil without getters")
+
+        self.assertTrue(bool(g._fx_reread_present),
+            "RED: reread must still expose both health_effects nested tables")
+        self.assertTrue(bool(g._fx_distinct),
+            "RED: health_effects must be detached; reread must return a new table")
+        self.assertTrue(bool(g._fx_dd_distinct),
+            "RED: delayed_damage must be detached; reread must return a new table")
+        self.assertTrue(bool(g._fx_sh_distinct),
+            "RED: stored_health must be detached; reread must return a new table")
+        self.assertEqual(g._fx_dd_known_after, False,
+            "RED: mutating delayed_damage.known must not leak into a reread")
+        self.assertIsNone(g._fx_dd_amount_after,
+            "RED: mutating delayed_damage.amount must not leak into a reread")
+        self.assertEqual(g._fx_sh_known_after, False,
+            "RED: mutating stored_health.known must not leak into a reread")
+        self.assertIsNone(g._fx_sh_ratio_after,
+            "RED: mutating stored_health.ratio must not leak into a reread")
+        self.assertIsNone(g._fx_sh_max_ratio_after,
+            "RED: mutating stored_health.max_ratio must not leak into a reread")
 
         self.assertEqual(g._cond_after_reload, "down",
             "RED: condition must survive chunk reload + refresh")

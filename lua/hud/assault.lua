@@ -481,6 +481,14 @@ A._transition_old_color_r = A._transition_old_color_r
 A._transition_old_color_g = A._transition_old_color_g
 A._transition_old_color_b = A._transition_old_color_b
 A._cached_label_key = A._cached_label_key
+A._force_full = A._force_full or false
+A._last_full_time = A._last_full_time
+A._last_verify_time = A._last_verify_time
+A._prov_root = A._prov_root
+A._prov_parent = A._prov_parent
+A._prov_manager = A._prov_manager
+A._prov_layout = A._prov_layout
+A._prov_source = A._prov_source
 
 A._after_assault_active = A._after_assault_active or false
 A._after_assault_start = A._after_assault_start
@@ -611,6 +619,28 @@ local function a_texture_matches(actual, expected_path)
         return actual:key() == Idstring(expected_path):key()
     end)
     return ok and matches == true
+end
+
+local function a_index(obj, key)
+    return obj[key]
+end
+
+local function a_read_method(prim, method_name)
+    if not prim then return false end
+    local ok_get, fn = pcall(a_index, prim, method_name)
+    if not ok_get or type(fn) ~= "function" then return false end
+    local ok, value = pcall(fn, prim)
+    if not ok then return false end
+    return true, value
+end
+
+local function a_read_text_rect(prim)
+    if not prim then return false end
+    local ok_get, fn = pcall(a_index, prim, "text_rect")
+    if not ok_get or type(fn) ~= "function" then return false end
+    local ok, x, y, w, h = pcall(fn, prim)
+    if not ok then return false end
+    return true, x, y, w, h
 end
 
 local function a_read_color(prim)
@@ -852,7 +882,7 @@ function A:_resolve_display_key()
     return key
 end
 
-function A:_update_banner_alternation(dt)
+function A:_update_banner_alternation_residual_body(dt)
     local old = self._display_reminder == true
     local key = self:_resolve_label_key()
     local active = (self._state.active == true or self._state.endless == true)
@@ -875,6 +905,22 @@ function A:_update_banner_alternation(dt)
     self._banner_phase = key
     self._display_reminder = active and (self._banner_clock or 0) >= 6
     if old ~= self._display_reminder then self._data_dirty = true end
+end
+
+function A:_update_banner_alternation(dt)
+    local rt = kyohud.hud.runtime
+    if not rt or type(rt._residual_stamp) ~= "function"
+        or type(rt._residual_record) ~= "function" then
+        return self:_update_banner_alternation_residual_body(dt)
+    end
+    local probe = rt._residual_probe
+    if not probe or probe.done or not probe.active then
+        return self:_update_banner_alternation_residual_body(dt)
+    end
+    local start = rt:_residual_stamp()
+    local result = self:_update_banner_alternation_residual_body(dt)
+    rt:_residual_record("assault_animation", start)
+    return result
 end
 
 function A:_resolve_hostages_text()
@@ -1209,6 +1255,7 @@ function A:_ensure_converted_icon()
 end
 
 function A:_ensure_primitives()
+    self:_quality_mark_full()
     self:_ensure_bg_rect()
     self:_ensure_ticker_panel()
     self:_ensure_ticker_texts()
@@ -1527,7 +1574,7 @@ function A:_start_label_transition(old_text, old_x_a, old_x_b, old_w, old_r, old
     end
 end
 
-function A:_update_transition(dt)
+function A:_update_transition_residual_body(dt)
     if not self._transition_active then return end
     if not a_is_finite(dt) or dt <= 0 then return end
     self._transition_elapsed = (self._transition_elapsed or 0) + dt
@@ -1549,6 +1596,22 @@ function A:_update_transition(dt)
     if self._outgoing_ticker_b and a_panel_alive(self._outgoing_ticker_b) then
         a_safe_call(self._outgoing_ticker_b, "set_alpha", 1.0 - progress)
     end
+end
+
+function A:_update_transition(dt)
+    local rt = kyohud.hud.runtime
+    if not rt or type(rt._residual_stamp) ~= "function"
+        or type(rt._residual_record) ~= "function" then
+        return self:_update_transition_residual_body(dt)
+    end
+    local probe = rt._residual_probe
+    if not probe or probe.done or not probe.active then
+        return self:_update_transition_residual_body(dt)
+    end
+    local start = rt:_residual_stamp()
+    local result = self:_update_transition_residual_body(dt)
+    rt:_residual_record("assault_animation", start)
+    return result
 end
 
 function A:_sync_glyph_texture()
@@ -1669,6 +1732,7 @@ function A:_sync_text_colors()
 end
 
 function A:_sync_primitives()
+    self:_quality_mark_full()
     self:_sync_bg_rect()
     self:_sync_ticker_text()
     self:_sync_title()
@@ -1740,10 +1804,26 @@ function A:_sync_icon_states()
     end
 end
 
-function A:_update_ticker(dt)
+function A:_update_ticker_residual_body(dt)
     -- Historical ticker fields now own the fixed state/crossfade pair.
     -- Only the separate main-title pair scrolls.
     self:_update_title(dt)
+end
+
+function A:_update_ticker(dt)
+    local rt = kyohud.hud.runtime
+    if not rt or type(rt._residual_stamp) ~= "function"
+        or type(rt._residual_record) ~= "function" then
+        return self:_update_ticker_residual_body(dt)
+    end
+    local probe = rt._residual_probe
+    if not probe or probe.done or not probe.active then
+        return self:_update_ticker_residual_body(dt)
+    end
+    local start = rt:_residual_stamp()
+    local result = self:_update_ticker_residual_body(dt)
+    rt:_residual_record("assault_animation", start)
+    return result
 end
 
 function A:_refresh_counters()
@@ -1822,6 +1902,7 @@ function A:_refresh_counters()
 end
 
 function A:_update_layout()
+    self:_quality_mark_full()
     if not self._root_panel or not a_panel_alive(self._root_panel) then return end
     if not self._parent_panel or not a_panel_alive(self._parent_panel) then return end
     local pw_s, pw = a_safe_call(self._parent_panel, "w")
@@ -1972,7 +2053,7 @@ function A:_repair_layout_shapes(layout)
     end
 end
 
-function A:_verify_render()
+function A:_verify_render_residual_body()
     local function _pred_fail()
         self._render_verified = false
     end
@@ -1981,7 +2062,8 @@ function A:_verify_render()
         return false
     end
     local geom = self._layout_cache
-    if not self:_verify_title() then
+    local title_ok, title_prim, title_x, title_y, title_w, title_h = self:_verify_title()
+    if not title_ok then
         _pred_fail("main_title_readback")
         return false
     end
@@ -2169,10 +2251,16 @@ function A:_verify_render()
             _pred_fail(prim_name .. "_h_drift")
             return false
         end
-        local ok_mr, mr_x, mr_y, mw, mh = pcall(function() return prim:text_rect() end)
-        if not ok_mr then
-            _pred_fail(prim_name .. "_text_rect_failed")
-            return false
+        local mr_x, mr_y, mw, mh
+        if prim == title_prim and title_ok then
+            mr_x, mr_y, mw, mh = title_x, title_y, title_w, title_h
+        else
+            local ok_mr, rx, ry, rw, rh = pcall(function() return prim:text_rect() end)
+            if not ok_mr then
+                _pred_fail(prim_name .. "_text_rect_failed")
+                return false
+            end
+            mr_x, mr_y, mw, mh = rx, ry, rw, rh
         end
         if not a_is_finite(mw) or not a_is_finite(mh) then
             _pred_fail(prim_name .. "_text_rect_non_finite")
@@ -2186,18 +2274,13 @@ function A:_verify_render()
             _pred_fail(prim_name .. "_text_rect_overflow")
             return false
         end
-        return true
+        return true, px, pw
     end
-    if not check_text(self._ticker_a, desired_ticker, geom.ticker_font, true, false, 0, geom.ticker.h, "ticker_a") then
+    local ok_a, tax, taw = check_text(self._ticker_a, desired_ticker, geom.ticker_font, true, false, 0, geom.ticker.h, "ticker_a")
+    if not ok_a then
         return false
     end
-    local ok_tax, tax = a_safe_call(self._ticker_a, "x")
-    if ok_tax ~= a_call_ok or not a_is_finite(tax) then
-        _pred_fail("ticker_a_x_read_failed")
-        return false
-    end
-    local s_taw, taw = a_safe_call(self._ticker_a, "w")
-    if s_taw == a_call_ok and a_is_finite(taw) and (self._ticker_measured_w or 0) > 0 then
+    if (self._ticker_measured_w or 0) > 0 then
         if math.abs(taw - self._ticker_measured_w) > 1.5 then
             _pred_fail("ticker_a_width_drift")
             return false
@@ -2215,16 +2298,11 @@ function A:_verify_render()
             return false
         end
     end
-    if not check_text(self._ticker_b, desired_ticker, geom.ticker_font, true, false, 0, geom.ticker.h, "ticker_b") then
+    local ok_b, tbx, tbw = check_text(self._ticker_b, desired_ticker, geom.ticker_font, true, false, 0, geom.ticker.h, "ticker_b")
+    if not ok_b then
         return false
     end
-    local ok_tbx, tbx = a_safe_call(self._ticker_b, "x")
-    if ok_tbx ~= a_call_ok or not a_is_finite(tbx) then
-        _pred_fail("ticker_b_x_read_failed")
-        return false
-    end
-    local s_tbw, tbw = a_safe_call(self._ticker_b, "w")
-    if s_tbw == a_call_ok and a_is_finite(tbw) and (self._ticker_measured_w or 0) > 0 then
+    if (self._ticker_measured_w or 0) > 0 then
         if math.abs(tbw - self._ticker_measured_w) > 1.5 then
             _pred_fail("ticker_b_width_drift")
             return false
@@ -2768,6 +2846,343 @@ function A:_verify_render()
     return true
 end
 
+function A:_verify_render()
+    local rt = kyohud.hud.runtime
+    if not rt or type(rt._residual_stamp) ~= "function"
+        or type(rt._residual_record) ~= "function" then
+        return self:_verify_render_residual_body()
+    end
+    local probe = rt._residual_probe
+    if not probe or probe.done or not probe.active then
+        return self:_verify_render_residual_body()
+    end
+    local start = rt:_residual_stamp()
+    local result = self:_verify_render_residual_body()
+    rt:_residual_record("assault_verify", start)
+    rt:_residual_record("assault_verify_full", start)
+    return result
+end
+
+function A:_quality_mark_full()
+    self._force_full = true
+end
+
+function A:_quality_reset()
+    self._force_full = true
+    self._last_full_time = nil
+    self._last_verify_time = nil
+    self._prov_root = nil
+    self._prov_parent = nil
+    self._prov_manager = nil
+    self._prov_layout = nil
+    self._prov_source = nil
+end
+
+function A:_quality_identity_changed()
+    return self._prov_root ~= self._root_panel
+        or self._prov_parent ~= self._parent_panel
+        or self._prov_manager ~= self._manager
+        or self._prov_layout ~= self._layout_cache
+        or self._prov_source ~= self._source
+end
+
+function A:_quality_store_identity()
+    self._prov_root = self._root_panel
+    self._prov_parent = self._parent_panel
+    self._prov_manager = self._manager
+    self._prov_layout = self._layout_cache
+    self._prov_source = self._source
+end
+
+function A:_verify_light_root(geom)
+    if not geom then return false end
+    if not a_is_finite(geom.root_w) or not a_is_finite(geom.root_h)
+        or geom.root_w <= 0 or geom.root_h <= 0 then
+        return false
+    end
+    if not self._root_panel or not a_panel_alive(self._root_panel) then
+        return false
+    end
+    local ps, parent = a_read_method(self._root_panel, "parent")
+    if not ps or parent ~= self._parent_panel then return false end
+    local vs, vis = a_read_method(self._root_panel, "visible")
+    if not vs or vis ~= true then return false end
+    local as, alpha = a_read_method(self._root_panel, "alpha")
+    if not as or not a_is_finite(alpha) or math.abs(alpha - 1) > 0.02 then
+        return false
+    end
+    local sx, ax = a_read_method(self._root_panel, "x")
+    local sy, ay = a_read_method(self._root_panel, "y")
+    local sw, aw = a_read_method(self._root_panel, "w")
+    local sh, ah = a_read_method(self._root_panel, "h")
+    if not sx or not sy or not sw or not sh then
+        return false
+    end
+    if not a_is_finite(ax) or not a_is_finite(ay) or not a_is_finite(aw) or not a_is_finite(ah) then
+        return false
+    end
+    if math.abs(ax - geom.root_x) > 0.5 or math.abs(ay - geom.root_y) > 0.5
+        or math.abs(aw - geom.root_w) > 0.5 or math.abs(ah - geom.root_h) > 0.5 then
+        return false
+    end
+    return true
+end
+
+function A:_verify_light_ticker_panel(geom)
+    if not geom or not geom.ticker then return false end
+    if not self._ticker_panel or not a_panel_alive(self._ticker_panel) then
+        return false
+    end
+    local ps, parent = a_read_method(self._ticker_panel, "parent")
+    if not ps or parent ~= self._root_panel then return false end
+    local vs, vis = a_read_method(self._ticker_panel, "visible")
+    if not vs or vis ~= true then return false end
+    local as, alpha = a_read_method(self._ticker_panel, "alpha")
+    if not as or not a_is_finite(alpha) or alpha <= 0 then return false end
+    local sx, ax = a_read_method(self._ticker_panel, "x")
+    local sy, ay = a_read_method(self._ticker_panel, "y")
+    local sw, aw = a_read_method(self._ticker_panel, "w")
+    local sh, ah = a_read_method(self._ticker_panel, "h")
+    if not sx or not sy or not sw or not sh then
+        return false
+    end
+    if not a_is_finite(ax) or not a_is_finite(ay) or not a_is_finite(aw) or not a_is_finite(ah) then
+        return false
+    end
+    if math.abs(ax - geom.ticker.x) > 0.5 or math.abs(ay - geom.ticker.y) > 0.5
+        or math.abs(aw - geom.ticker.w) > 0.5 or math.abs(ah - geom.ticker.h) > 0.5 then
+        return false
+    end
+    return true
+end
+
+function A:_verify_light_text(prim, desired, expected_fs, expected_h,
+    expected_layer, exp_r, exp_g, exp_b, exp_a)
+    if not prim or not a_panel_alive(prim) then return false end
+    local ps, parent = a_read_method(prim, "parent")
+    if not ps or parent ~= self._ticker_panel then return false end
+    local vs, vis = a_read_method(prim, "visible")
+    if not vs or vis ~= true then return false end
+    local ts, text = a_read_method(prim, "text")
+    if not ts or type(text) ~= "string" or text ~= desired then return false end
+    local fs_status, fs = a_read_method(prim, "font_size")
+    if not fs_status or not a_is_finite(fs) or math.abs(fs - expected_fs) > 0.5 then
+        return false
+    end
+    local ls, layer = a_read_method(prim, "layer")
+    if not ls or layer ~= expected_layer then return false end
+    local sx, ax = a_read_method(prim, "x")
+    local sy, ay = a_read_method(prim, "y")
+    local sw, aw = a_read_method(prim, "w")
+    local sh, ah = a_read_method(prim, "h")
+    if not sx or not sy or not sw or not sh then
+        return false
+    end
+    if not a_is_finite(ax) or not a_is_finite(ay) or not a_is_finite(aw) or not a_is_finite(ah) then
+        return false
+    end
+    if math.abs(ay - 0) > 0.5 or math.abs(ah - expected_h) > 0.5 then
+        return false
+    end
+    local mr_ok, mx, my, mw, mh = a_read_text_rect(prim)
+    if not mr_ok or not a_is_finite(mw) or not a_is_finite(mh)
+        or mw <= 0 or mh <= 0 or mh > expected_h + 0.5 then
+        return false
+    end
+    local r, g, b, a = a_read_color(prim)
+    if not r or math.abs(r - exp_r) > 0.01 or math.abs(g - exp_g) > 0.01
+        or math.abs(b - exp_b) > 0.01 or math.abs(a - exp_a) > 0.02 then
+        return false
+    end
+    return true
+end
+
+function A:_verify_light_ticker(geom)
+    if not geom then return false end
+    local desired = self._cached_ticker_text
+    if type(desired) ~= "string" or desired == "" then return false end
+    local palette = self:_banner_palette()
+    local exp_alpha = 1
+    if self._transition_active then
+        local dur = self._transition_duration or TRANSITION_DURATION
+        local p = (self._transition_elapsed or 0) / dur
+        if p < 0 then p = 0 end
+        if p > 1 then p = 1 end
+        exp_alpha = p
+    end
+    if not self:_verify_light_text(self._ticker_a, desired, geom.ticker_font,
+        geom.ticker.h, 1, palette.ir, palette.ig, palette.ib, exp_alpha) then
+        return false
+    end
+    if not self:_verify_light_text(self._ticker_b, desired, geom.ticker_font,
+        geom.ticker.h, 1, palette.ir, palette.ig, palette.ib, exp_alpha) then
+        return false
+    end
+    local ok_ax, tax = a_read_method(self._ticker_a, "x")
+    local ok_aw, taw = a_read_method(self._ticker_a, "w")
+    local ok_bx, tbx = a_read_method(self._ticker_b, "x")
+    local ok_bw, tbw = a_read_method(self._ticker_b, "w")
+    if not ok_ax or not ok_aw or not ok_bx or not ok_bw then
+        return false
+    end
+    if not a_is_finite(tax) or not a_is_finite(taw)
+        or not a_is_finite(tbx) or not a_is_finite(tbw) then
+        return false
+    end
+    if (self._ticker_measured_w or 0) > 0 then
+        if math.abs(taw - self._ticker_measured_w) > 1.5
+            or math.abs(tbw - self._ticker_measured_w) > 1.5 then
+            return false
+        end
+    end
+    local cycle = (self._ticker_measured_w or 0)
+        + (self._ticker_gap or (REF_TICKER_GAP * (geom.es or 1)))
+    if cycle > 0 then
+        if math.abs(tax - (self._ticker_x_a or 0)) > 1.5
+            or math.abs(tax) > 0.5 then
+            return false
+        end
+        if math.abs(tbx - (self._ticker_x_b or 0)) > 1.5 then
+            return false
+        end
+        local expected_bx = tax + cycle
+        if math.abs(tbx - expected_bx) > 0.5 then
+            return false
+        end
+    end
+    return true
+end
+
+function A:_verify_light_outgoing(prim, expected_x, exp_alpha, out_w, geom)
+    if not prim or not a_panel_alive(prim) then return false end
+    local snap = self._transition_old_text
+    if type(snap) ~= "string" or snap == "" then return false end
+    local palette = self:_banner_palette()
+    local out_r = self._transition_old_color_r or palette.ir
+    local out_g = self._transition_old_color_g or palette.ig
+    local out_b = self._transition_old_color_b or palette.ib
+    local vs, vis = a_read_method(prim, "visible")
+    if not vs or vis ~= true then return false end
+    local ts, text = a_read_method(prim, "text")
+    if not ts or type(text) ~= "string" or text ~= snap then return false end
+    local fs_status, fs = a_read_method(prim, "font_size")
+    if not fs_status or not a_is_finite(fs) or fs <= 0
+        or math.abs(fs - geom.ticker_font) > 0.5 then return false end
+    local ys, y = a_read_method(prim, "y")
+    if not ys or not a_is_finite(y) or math.abs(y - 0) > 0.5 then return false end
+    local ws, w = a_read_method(prim, "w")
+    if not ws or not a_is_finite(w) or math.abs(w - out_w) > 1.5 then return false end
+    local hs, h = a_read_method(prim, "h")
+    if not hs or not a_is_finite(h) or math.abs(h - geom.ticker.h) > 0.5 then return false end
+    local ls, layer = a_read_method(prim, "layer")
+    if not ls or not a_is_finite(layer) or math.abs(layer - 1) > 0.001 then return false end
+    local ps, parent = a_read_method(prim, "parent")
+    if not ps or parent ~= self._ticker_panel then return false end
+    local xs, x = a_read_method(prim, "x")
+    if not xs or not a_is_finite(x) or math.abs(x - expected_x) > 1.5 then return false end
+    local as, alpha = a_read_method(prim, "alpha")
+    if not as or not a_is_finite(alpha) or math.abs(alpha - exp_alpha) > 0.05 then return false end
+    local mr_ok, mx, my, mw, mh = a_read_text_rect(prim)
+    if not mr_ok or not a_is_finite(mw) or not a_is_finite(mh)
+        or mw <= 0 or mh <= 0 then return false end
+    local r, g, b, a = a_read_color(prim)
+    if not r or math.abs(r - out_r) > 0.01 or math.abs(g - out_g) > 0.01
+        or math.abs(b - out_b) > 0.01 or math.abs(a - exp_alpha) > 0.02 then
+        return false
+    end
+    return true
+end
+
+function A:_verify_render_light()
+    local geom = self._layout_cache
+    if not geom then return false end
+    if not self:_verify_light_root(geom) then return false end
+    if not self:_verify_light_ticker_panel(geom) then return false end
+    if not self:_verify_title() then return false end
+    if not self:_verify_light_ticker(geom) then return false end
+    if self._transition_active then
+        local dur = self._transition_duration or TRANSITION_DURATION
+        local p = (self._transition_elapsed or 0) / dur
+        if p < 0 then p = 0 end
+        if p > 1 then p = 1 end
+        local exp_alpha = 1.0 - p
+        local out_w = self._transition_old_w or 0
+        if out_w <= 0 then out_w = geom.ticker.w end
+        if not self:_verify_light_outgoing(self._outgoing_ticker_a,
+            self._transition_old_x_a or 0, exp_alpha, out_w, geom) then
+            return false
+        end
+        if not self:_verify_light_outgoing(self._outgoing_ticker_b,
+            self._transition_old_x_b or 0, exp_alpha, out_w, geom) then
+            return false
+        end
+    end
+    return true
+end
+
+function A:_verify_render_frame(t, post_write)
+    if t ~= nil and a_is_finite(t) then
+        if self._last_verify_time ~= nil and a_is_finite(self._last_verify_time)
+            and t < self._last_verify_time then
+            self._force_full = true
+        end
+        self._last_verify_time = t
+    else
+        self._last_full_time = nil
+    end
+    if self:_quality_identity_changed() then
+        self._force_full = true
+    end
+    local full
+    if not post_write then
+        full = (self._native_acquired ~= true)
+            or (self._render_verified ~= true)
+            or self._force_full == true
+            or t == nil
+            or not a_is_finite(t)
+            or (self._last_full_time ~= nil and t < self._last_full_time)
+    else
+        full = (self._native_acquired ~= true)
+            or (self._render_verified ~= true)
+            or (self._last_full_time == nil)
+            or self._force_full == true
+            or t == nil
+            or not a_is_finite(t)
+            or (self._last_full_time ~= nil and t < self._last_full_time)
+            or (self._last_full_time ~= nil and (t - self._last_full_time) >= 0.05)
+    end
+    if full then
+        local result = self:_verify_render()
+        if result then
+            self._force_full = false
+            self:_quality_store_identity()
+        else
+            self._force_full = true
+        end
+        if t ~= nil and a_is_finite(t) then
+            self._last_full_time = t
+        end
+        return result
+    end
+    local rt = kyohud.hud.runtime
+    local probe = rt and rt._residual_probe
+    local start = nil
+    if probe and probe.active and not probe.done
+        and type(rt._residual_stamp) == "function"
+        and type(rt._residual_record) == "function" then
+        start = rt:_residual_stamp()
+    end
+    local ok = self:_verify_render_light()
+    if start ~= nil then
+        rt:_residual_record("assault_verify", start)
+        rt:_residual_record("assault_verify_light", start)
+    end
+    if not ok then
+        self._force_full = true
+    end
+    return ok
+end
+
 function A:_handle_render_failure()
     self._render_failed = true
     self._render_verified = false
@@ -2947,7 +3362,7 @@ function A:_should_fallback_native()
     return false
 end
 
-function A:_try_acquire_native()
+function A:_try_acquire_native_residual_body()
     if not self._render_verified then return false end
     if self._state.presenting ~= true then return false end
     if a_is_vr() then return false end
@@ -3038,6 +3453,22 @@ function A:_try_acquire_native()
     return false
 end
 
+function A:_try_acquire_native()
+    local rt = kyohud.hud.runtime
+    if not rt or type(rt._residual_stamp) ~= "function"
+        or type(rt._residual_record) ~= "function" then
+        return self:_try_acquire_native_residual_body()
+    end
+    local probe = rt._residual_probe
+    if not probe or probe.done or not probe.active then
+        return self:_try_acquire_native_residual_body()
+    end
+    local start = rt:_residual_stamp()
+    local result = self:_try_acquire_native_residual_body()
+    rt:_residual_record("assault_native", start)
+    return result
+end
+
 function A:_release_native()
     if not self._native_acquired and not self._native_corner then return true end
     local nv = kyohud.hud.native_visibility
@@ -3096,7 +3527,7 @@ function A:_release_native()
     return true
 end
 
-function A:_sync_native_visibility()
+function A:_sync_native_visibility(t)
     local should_fallback = false
     if self._state.presenting ~= true then
         should_fallback = true
@@ -3125,7 +3556,7 @@ function A:_sync_native_visibility()
 
     a_safe_call(self._root_panel, "set_visible", true)
 
-    if not self:_verify_render() then
+    if not self:_verify_render_frame(t, false) then
         self:_handle_render_failure()
         return false
     end
@@ -3171,6 +3602,7 @@ function A:_take_initial_snapshot()
 end
 
 function A:mount(manager)
+    self:_quality_mark_full()
     if kyohud.settings.enable_hud_foundation ~= true then
         return
     end
@@ -3243,6 +3675,7 @@ function A:mount(manager)
 end
 
 function A:unmount()
+    self:_quality_reset()
     local released = self:_release_native()
     if released then
         self._conflict_corner = nil
@@ -3316,6 +3749,7 @@ end
 function A:refresh_settings(manager)
     if kyohud.settings.enable_hud_foundation == true and kyohud.settings.enable_assault == true then
         self._conflict_corner = nil
+        self:_quality_mark_full()
         if not self._mounted or not self._root_panel or not a_panel_alive(self._root_panel) then
             self:mount(manager)
             return
@@ -3398,7 +3832,7 @@ function A:update(manager, t, dt)
         self:_sync_primitives()
         self._data_dirty = false
     end
-    local sync_ok = self:_sync_native_visibility()
+    local sync_ok = self:_sync_native_visibility(t)
     if not sync_ok then
         if self._render_failed then
             if t and (self._last_counter_time == nil or (t - self._last_counter_time) >= COUNTER_INTERVAL) then
@@ -3408,7 +3842,7 @@ function A:update(manager, t, dt)
                 self:_ensure_primitives()
                 self:_sync_primitives()
                 a_safe_call(self._root_panel, "set_visible", true)
-                if not self:_verify_render() then
+                if not self:_verify_render_frame(t, false) then
                     self:_handle_render_failure()
                 end
             end
@@ -3422,7 +3856,7 @@ function A:update(manager, t, dt)
     if a_is_finite(dt) and dt > 0 then
         self:_update_ticker(dt)
     end
-    if not self:_verify_render() then
+    if not self:_verify_render_frame(t, true) then
         self:_handle_render_failure()
     end
 end
@@ -3436,6 +3870,7 @@ function A:on_heist_start(manager)
     local mgr = manager or self._manager
     if not mgr then return end
     if self._heist_manager_id == mgr then return end
+    self:_quality_reset()
     self._lull_source, self._lull_manager = nil, nil
     self._heist_manager_id = mgr
     if self._mounted or self._root_panel then
@@ -3635,7 +4070,7 @@ end
 function A:_verify_title()
     local g = self._layout_cache
     if not g or not g.title then return false end
-    local ok,verified = pcall(function()
+    local ok,verified,ticker_prim,ticker_x,ticker_y,ticker_w,ticker_h = pcall(function()
         local function shape(p,parent,x,y,w,h,layer)
             return a_panel_alive(p) and p:parent()==parent and p:visible()==true
                 and math.abs(p:x()-x)<=.5 and math.abs(p:y()-y)<=.5
@@ -3667,9 +4102,13 @@ function A:_verify_title()
         end
         if not shape(self._title_divider,self._root_panel,g.separator_x,8*g.es,2*g.es,24*g.es,2) then return false end
         local r,green,b = a_read_color(self._title_divider)
-        return r and math.abs(r-ink.r)<=.01 and math.abs(green-ink.g)<=.01 and math.abs(b-ink.b)<=.01
+        if not (r and math.abs(r-ink.r)<=.01 and math.abs(green-ink.g)<=.01 and math.abs(b-ink.b)<=.01) then
+            return false
+        end
+        return true, self._ticker_a, sx, sy, sw, sh
     end)
-    return ok and verified==true
+    if not ok or verified ~= true then return false end
+    return true, ticker_prim, ticker_x, ticker_y, ticker_w, ticker_h
 end
 
 if RequiredScript == REQUIRED_CONTEXT then

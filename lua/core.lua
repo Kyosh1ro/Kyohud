@@ -1910,7 +1910,7 @@ end
 -- ══════════════════════════════════════════════════
 -- Dessin du HUD
 -- ═══════════════════════════════════════════════════
-function KH:draw()
+function KH:_draw_unprofiled()
     if not (self._panel and alive(self._panel)) then return end
 
     local s = self.settings
@@ -2367,6 +2367,21 @@ function KH:draw()
             and self._heist_score_recorded then
         KH.DrawHeistScoreWidget(self, self._panel, w, h, size, alpha, s)
     end
+end
+
+function KH:draw()
+    local hud = self.hud
+    local rt = hud and hud.runtime
+    local probe = rt and rt._residual_probe
+    if not rt or not probe or probe.done or not probe.active
+            or type(rt._residual_stamp) ~= "function"
+            or type(rt._residual_record) ~= "function" then
+        return self:_draw_unprofiled()
+    end
+    local start = rt:_residual_stamp()
+    local result = self:_draw_unprofiled()
+    rt:_residual_record("combat_draw", start)
+    return result
 end
 
 -- ═══════════════════════════════════════════════════
