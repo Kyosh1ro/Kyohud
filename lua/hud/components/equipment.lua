@@ -15,6 +15,7 @@ local REVEAL_NAME = "recharge_reveal"
 local REVEAL_ALPHA = .4
 local FLASH_NAME = "grenade_flash"
 local FLASH_LAYER = 3
+local EVENT_COLOR = Color(1, .15, .85, 1)
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -423,7 +424,7 @@ end
 
 -- Owned pulse mirror. The source alpha/scale belong to the consumer; this pure
 -- row only places a distinct bitmap over the equipped icon and certifies it.
-function Row:render_grenade_flash(alpha, scale)
+function Row:render_grenade_flash(alpha, scale, event_mode)
     if not self:_live() or not self._geometry or not self._tile then return false end
     if not finite(alpha) or alpha < 0 or alpha > 1 then return false end
     local icon = self._icon_descriptor
@@ -433,11 +434,19 @@ function Row:render_grenade_flash(alpha, scale)
     local s = self:_cell_shapes(icon)
     local base = s.icon
     if not base or base[3] <= 0 or base[4] <= 0 then return self:_hide_grenade_flash() end
-    local k = finite(scale) and clamp(scale * .5, .5, 1) or 1
-    local w, h = base[3] * k, base[4] * k
-    if w <= 0 or h <= 0 then return self:_hide_grenade_flash() end
-    local x = base[1] + (base[3] - w) * .5
-    local y = base[2] + (base[4] - h) * .5
+    local mode = event_mode == true and "event" or "legacy"
+    local x, y, w, h, color
+    if mode == "event" then
+        x, y, w, h = base[1], base[2], base[3], base[4]
+        color = EVENT_COLOR
+    else
+        local k = finite(scale) and clamp(scale * .5, .5, 1) or 1
+        w, h = base[3] * k, base[4] * k
+        if w <= 0 or h <= 0 then return self:_hide_grenade_flash() end
+        x = base[1] + (base[3] - w) * .5
+        y = base[2] + (base[4] - h) * .5
+        color = WHITE
+    end
     local ok = pcall(function()
         if not live(self._grenade_flash) then
             self._grenade_flash = self._root:bitmap({name=FLASH_NAME, layer=FLASH_LAYER})
@@ -445,7 +454,7 @@ function Row:render_grenade_flash(alpha, scale)
         local flash = self._grenade_flash
         flash:set_shape(x, y, w, h)
         flash:set_image(icon.texture, unpack(icon.rect))
-        flash:set_color(WHITE)
+        flash:set_color(color)
         flash:set_alpha(alpha)
         flash:set_layer(FLASH_LAYER)
         flash:set_visible(true)
@@ -458,12 +467,15 @@ function Row:render_grenade_flash(alpha, scale)
     self._flash_rect = {icon.rect[1], icon.rect[2], icon.rect[3], icon.rect[4]}
     self._flash_shape = {x, y, w, h}
     self._flash_alpha = alpha
+    self._flash_mode = mode
     self._flash_active = true
+    self._flash_rejected = nil
     return true
 end
 
-function Row:_hide_grenade_flash()
+function Row:_hide_grenade_flash(rejected)
     self._flash_active = false
+    self._flash_rejected = rejected == true
     local flash = self._grenade_flash
     if live(flash) then
         pcall(function() flash:set_visible(false) end)
@@ -472,6 +484,7 @@ function Row:_hide_grenade_flash()
 end
 
 function Row:_verify_grenade_flash()
+    if self._flash_rejected == true then return false end
     local flash = self._grenade_flash
     if not self._flash_active then
         if live(flash) then
@@ -494,9 +507,10 @@ function Row:_verify_grenade_flash()
         if not ok_a or not finite(alpha) or math.abs(alpha - self._flash_alpha) > .005 then return false end
         local ok_c, color = pcall(function() return flash:color() end)
         if not ok_c or not color then return false end
-        if not finite(color.r) or math.abs(color.r - 1) > .001
-            or not finite(color.g) or math.abs(color.g - 1) > .001
-            or not finite(color.b) or math.abs(color.b - 1) > .001 then return false end
+        local expected = self._flash_mode == "event" and EVENT_COLOR or WHITE
+        if not finite(color.r) or math.abs(color.r - expected.r) > .001
+            or not finite(color.g) or math.abs(color.g - expected.g) > .001
+            or not finite(color.b) or math.abs(color.b - expected.b) > .001 then return false end
         local ok_l, layer = pcall(function() return flash:layer() end)
         if not ok_l or not finite(layer) or layer ~= FLASH_LAYER then return false end
         local ok_t, texture = pcall(function() return flash:texture_name() end)
@@ -653,6 +667,8 @@ function Row:destroy()
     self._grenade_flash=nil
     self._flash_texture=nil;self._flash_rect=nil
     self._flash_shape=nil;self._flash_alpha=nil;self._flash_active=nil
+    self._flash_mode=nil
+    self._flash_rejected=nil
 end
 
 kyohud.hud.equipment_component=C

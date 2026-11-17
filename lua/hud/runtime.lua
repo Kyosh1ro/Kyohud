@@ -2353,6 +2353,137 @@ function RT:_h5_group_holds_visible(group_key, obj)
     return false
 end
 
+local function h5_cooldown_handoff_keep(rt, E, mgr, entry_panel, e_ok, e_vis, flash_source)
+    local state = rt._h5_groups and rt._h5_groups[H5_COOLDOWN_GROUP]
+    if not state then return false end
+    local base = nil
+    if type(state.targets) == "table" and #state.targets == 1 then
+        base = state.targets[1]
+    end
+    local function trace(reason, handoff_eligible)
+        if not E or type(E._grenade_flash_trace_ready) ~= "function" then return end
+        if not E:_grenade_flash_trace_ready("cooldown_handoff", reason) then return end
+        local visible_text, progress_text = "unknown", "unknown"
+        if base then
+            local v_ok, visible = safe_call(base, "visible")
+            if v_ok == CALL_OK and (visible == true or visible == false) then
+                visible_text = tostring(visible)
+            end
+            local r_ok, progress = pcall(function() return base:color().r end)
+            if r_ok and finite(progress) then
+                progress_text = string.format("%.17g", progress)
+            end
+        end
+        E:_trace_grenade_flash("cooldown_handoff", reason,
+            "native_progress_r=" .. progress_text
+            .. " base_visible=" .. visible_text
+            .. " handoff_eligible=" .. (handoff_eligible and "true" or "false"))
+    end
+    local function fail(reason)
+        if state._cooldown_handoff == true then
+            trace(reason, false)
+            state._cooldown_handoff = nil
+        end
+        return false
+    end
+    if not base then return fail("coverage_lost") end
+    if e_ok ~= true or e_vis ~= true then return fail("coverage_lost") end
+    if not E or E._manager ~= mgr or E._hud_manager ~= mgr then
+        return fail("coverage_lost")
+    end
+    if type(flash_source) ~= "table" or flash_source.event_mode ~= true then
+        return fail("coverage_lost")
+    end
+    local bases = flash_source.bases
+    local targets = flash_source.targets
+    if type(bases) ~= "table" or #bases ~= 2 or bases[1] ~= base
+        or type(targets) ~= "table" or #targets ~= 2 then
+        return fail("coverage_lost")
+    end
+    local cooldown_targets = h5_collect_cooldown_targets(entry_panel)
+    if #cooldown_targets ~= 1 or cooldown_targets[1] ~= base then
+        return fail("coverage_lost")
+    end
+    if state.manager ~= mgr or state.entry_panel ~= entry_panel
+        or state.root_gen ~= rt._generation
+        or (state.property or "alpha") ~= "visible"
+        or state._release_pending then
+        return fail("coverage_lost")
+    end
+    local visible_ok, visible = safe_call(base, "visible")
+    if visible_ok ~= CALL_OK or visible ~= false then
+        return fail("coverage_lost")
+    end
+    if rt:_h5_group_holds_visible(H5_COOLDOWN_GROUP, base) ~= true then
+        return fail("coverage_lost")
+    end
+    local color_ok, progress, green, blue, tint = pcall(function()
+        local color = base:color()
+        return color.r, color.g, color.b, color.a
+    end)
+    if color_ok ~= true or not finite(progress) then
+        return fail("coverage_lost")
+    end
+    if progress == 0 then return fail("native_reset") end
+    if progress < 0 or progress > 1
+        or not finite(green) or math.abs(green - 1) > .001
+        or not finite(blue) or math.abs(blue - 1) > .001
+        or not finite(tint) or math.abs(tint - .5) > .001 then
+        return fail("coverage_lost")
+    end
+    local alpha_ok, base_alpha = pcall(function() return base:alpha() end)
+    if alpha_ok ~= true or not finite(base_alpha) or base_alpha <= 0 then
+        return fail("coverage_lost")
+    end
+    local flash_state = rt._h5_groups and rt._h5_groups[H5_FLASH_GROUP]
+    if not flash_state or flash_state._release_pending
+        or (flash_state.property or "alpha") ~= "visible"
+        or not h5_same_targets(flash_state.targets, targets) then
+        return fail("coverage_lost")
+    end
+    for i = 1, 2 do
+        local ghost = targets[i]
+        if not panel_alive(ghost) then return fail("coverage_lost") end
+        local ghost_ok, ghost_visible = safe_call(ghost, "visible")
+        if ghost_ok ~= CALL_OK or ghost_visible ~= false then
+            return fail("coverage_lost")
+        end
+        if rt:_h5_group_holds_visible(H5_FLASH_GROUP, ghost) ~= true then
+            return fail("coverage_lost")
+        end
+    end
+    local verify_ok, verified = pcall(E.verify, E)
+    if verify_ok ~= true or verified ~= true then return fail("coverage_lost") end
+    local flash_verify_ok, flash_verified = pcall(E._verify_grenade_flash, E)
+    if flash_verify_ok ~= true or flash_verified ~= true then
+        return fail("coverage_lost")
+    end
+    local snap_ok, snap = pcall(E.get_snapshot, E)
+    if snap_ok ~= true or type(snap) ~= "table" or snap.source_known ~= true
+        or snap.unsupported == true then
+        return fail("coverage_lost")
+    end
+    local cooldown = snap.cooldown
+    if type(cooldown) ~= "table" or cooldown.known ~= true
+        or cooldown.active == true then
+        return fail("coverage_lost")
+    end
+    local event = E._grenade_flash_event
+    if type(event) ~= "table" or event.invalid == true
+        or event.expired == true then
+        return fail("coverage_lost")
+    end
+    local fresh_ok, fresh = pcall(E._read_grenade_flash_event_source, E, snap)
+    if fresh_ok ~= true or type(fresh) ~= "table" or fresh.event_mode ~= true
+        or type(fresh.bases) ~= "table" or fresh.bases[1] ~= base
+        or not h5_same_targets(fresh.targets, targets) then
+        return fail("coverage_lost")
+    end
+    state._cooldown_handoff = true
+    trace("held", true)
+    return true
+end
+
 local function h5_flash_bounds(panel)
     local xs, x = safe_call(panel, "x")
     local ys, y = safe_call(panel, "y")
@@ -2361,6 +2492,58 @@ local function h5_flash_bounds(panel)
     if xs ~= CALL_OK or ys ~= CALL_OK or ws ~= CALL_OK or hs ~= CALL_OK then return nil end
     if not finite(x) or not finite(y) or not finite(w) or not finite(h) then return nil end
     return x, y, w, h
+end
+
+local function h5_flash_trace_bool(value)
+    if value == true then return "true" end
+    if value == false then return "false" end
+    return "unknown"
+end
+
+local function h5_flash_lease_detail(rt, group_gen, targets, visible, held, failure, E,
+    owned_root_visible, owned_flash_ok, fallback_phase)
+    local detail = "groupgen="
+        .. (finite(group_gen) and string.format("%.17g", group_gen) or "unknown")
+        .. " failure=" .. tostring(failure or "none")
+    for i = 1, 2 do
+        local ghost = type(targets) == "table" and targets[i] or nil
+        local vis = visible and visible[i]
+        local hold = held and held[i]
+        local vis_from = vis == nil and fallback_phase or "acquisition_readback"
+        local held_from = hold == nil and fallback_phase or "acquisition_readback"
+        if ghost ~= nil and vis == nil then
+            local vs, actual = safe_call(ghost, "visible")
+            if vs == CALL_OK and (actual == true or actual == false) then
+                vis = actual
+            end
+        end
+        if ghost ~= nil and hold == nil then
+            local vs, actual = safe_call(ghost, "visible")
+            if vs == CALL_OK and actual == false then
+                local ok_held, value = pcall(rt._h5_group_holds_visible, rt,
+                    H5_FLASH_GROUP, ghost)
+                hold = ok_held and value == true
+            else
+                hold = false
+            end
+        end
+        detail = detail .. " ghost" .. i .. "_visible=" .. h5_flash_trace_bool(vis)
+            .. " ghost" .. i .. "_visible_observation=" .. tostring(vis_from)
+            .. " ghost" .. i .. "_held=" .. h5_flash_trace_bool(hold)
+            .. " ghost" .. i .. "_held_observation=" .. tostring(held_from)
+    end
+    if E then
+        local owned_value = owned_flash_ok
+        if owned_value == nil then owned_value = E._grenade_flash_ok end
+        detail = detail .. " owned_ok=" .. h5_flash_trace_bool(owned_value)
+            .. " owned_root_visible=" .. h5_flash_trace_bool(owned_root_visible)
+            .. " owned_source=" .. tostring(type(E._grenade_flash_source) == "table")
+        local row = type(E._rows) == "table" and E._rows[4] or nil
+        if row then
+            detail = detail .. " flash_active=" .. h5_flash_trace_bool(row._flash_active)
+        end
+    end
+    return detail
 end
 
 -- Terminal completion is only recognized when both exact leased ghosts are
@@ -3021,11 +3204,15 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
                         self:_h5_release_group(H5_COOLDOWN_GROUP)
                     end
                 else
-                    self:_h5_release_group(H5_COOLDOWN_GROUP)
+                    handled_keys[H5_COOLDOWN_GROUP] = true
                 end
                 if flash_ok and flash_source then
                     local flash_targets = flash_source.targets
                     local flash_acquired = false
+                    local flash_failure = nil
+                    local lease_generation = nil
+                    local flash_visible1, flash_visible2
+                    local flash_held1, flash_held2
                     if type(flash_targets) == "table" and #flash_targets == 2 then
                         self:_h5_acquire_group(H5_FLASH_GROUP, flash_targets, {
                             entry_panel = entry_panel,
@@ -3037,6 +3224,7 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
                             base_names = flash_source.base_names,
                         }, "visible")
                         local state = self._h5_groups and self._h5_groups[H5_FLASH_GROUP]
+                        lease_generation = state and state.generation or nil
                         if state and not state._release_pending
                             and state.property == "visible"
                             and h5_same_targets(state.targets, flash_targets) then
@@ -3044,15 +3232,49 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
                             for i = 1, 2 do
                                 local ghost = flash_targets[i]
                                 local vs, visible = safe_call(ghost, "visible")
-                                if vs ~= CALL_OK or visible ~= false
-                                    or not self:_h5_group_holds_visible(H5_FLASH_GROUP, ghost) then
+                                local held = false
+                                if vs == CALL_OK and visible == false then
+                                    held = self:_h5_group_holds_visible(H5_FLASH_GROUP, ghost)
+                                end
+                                if vs == CALL_OK and (visible == true or visible == false) then
+                                    if i == 1 then
+                                        flash_visible1 = visible
+                                    else
+                                        flash_visible2 = visible
+                                    end
+                                end
+                                if i == 1 then
+                                    flash_held1 = held
+                                else
+                                    flash_held2 = held
+                                end
+                                if vs ~= CALL_OK or visible ~= false or not held then
+                                    if vs ~= CALL_OK then
+                                        flash_failure = "ghost_visible_unknown"
+                                    elseif visible ~= false then
+                                        flash_failure = "ghost_visible"
+                                    else
+                                        flash_failure = "ghost_not_held"
+                                    end
                                     flash_acquired = false
                                     break
                                 end
                             end
+                        elseif not state then
+                            flash_failure = "state_missing"
+                        elseif state._release_pending then
+                            flash_failure = "release_pending"
+                        elseif state.property ~= "visible" then
+                            flash_failure = "property"
+                        else
+                            flash_failure = "targets_changed"
                         end
+                    else
+                        flash_failure = "targets_invalid"
                     end
                     if not flash_acquired then
+                        local had_lease = self._h5_groups
+                            and self._h5_groups[H5_FLASH_GROUP] ~= nil
                         self:_h5_release_group(H5_FLASH_GROUP)
                         local row = E and type(E._rows) == "table" and E._rows[4] or nil
                         if row and type(row._hide_grenade_flash) == "function" then
@@ -3062,11 +3284,51 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
                             E._grenade_flash_ok = false
                             E._grenade_flash_source = nil
                         end
+                        if E and type(E._grenade_flash_trace_ready) == "function"
+                            and E:_grenade_flash_trace_ready("lease", "acquire_failed") then
+                            local flash_visible = {flash_visible1, flash_visible2}
+                            local flash_held = {flash_held1, flash_held2}
+                            E:_trace_grenade_flash("lease", "acquire_failed",
+                                h5_flash_lease_detail(self, lease_generation,
+                                    flash_targets, flash_visible, flash_held,
+                                    flash_failure, E, e_vis, flash_ok,
+                                    "post_release"))
+                        end
+                        if had_lease and E
+                            and type(E._grenade_flash_trace_ready) == "function"
+                            and E:_grenade_flash_trace_ready("lease", "released") then
+                            E:_trace_grenade_flash("lease", "released",
+                                "from=acquire_failed")
+                        end
+                    elseif E and type(E._grenade_flash_trace_ready) == "function"
+                        and E:_grenade_flash_trace_ready("lease", "acquired") then
+                        local flash_visible = {flash_visible1, flash_visible2}
+                        local flash_held = {flash_held1, flash_held2}
+                        E:_trace_grenade_flash("lease", "acquired",
+                            h5_flash_lease_detail(self, lease_generation,
+                                flash_targets, flash_visible, flash_held,
+                                flash_failure, E, e_vis, flash_ok,
+                                "post_acquire"))
                     end
                 else
+                    local had_lease = self._h5_groups
+                        and self._h5_groups[H5_FLASH_GROUP] ~= nil
                     self:_h5_release_group(H5_FLASH_GROUP)
+                    if had_lease and E
+                        and type(E._grenade_flash_trace_ready) == "function"
+                        and E:_grenade_flash_trace_ready("lease", "released") then
+                        E:_trace_grenade_flash("lease", "released",
+                            "from=source_unavailable")
+                    end
                 end
                 handled_keys[H5_FLASH_GROUP] = true
+                if not cooldown_ok then
+                    if not h5_cooldown_handoff_keep(self, E, mgr, entry_panel,
+                        e_ok, e_vis, flash_source) then
+                        self:_h5_release_group(H5_COOLDOWN_GROUP)
+                    end
+                    handled_keys[H5_COOLDOWN_GROUP] = true
+                end
             end
         end
     else
@@ -5122,6 +5384,71 @@ function RT:_sync_local_backdrop(t, crew_receipt)
     if not self._local_backdrop_verified then
         safe_call(bg, "set_visible", false)
     end
+end
+
+-- Synchronous local grenade-flash event seam. The native PostHook calls this
+-- after the unchanged original, once the owned event is captured. It only runs
+-- on a mounted, enabled, non-VR, non-disabled foundation with a live matching
+-- equipment source. It presents and certifies the owned bitmap first, then
+-- reuses the ordinary native-priority -> backdrop -> H5 order with a freshly
+-- observed equipment verification (never a stale receipt). The reentrancy
+-- latch is always released; native original/returns are never touched.
+function RT:sync_local_grenade_flash_event()
+    if kyohud.settings.enable_hud_foundation ~= true
+        or kyohud.settings.enable_equipment ~= true then return false end
+    if _G.IS_VR == true or self._disabled == true or self._freeflight == true then
+        return false
+    end
+    local mgr = self._manager
+    if not mgr or self._mounted ~= true
+        or not managers or managers.hud ~= mgr then return false end
+    local E = kyohud.hud.equipment
+    if type(E) ~= "table" or E._mounted ~= true
+        or E._manager ~= mgr or E._hud_manager ~= mgr then return false end
+    if not E._root or not panel_alive(E._root) then return false end
+    local event = E._grenade_flash_event
+    if type(event) ~= "table" or event.invalid == true or event.expired == true
+        or event.generation ~= E._source_generation
+        or event.manager ~= mgr then return false end
+    if self._local_flash_event_sync == true then return false end
+    self._local_flash_event_sync = true
+    local prev_ran = E._update_ran_now
+    local prev_ok = E._verify_ok_now
+    local probe = self._residual_probe
+    local timed = probe and not probe.done and probe.active
+        and type(self._residual_stamp) == "function"
+        and type(self._residual_record) == "function"
+    local start = timed and self:_residual_stamp() or nil
+    local ok, result = pcall(function()
+        self:_h5_release_group(H5_FLASH_GROUP)
+        E:_present()
+        local verified = E:verify() == true
+        E._update_ran_now = true
+        E._verify_ok_now = verified
+        if not verified or E._grenade_flash_ok ~= true
+            or type(E._grenade_flash_source) ~= "table" then
+            self:_sync_local_backdrop(nil)
+            return false
+        end
+        self:_sync_local_backdrop(nil)
+        return E._grenade_flash_ok == true
+            and E:_verify_grenade_flash() == true
+    end)
+    self._local_flash_event_sync = false
+    E._update_ran_now = prev_ran
+    E._verify_ok_now = prev_ok
+    if timed and start ~= nil then self:_residual_record("harmony", start) end
+    if not ok or result ~= true then
+        self:_h5_release_group(H5_FLASH_GROUP)
+        local row = type(E._rows) == "table" and E._rows[4] or nil
+        if row and type(row._hide_grenade_flash) == "function" then
+            row:_hide_grenade_flash()
+        end
+        E._grenade_flash_ok = false
+        E._grenade_flash_source = nil
+        return false
+    end
+    return true
 end
 
 -- Opt-in timing wrappers for the four harmony scopes. Each original body was

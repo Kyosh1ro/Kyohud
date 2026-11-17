@@ -21,6 +21,68 @@ M._snapshot = M._snapshot
 M._update_ran_now = M._update_ran_now or false
 M._verify_ok_now = M._verify_ok_now or false
 
+local GRENADE_FLASH_TRACE_LIMIT = 16
+
+local function grenade_flash_trace_key(stage, reason)
+    return tostring(stage) .. "|" .. tostring(reason)
+end
+
+if M._grenade_flash_trace_state == nil then
+    local state = {enabled = false, count = 0, seen = {}}
+    local trace_path
+    if type(ModPath) == "string" then
+        trace_path = ModPath .. "KYO_GRENADE_FLASH_TRACE"
+    end
+    if trace_path ~= nil and type(io) == "table" and type(io.open) == "function" then
+        local ok_open, handle = pcall(io.open, trace_path, "r")
+        if ok_open and handle ~= nil then
+            state.enabled = true
+            pcall(function() handle:close() end)
+        end
+    end
+    M._grenade_flash_trace_state = state
+end
+
+function M:_grenade_flash_trace_ready(stage, reason)
+    local state = self._grenade_flash_trace_state
+    if not state or state.enabled ~= true then return false end
+    if (state.count or 0) >= GRENADE_FLASH_TRACE_LIMIT then return false end
+    local seen = state.seen
+    if seen and seen[grenade_flash_trace_key(stage, reason)] then return false end
+    return true
+end
+
+function M:_trace_grenade_flash(stage, reason, detail)
+    if not self:_grenade_flash_trace_ready(stage, reason) then return false end
+    local state = self._grenade_flash_trace_state
+    state.count = (state.count or 0) + 1
+    state.seen = state.seen or {}
+    state.seen[grenade_flash_trace_key(stage, reason)] = true
+    local ok_format, message = pcall(function()
+        local text = "[KyoHUD][GrenadeFlashTrace] stage=" .. tostring(stage)
+            .. " reason=" .. tostring(reason)
+        if type(detail) == "string" and detail ~= "" then
+            text = text .. " " .. detail
+        elseif type(detail) == "table" then
+            local keys = {}
+            for key in pairs(detail) do keys[#keys + 1] = key end
+            table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+            for i = 1, #keys do
+                local key = keys[i]
+                local value = detail[key]
+                if value ~= nil then
+                    text = text .. " " .. tostring(key) .. "=" .. tostring(value)
+                end
+            end
+        end
+        return text
+    end)
+    if not ok_format then return false end
+    if type(log) ~= "function" then return false end
+    pcall(log, message)
+    return true
+end
+
 local function is_valid_positive_quantity(v)
     if type(v) ~= "number" then return false end
     if v ~= v then return false end
@@ -208,6 +270,7 @@ function M:refresh(manager)
         self._cable_zero = nil
         self._cooldown_event = nil
         self._amount_text = nil
+        self._grenade_flash_event = nil
     end
 
     local deployables = {}
@@ -563,6 +626,7 @@ function M:invalidate()
     self._grenade_flash_ok = false
     self._grenade_flash_source = nil
     self._grenade_flash_rejected = nil
+    self._grenade_flash_event = nil
     self._dirty = true
 end
 
@@ -701,6 +765,14 @@ local FLASH_SOURCES = {
     {base = "grenades_radial", ghost = "grenades_radial_ghost"},
     {base = "grenades_icon", ghost = "grenades_icon_ghost"},
 }
+-- The accepted owned pulse fades 1 -> 0 over the first 0.6 game-seconds.
+-- Past that deadline it may continue only while both exact retained native
+-- ghosts still expose a positively observed, correctly scaled white phase;
+-- the extension keeps a perceptible cyan floor. The finite watchdog cancels
+-- a stalled positive native source after 2.0 extension seconds. It never
+-- authorizes a mask on its own and is never reset by ordinary reads.
+local EVENT_NATIVE_EXTENSION_ALPHA = .5
+local EVENT_NATIVE_EXTENSION_LIMIT = 2.0
 
 -- Resource lookup is bounded to a new icon identifier, never repeated per draw.
 -- The projectile channel forwards the native 32x32 default rect and keeps its
@@ -745,30 +817,127 @@ local function flash_group_holds_visible(group_key, panel)
 end
 
 local function flash_leaf_state(panel, require_white, lease_group)
-    if not live(panel) then return nil end
+    if not live(panel) then return nil, "not_live" end
     local ok_visible, visible = safe_call(panel, "visible")
-    if not ok_visible or (visible ~= true and visible ~= false) then return nil end
-    if visible ~= true and not flash_group_holds_visible(lease_group, panel) then return nil end
+    if not ok_visible or (visible ~= true and visible ~= false) then return nil, "visible_unknown" end
+    if visible ~= true and not flash_group_holds_visible(lease_group, panel) then
+        return nil, "hidden_unleased"
+    end
     local ok_alpha, alpha = safe_call(panel, "alpha")
-    if not ok_alpha or not finite(alpha) or alpha < 0 or alpha > 1 then return nil end
+    if not ok_alpha or not finite(alpha) or alpha < 0 or alpha > 1 then
+        return nil, "alpha_unknown"
+    end
     local ok_x, x = safe_call(panel, "x")
     local ok_y, y = safe_call(panel, "y")
     local ok_w, w = safe_call(panel, "w")
     local ok_h, h = safe_call(panel, "h")
-    if not ok_x or not ok_y or not ok_w or not ok_h then return nil end
-    if not finite(x) or not finite(y) or not finite(w) or not finite(h) then return nil end
-    if w <= 0 or h <= 0 then return nil end
+    if not ok_x or not ok_y or not ok_w or not ok_h then return nil, "geometry_unknown" end
+    if not finite(x) or not finite(y) or not finite(w) or not finite(h) then
+        return nil, "geometry_invalid"
+    end
+    if w <= 0 or h <= 0 then return nil, "geometry_nonpositive" end
     local phase_alpha = alpha
     if require_white then
         local ok_color, color = safe_call(panel, "color")
-        if not ok_color or not color then return nil end
-        if not finite(color.r) or not finite(color.g) or not finite(color.b) then return nil end
+        if not ok_color or not color then return nil, "color_unknown" end
+        if not finite(color.r) or not finite(color.g) or not finite(color.b) then
+            return nil, "color_channels_unknown"
+        end
         if math.abs(color.r - 1) > 0.001 or math.abs(color.g - 1) > 0.001
-            or math.abs(color.b - 1) > 0.001 then return nil end
-        if not finite(color.a) or color.a < 0 or color.a > 1 then return nil end
+            or math.abs(color.b - 1) > 0.001 then return nil, "color_not_white" end
+        if not finite(color.a) or color.a < 0 or color.a > 1 then
+            return nil, "color_alpha_unknown"
+        end
         phase_alpha = color.a
     end
     return {alpha = phase_alpha, x = x, y = y, w = w, h = h}
+end
+
+local function flash_trace_number(value)
+    if finite(value) then return string.format("%.17g", value) end
+    return "unknown"
+end
+
+local function flash_trace_bool(value)
+    if value == true then return "true" end
+    if value == false then return "false" end
+    return "unknown"
+end
+
+local function flash_trace_visible(ok, value)
+    if ok == true and (value == true or value == false) then return value end
+    return nil
+end
+
+local function flash_panel_observation(label, panel)
+    local ok, text = pcall(function()
+        if not panel then return label .. "_missing" end
+        local vs, visible = safe_call(panel, "visible")
+        local as, alpha = safe_call(panel, "alpha")
+        local cs, color = safe_call(panel, "color")
+        local xs, x = safe_call(panel, "x")
+        local ys, y = safe_call(panel, "y")
+        local ws, w = safe_call(panel, "w")
+        local hs, h = safe_call(panel, "h")
+        local color_text = "unknown"
+        if cs == true and color ~= nil
+            and finite(color.r) and finite(color.g) and finite(color.b) and finite(color.a) then
+            color_text = string.format("%.17g,%.17g,%.17g,%.17g",
+                color.r, color.g, color.b, color.a)
+        end
+        return label .. "_visible=" .. flash_trace_bool(flash_trace_visible(vs, visible))
+            .. " " .. label .. "_alpha=" .. flash_trace_number(as == true and alpha or nil)
+            .. " " .. label .. "_color=" .. color_text
+            .. " " .. label .. "_shape=("
+            .. flash_trace_number(xs == true and x or nil) .. ","
+            .. flash_trace_number(ys == true and y or nil) .. ","
+            .. flash_trace_number(ws == true and w or nil) .. ","
+            .. flash_trace_number(hs == true and h or nil) .. ")"
+    end)
+    if not ok then return label .. "_observation_error=true" end
+    return text
+end
+
+local function flash_owned_observation(row, source, pcall_ok, rendered, verified)
+    local ok, text = pcall(function()
+        local flash = type(row) == "table" and row._grenade_flash or nil
+        local vs, visible = safe_call(flash, "visible")
+        local as, alpha = safe_call(flash, "alpha")
+        local ns, name = safe_call(flash, "name")
+        local xs, x = safe_call(flash, "x")
+        local ys, y = safe_call(flash, "y")
+        local ws, w = safe_call(flash, "w")
+        local hs, h = safe_call(flash, "h")
+        local ps, parent = safe_call(flash, "parent")
+        local parent_owned = "unknown"
+        if ps == true and row and row._root then
+            parent_owned = flash_trace_bool(parent == row._root)
+        end
+        local child_owned = "unknown"
+        if ns == true and type(name) == "string" and row and row._root then
+            local cs, child = safe_call(row._root, "child", name)
+            if cs == true then child_owned = flash_trace_bool(child == flash) end
+        end
+        return "source_alpha=" .. flash_trace_number(type(source) == "table" and source.alpha or nil)
+            .. " source_scale=" .. flash_trace_number(type(source) == "table" and source.scale or nil)
+            .. " render_pcall=" .. flash_trace_bool(pcall_ok)
+            .. " render_return=" .. flash_trace_bool(rendered)
+            .. " verify=" .. flash_trace_bool(verified)
+            .. " flash_present=" .. flash_trace_bool(flash ~= nil)
+            .. " flash_visible=" .. flash_trace_bool(flash_trace_visible(vs, visible))
+            .. " flash_alpha=" .. flash_trace_number(as == true and alpha or nil)
+            .. " flash_name=" .. (ns == true and type(name) == "string" and name or "unknown")
+            .. " flash_shape=("
+            .. flash_trace_number(xs == true and x or nil) .. ","
+            .. flash_trace_number(ys == true and y or nil) .. ","
+            .. flash_trace_number(ws == true and w or nil) .. ","
+            .. flash_trace_number(hs == true and h or nil) .. ")"
+            .. " parent_owned=" .. parent_owned
+            .. " child_owned=" .. child_owned
+            .. " flash_active=" .. flash_trace_bool(type(row) == "table" and row._flash_active or nil)
+    end)
+    if not ok then return "owned_observation_error=true" end
+    return text
 end
 
 local function flash_centered_scaled(ghost, base, scale)
@@ -778,101 +947,343 @@ local function flash_centered_scaled(ghost, base, scale)
         and close(ghost.y + ghost.h * .5, base.y + base.h * .5)
 end
 
+local function flash_event_retained_leaf(event, index)
+    local parent = event and event.parent
+    local ghosts = event and event.ghosts
+    local bases = event and event.bases
+    local ghost_names = event and event.ghost_names
+    local base_names = event and event.base_names
+    if not live(parent) or type(ghosts) ~= "table" or type(bases) ~= "table"
+        or type(ghost_names) ~= "table" or type(base_names) ~= "table" then
+        return nil, nil
+    end
+    local ghost, base = ghosts[index], bases[index]
+    local ghost_name, base_name = ghost_names[index], base_names[index]
+    if not live(ghost) or not live(base)
+        or type(ghost_name) ~= "string" or type(base_name) ~= "string" then
+        return nil, nil
+    end
+    local gp_ok, ghost_parent = safe_call(ghost, "parent")
+    local bp_ok, base_parent = safe_call(base, "parent")
+    if gp_ok ~= true or ghost_parent ~= parent
+        or bp_ok ~= true or base_parent ~= parent then
+        return nil, nil
+    end
+    local gc_ok, ghost_child = safe_call(parent, "child", ghost_name)
+    local bc_ok, base_child = safe_call(parent, "child", base_name)
+    if gc_ok ~= true or ghost_child ~= ghost
+        or bc_ok ~= true or base_child ~= base then
+        return nil, nil
+    end
+    return ghost, base
+end
+
+local function flash_event_color_reads(color)
+    if color == nil then return nil end
+    local ok, r, g, b, a = pcall(function()
+        return color.r, color.g, color.b, color.a
+    end)
+    if not ok then return nil end
+    return r, g, b, a
+end
+
+local function flash_event_native_terminal(event)
+    for i = 1, 2 do
+        local ghost, base = flash_event_retained_leaf(event, i)
+        if not ghost then return false end
+        local vis_ok, visible = safe_call(ghost, "visible")
+        local color_ok, color = safe_call(ghost, "color")
+        if vis_ok ~= true or visible ~= false or color_ok ~= true then
+            return false
+        end
+        local r, gc, bl, ca = flash_event_color_reads(color)
+        if not finite(r) or math.abs(r - 1) > .001
+            or not finite(gc) or math.abs(gc - 1) > .001
+            or not finite(bl) or math.abs(bl - 1) > .001
+            or not finite(ca) or math.abs(ca) > .0001 then
+            return false
+        end
+        local gx_ok, gx = safe_call(ghost, "x")
+        local gy_ok, gy = safe_call(ghost, "y")
+        local gw_ok, gw = safe_call(ghost, "w")
+        local gh_ok, gh = safe_call(ghost, "h")
+        local bx_ok, bx = safe_call(base, "x")
+        local by_ok, by = safe_call(base, "y")
+        local bw_ok, bw = safe_call(base, "w")
+        local bh_ok, bh = safe_call(base, "h")
+        if gx_ok ~= true or gy_ok ~= true or gw_ok ~= true or gh_ok ~= true
+            or bx_ok ~= true or by_ok ~= true or bw_ok ~= true or bh_ok ~= true
+            or not finite(gx) or not finite(gy) or not finite(gw) or not finite(gh)
+            or not finite(bx) or not finite(by) or not finite(bw) or not finite(bh) then
+            return false
+        end
+        if math.abs(gx - bx) > .05 or math.abs(gy - by) > .05
+            or math.abs(gw - bw) > .05 or math.abs(gh - bh) > .05 then
+            return false
+        end
+    end
+    return true
+end
+
+local function flash_event_native_phase(event)
+    for i = 1, 2 do
+        local ghost, base = flash_event_retained_leaf(event, i)
+        if not ghost then return false end
+        local ghost_state = flash_leaf_state(ghost, true, FLASH_GROUP)
+        if not ghost_state or ghost_state.alpha <= 0 then return false end
+        local base_state = flash_leaf_state(base, false, FLASH_BASE_LEASE)
+        if not base_state then return false end
+        local scale = 1 + (1 - ghost_state.alpha)
+        if not flash_centered_scaled(ghost_state, base_state, scale) then
+            return false
+        end
+    end
+    return true
+end
+
 function M:_grenade_flash_chain()
     local mgr = self._hud_manager or (managers and managers.hud)
     local panels = mgr and mgr._teammate_panels
     local slot = HUDManager and HUDManager.PLAYER_PANEL or nil
-    if not finite(slot) then return nil end
+    if not finite(slot) then return nil, nil, nil, nil, "chain_slot" end
     local entry = type(panels) == "table" and panels[slot] or nil
     local entry_panel = type(entry) == "table" and entry._panel or nil
-    if not live(entry_panel) then return nil end
+    if not live(entry_panel) then return nil, nil, nil, nil, "chain_entry_panel" end
     local player = flash_child(entry_panel, "player")
-    if not player then return nil end
+    if not player then return nil, nil, nil, nil, "chain_player" end
     local grenades = flash_child(player, "grenades_panel")
-    if not grenades then return nil end
+    if not grenades then return nil, nil, nil, nil, "chain_grenades" end
     local base1 = flash_child(grenades, FLASH_SOURCES[1].base)
     local ghost1 = flash_child(grenades, FLASH_SOURCES[1].ghost)
     local base2 = flash_child(grenades, FLASH_SOURCES[2].base)
     local ghost2 = flash_child(grenades, FLASH_SOURCES[2].ghost)
-    if not base1 or not ghost1 or not base2 or not ghost2 then return nil end
+    if not base1 then return nil, nil, nil, nil, "chain_radial_base" end
+    if not ghost1 then return nil, nil, nil, nil, "chain_radial_ghost" end
+    if not base2 then return nil, nil, nil, nil, "chain_icon_base" end
+    if not ghost2 then return nil, nil, nil, nil, "chain_icon_ghost" end
     return entry_panel, grenades, {base1, base2}, {ghost1, ghost2}
 end
 
 function M:_grenade_flash_fresh(snap, projectile)
     local pm = managers and managers.player
     if not pm or self._player_manager ~= pm or self._hud_manager ~= (managers and managers.hud) then
-        return false
+        return false, "fresh_manager"
     end
     local ok_unit, unit = safe_call(pm, "player_unit")
-    if not ok_unit or unit == nil or unit ~= self._player_unit then return false end
+    if not ok_unit or unit == nil or unit ~= self._player_unit then
+        return false, "fresh_unit"
+    end
     if type(alive) == "function" then
         local ok_alive, is_alive = pcall(alive, unit)
-        if not ok_alive or is_alive ~= true then return false end
+        if not ok_alive or is_alive ~= true then return false, "fresh_alive" end
     end
     local ok_session, session = safe_call(managers.network, "session")
-    if not ok_session or session == nil or session ~= self._session then return false end
+    if not ok_session or session == nil or session ~= self._session then
+        return false, "fresh_session"
+    end
     local ok_peer, peer = safe_call(session, "local_peer")
-    if not ok_peer or peer == nil then return false end
+    if not ok_peer or peer == nil then return false, "fresh_peer" end
     local ok_id, peer_id = safe_call(peer, "id")
-    if not ok_id or peer_id ~= self._peer_id then return false end
+    if not ok_id or peer_id ~= self._peer_id then return false, "fresh_peer_id" end
     local equipment = pm._equipment
-    if not equipment or equipment ~= self._equipment_table then return false end
-    if equipment.selections ~= self._selections_table then return false end
+    if not equipment or equipment ~= self._equipment_table then
+        return false, "fresh_equipment"
+    end
+    if equipment.selections ~= self._selections_table then
+        return false, "fresh_selections"
+    end
     local registry = pm._global and pm._global.synced_grenades
-    if not registry or registry ~= self._grenade_registry then return false end
-    if managers.game_play_central ~= self._gpc then return false end
+    if not registry or registry ~= self._grenade_registry then
+        return false, "fresh_registry"
+    end
+    if managers.game_play_central ~= self._gpc then return false, "fresh_gpc" end
     local got, entry = safe_call(pm, "get_synced_grenades", peer_id)
-    if not got or type(entry) ~= "table" or type(entry.grenade) ~= "string" then return false end
+    if not got or type(entry) ~= "table" or type(entry.grenade) ~= "string" then
+        return false, "fresh_synced"
+    end
     if entry.grenade ~= self._projectile_id
-        or projectile.projectile_id ~= self._projectile_id then return false end
+        or projectile.projectile_id ~= self._projectile_id then
+        return false, "fresh_projectile"
+    end
     local amount_ok, amount = safe_call(pm, "get_grenade_amount", peer_id)
-    if not amount_ok or not is_valid_known_quantity(amount) then return false end
+    if not amount_ok or not is_valid_known_quantity(amount) then
+        return false, "fresh_amount"
+    end
     local maximum_ok, maximum = safe_call(pm, "get_max_grenades", entry.grenade)
-    if not maximum_ok or not is_valid_known_quantity(maximum) then return false end
-    if type(snap) ~= "table" or type(snap.projectile) ~= "table" then return false end
+    if not maximum_ok or not is_valid_known_quantity(maximum) then
+        return false, "fresh_maximum"
+    end
+    if type(snap) ~= "table" or type(snap.projectile) ~= "table" then
+        return false, "fresh_snapshot"
+    end
     local snapshot = snap.projectile
     local charges = snapshot.charges
     local snapshot_maximum = snapshot.maximum
-    if type(charges) ~= "table" or charges.known ~= true or charges.raw ~= amount then return false end
+    if type(charges) ~= "table" or charges.known ~= true or charges.raw ~= amount then
+        return false, "fresh_charges"
+    end
     if type(snapshot_maximum) ~= "table" or snapshot_maximum.known ~= true
-        or snapshot_maximum.raw ~= maximum then return false end
+        or snapshot_maximum.raw ~= maximum then
+        return false, "fresh_snapshot_maximum"
+    end
     local projectiles = tweak_data and tweak_data.blackmarket and tweak_data.blackmarket.projectiles
     local td = projectiles and projectiles[entry.grenade]
-    if type(td) ~= "table" then return false end
+    if type(td) ~= "table" then return false, "fresh_tweak" end
     local ability = td.ability == true or (type(td.ability) == "string" and td.ability ~= "")
     local throwable = td.throwable == true or td.is_a_grenade == true
     local kind
     if ability and not throwable then kind = "ability"
     elseif throwable and not ability then kind = "throwable" end
-    if kind ~= projectile.kind then return false end
+    if kind ~= projectile.kind then return false, "fresh_kind" end
     return true
 end
 
 function M:_read_grenade_flash_source(snap)
+    if type(self._grenade_flash_event) == "table" then
+        return self:_read_grenade_flash_event_source(snap)
+    end
     local row = type(self._rows) == "table" and self._rows[4] or nil
-    if not row or not row._tile or type(row._icon_descriptor) ~= "table" then return nil end
-    local entry_panel, grenades, bases, ghosts = self:_grenade_flash_chain()
-    if not entry_panel then return nil end
+    if not row or not row._tile or type(row._icon_descriptor) ~= "table" then
+        if self:_grenade_flash_trace_ready("source", "row_missing") then
+            self:_trace_grenade_flash("source", "row_missing",
+                "row=" .. tostring(row ~= nil)
+                .. " tile=" .. tostring(row ~= nil and row._tile ~= nil)
+                .. " icon_descriptor=" .. type(row and row._icon_descriptor))
+        end
+        return nil
+    end
+    local entry_panel, grenades, bases, ghosts, chain_reason = self:_grenade_flash_chain()
+    if not entry_panel then
+        if self:_grenade_flash_trace_ready("source", chain_reason or "chain_missing") then
+            self:_trace_grenade_flash("source", chain_reason or "chain_missing",
+                "manager=" .. tostring(self._hud_manager ~= nil)
+                .. " generation=" .. tostring(self._source_generation))
+        end
+        return nil
+    end
     snap = snap or self:get_snapshot()
-    if type(snap) ~= "table" or snap.source_known ~= true or snap.unsupported then return nil end
-    if snap.source_generation ~= self._source_generation then return nil end
+    if type(snap) ~= "table" or snap.source_known ~= true or snap.unsupported then
+        if self:_grenade_flash_trace_ready("source", "snapshot_invalid") then
+            local detail = "snap_type=" .. type(snap)
+            if type(snap) == "table" then
+                detail = detail .. " source_known=" .. tostring(snap.source_known)
+                    .. " unsupported=" .. tostring(snap.unsupported)
+                    .. " generation=" .. tostring(snap.source_generation)
+            end
+            detail = detail .. " current_generation=" .. tostring(self._source_generation)
+            self:_trace_grenade_flash("source", "snapshot_invalid", detail)
+        end
+        return nil
+    end
+    if snap.source_generation ~= self._source_generation then
+        if self:_grenade_flash_trace_ready("source", "generation_stale") then
+            self:_trace_grenade_flash("source", "generation_stale",
+                "snap_generation=" .. tostring(snap.source_generation)
+                .. " current_generation=" .. tostring(self._source_generation))
+        end
+        return nil
+    end
     local projectile = snap.projectile
-    if type(projectile) ~= "table" then return nil end
-    if projectile.kind ~= "ability" and projectile.kind ~= "throwable" then return nil end
-    if not (projectile.charges and projectile.charges.known == true) then return nil end
-    if not self:_grenade_flash_fresh(snap, projectile) then return nil end
+    if type(projectile) ~= "table" then
+        if self:_grenade_flash_trace_ready("source", "projectile_missing") then
+            self:_trace_grenade_flash("source", "projectile_missing",
+                "projectile_type=" .. type(projectile)
+                .. " generation=" .. tostring(snap.source_generation))
+        end
+        return nil
+    end
+    if projectile.kind ~= "ability" and projectile.kind ~= "throwable" then
+        if self:_grenade_flash_trace_ready("source", "projectile_kind") then
+            self:_trace_grenade_flash("source", "projectile_kind",
+                "projectile_id=" .. tostring(projectile.projectile_id)
+                .. " kind=" .. tostring(projectile.kind)
+                .. " charges_known=" .. tostring(projectile.charges and projectile.charges.known)
+                .. " charges_raw=" .. tostring(projectile.charges and projectile.charges.raw))
+        end
+        return nil
+    end
+    if not (projectile.charges and projectile.charges.known == true) then
+        if self:_grenade_flash_trace_ready("source", "projectile_charges") then
+            self:_trace_grenade_flash("source", "projectile_charges",
+                "projectile_id=" .. tostring(projectile.projectile_id)
+                .. " kind=" .. tostring(projectile.kind)
+                .. " charges_known=" .. tostring(projectile.charges and projectile.charges.known)
+                .. " charges_raw=" .. tostring(projectile.charges and projectile.charges.raw))
+        end
+        return nil
+    end
+    local fresh_ok, fresh_reason = self:_grenade_flash_fresh(snap, projectile)
+    if not fresh_ok then
+        local reason = fresh_reason or "fresh_failed"
+        if self:_grenade_flash_trace_ready("source", reason) then
+            self:_trace_grenade_flash("source", reason,
+                "projectile_id=" .. tostring(projectile.projectile_id)
+                .. " kind=" .. tostring(projectile.kind)
+                .. " charges_known=" .. tostring(projectile.charges and projectile.charges.known)
+                .. " charges_raw=" .. tostring(projectile.charges and projectile.charges.raw)
+                .. " generation=" .. tostring(self._source_generation))
+        end
+        return nil
+    end
     local states = {}
     for i = 1, 2 do
-        local ghost = flash_leaf_state(ghosts[i], true, FLASH_GROUP)
-        local base = flash_leaf_state(bases[i], false, FLASH_BASE_LEASE)
-        if not ghost or not base then return nil end
+        local ghost, ghost_reason = flash_leaf_state(ghosts[i], true, FLASH_GROUP)
+        local base, base_reason = flash_leaf_state(bases[i], false, FLASH_BASE_LEASE)
+        if not ghost or not base then
+            local trace_state = self._grenade_flash_trace_state
+            if trace_state and trace_state.enabled == true
+                and (trace_state.count or 0) < GRENADE_FLASH_TRACE_LIMIT then
+                local reason
+                if not ghost then reason = "ghost_" .. tostring(ghost_reason)
+                else reason = "base_" .. tostring(base_reason) end
+                if self:_grenade_flash_trace_ready("source", reason) then
+                    self:_trace_grenade_flash("source", reason,
+                        "leaf=" .. tostring(FLASH_SOURCES[i] and FLASH_SOURCES[i].ghost or "unknown")
+                        .. " " .. flash_panel_observation("ghost", ghosts[i])
+                        .. " " .. flash_panel_observation("base", bases[i]))
+                end
+            end
+            return nil
+        end
         states[i] = {ghost = ghost, base = base}
     end
     local alpha = states[1].ghost.alpha
-    if math.abs(alpha - states[2].ghost.alpha) > 0.005 then return nil end
+    if math.abs(alpha - states[2].ghost.alpha) > 0.005 then
+        if self:_grenade_flash_trace_ready("source", "ghost_phase_mismatch") then
+            self:_trace_grenade_flash("source", "ghost_phase_mismatch",
+                string.format("ghost1_alpha=%.17g ghost2_alpha=%.17g leaf1=%s leaf2=%s",
+                    states[1].ghost.alpha, states[2].ghost.alpha,
+                    FLASH_SOURCES[1].ghost, FLASH_SOURCES[2].ghost))
+        end
+        return nil
+    end
     local scale = 1 + (1 - alpha)
-    if not flash_centered_scaled(states[1].ghost, states[1].base, scale)
-        or not flash_centered_scaled(states[2].ghost, states[2].base, scale) then
+    if not flash_centered_scaled(states[1].ghost, states[1].base, scale) then
+        if self:_grenade_flash_trace_ready("source", "radial_shape") then
+            local native_alpha = "unknown"
+            local ok_native, value = safe_call(ghosts[1], "alpha")
+            if ok_native and finite(value) then native_alpha = string.format("%.17g", value) end
+            self:_trace_grenade_flash("source", "radial_shape",
+                string.format("leaf=%s ghost_shape=(%.17g,%.17g,%.17g,%.17g) base_shape=(%.17g,%.17g,%.17g,%.17g) native_alpha=%s tint_alpha=%.17g",
+                    FLASH_SOURCES[1].ghost,
+                    states[1].ghost.x, states[1].ghost.y, states[1].ghost.w, states[1].ghost.h,
+                    states[1].base.x, states[1].base.y, states[1].base.w, states[1].base.h,
+                    native_alpha, states[1].ghost.alpha))
+        end
+        return nil
+    end
+    if not flash_centered_scaled(states[2].ghost, states[2].base, scale) then
+        if self:_grenade_flash_trace_ready("source", "icon_shape") then
+            local native_alpha = "unknown"
+            local ok_native, value = safe_call(ghosts[2], "alpha")
+            if ok_native and finite(value) then native_alpha = string.format("%.17g", value) end
+            self:_trace_grenade_flash("source", "icon_shape",
+                string.format("leaf=%s ghost_shape=(%.17g,%.17g,%.17g,%.17g) base_shape=(%.17g,%.17g,%.17g,%.17g) native_alpha=%s tint_alpha=%.17g",
+                    FLASH_SOURCES[2].ghost,
+                    states[2].ghost.x, states[2].ghost.y, states[2].ghost.w, states[2].ghost.h,
+                    states[2].base.x, states[2].base.y, states[2].base.w, states[2].base.h,
+                    native_alpha, states[2].ghost.alpha))
+        end
         return nil
     end
     return {
@@ -894,21 +1305,45 @@ function M:_sync_grenade_flash(snap)
     if not row or not row._tile then
         self._grenade_flash_ok = false
         self._grenade_flash_source = nil
+        if self:_grenade_flash_trace_ready("owned", "row_missing") then
+            self:_trace_grenade_flash("owned", "row_missing",
+                "row=" .. tostring(row ~= nil)
+                .. " tile=" .. tostring(row ~= nil and row._tile ~= nil))
+        end
         return false
     end
     local source = self:_read_grenade_flash_source(snap)
     self._grenade_flash_source = source
     if not source or source.alpha <= 0 then
+        local reason = source and "source_alpha_nonpositive" or "source_missing"
+        if self:_grenade_flash_trace_ready("owned", reason) then
+            self:_trace_grenade_flash("owned", reason,
+                "source=" .. tostring(source ~= nil)
+                .. " alpha=" .. flash_trace_number(source and source.alpha or nil))
+        end
         row:_hide_grenade_flash()
         self._grenade_flash_ok = false
         self._grenade_flash_source = nil
         return false
     end
-    local pcall_ok, rendered = pcall(function() return row:render_grenade_flash(source.alpha, source.scale) end)
-    self._grenade_flash_ok = pcall_ok and rendered == true and row:_verify_grenade_flash() == true
+    local pcall_ok, rendered = pcall(function() return row:render_grenade_flash(source.alpha, source.scale, source.event_mode) end)
+    local verified = false
+    if pcall_ok and rendered == true then
+        verified = row:_verify_grenade_flash() == true
+    end
+    self._grenade_flash_ok = pcall_ok and rendered == true and verified
     if not self._grenade_flash_ok then
+        local reason = (not pcall_ok) and "render_error"
+            or (rendered ~= true and "render_returned_false" or "verify_failed")
+        if self:_grenade_flash_trace_ready("owned", reason) then
+            self:_trace_grenade_flash("owned", reason,
+                flash_owned_observation(row, source, pcall_ok, rendered, verified))
+        end
         row:_hide_grenade_flash()
         self._grenade_flash_source = nil
+    elseif self:_grenade_flash_trace_ready("owned", "certified") then
+        self:_trace_grenade_flash("owned", "certified",
+            flash_owned_observation(row, source, pcall_ok, rendered, verified))
     end
     return self._grenade_flash_ok
 end
@@ -918,35 +1353,74 @@ function M:_throttle_grenade_flash()
     if not row or not row._tile then
         self._grenade_flash_ok = false
         self._grenade_flash_source = nil
+        if self:_grenade_flash_trace_ready("owned", "row_missing") then
+            self:_trace_grenade_flash("owned", "row_missing",
+                "row=" .. tostring(row ~= nil)
+                .. " tile=" .. tostring(row ~= nil and row._tile ~= nil))
+        end
         return false
     end
     if self._grenade_flash_rejected == true then
+        if self:_grenade_flash_trace_ready("owned", "rejected") then
+            self:_trace_grenade_flash("owned", "rejected",
+                flash_owned_observation(row, self._grenade_flash_source, nil, nil, nil))
+        end
         return false
     end
     if self._grenade_flash_ok == true then
         if not row:_verify_grenade_flash() then
+            local stale_source = self._grenade_flash_source
             self._grenade_flash_ok = false
             self._grenade_flash_source = nil
             self._grenade_flash_rejected = true
+            if self:_grenade_flash_trace_ready("owned", "throttle_verify_failed") then
+                self:_trace_grenade_flash("owned", "throttle_verify_failed",
+                    flash_owned_observation(row, stale_source, nil, nil, false))
+            end
+            row:_hide_grenade_flash(true)
             return false
         end
     elseif not row:_verify_grenade_flash() then
         self._grenade_flash_rejected = true
+        if self:_grenade_flash_trace_ready("owned", "throttle_not_certified") then
+            self:_trace_grenade_flash("owned", "throttle_not_certified",
+                flash_owned_observation(row, self._grenade_flash_source, nil, nil, false))
+        end
+        row:_hide_grenade_flash(true)
         return false
     end
     local source = self:_read_grenade_flash_source()
     self._grenade_flash_source = source
     if not source or source.alpha <= 0 then
+        local reason = source and "source_alpha_nonpositive" or "source_missing"
+        if self:_grenade_flash_trace_ready("owned", reason) then
+            self:_trace_grenade_flash("owned", reason,
+                "source=" .. tostring(source ~= nil)
+                .. " alpha=" .. flash_trace_number(source and source.alpha or nil))
+        end
         row:_hide_grenade_flash()
         self._grenade_flash_ok = false
         self._grenade_flash_source = nil
         return false
     end
-    local pcall_ok, rendered = pcall(function() return row:render_grenade_flash(source.alpha, source.scale) end)
-    self._grenade_flash_ok = pcall_ok and rendered == true and row:_verify_grenade_flash() == true
+    local pcall_ok, rendered = pcall(function() return row:render_grenade_flash(source.alpha, source.scale, source.event_mode) end)
+    local verified = false
+    if pcall_ok and rendered == true then
+        verified = row:_verify_grenade_flash() == true
+    end
+    self._grenade_flash_ok = pcall_ok and rendered == true and verified
     if not self._grenade_flash_ok then
+        local reason = (not pcall_ok) and "render_error"
+            or (rendered ~= true and "render_returned_false" or "verify_failed")
+        if self:_grenade_flash_trace_ready("owned", reason) then
+            self:_trace_grenade_flash("owned", reason,
+                flash_owned_observation(row, source, pcall_ok, rendered, verified))
+        end
         row:_hide_grenade_flash()
         self._grenade_flash_source = nil
+    elseif self:_grenade_flash_trace_ready("owned", "certified") then
+        self:_trace_grenade_flash("owned", "certified",
+            flash_owned_observation(row, source, pcall_ok, rendered, verified))
     end
     return self._grenade_flash_ok
 end
@@ -1189,6 +1663,153 @@ local function notify()
     if managers and managers.hud then M:refresh(managers.hud) end
 end
 
+function M:_read_grenade_flash_event_source(snap)
+    local event = self._grenade_flash_event
+    if type(event) ~= "table" or event.invalid == true
+        or event.expired == true then return nil end
+    if event.generation ~= self._source_generation then
+        self._grenade_flash_event = nil
+        return nil
+    end
+    if event.manager ~= self._hud_manager
+        or event.player_manager ~= self._player_manager
+        or event.player_unit ~= self._player_unit
+        or event.session ~= self._session
+        or event.peer_id ~= self._peer_id
+        or event.equipment ~= self._equipment_table
+        or event.selections ~= self._selections_table
+        or event.registry ~= self._grenade_registry
+        or event.gpc ~= self._gpc then
+        event.invalid = true
+        return nil
+    end
+    if not enabled() then return nil end
+    local row = type(self._rows) == "table" and self._rows[4] or nil
+    if not row or not row._tile or type(row._icon_descriptor) ~= "table" then return nil end
+    local now, clock = current_game_time()
+    if now == nil or clock == nil or clock ~= event.clock then
+        event.invalid = true
+        return nil
+    end
+    if now < event.start then
+        event.invalid = true
+        return nil
+    end
+    if type(event.last_seen) ~= "number" or now < event.last_seen then
+        event.invalid = true
+        return nil
+    end
+    event.last_seen = now
+    local elapsed = now - event.start
+    local extended = elapsed >= .6
+    if extended then
+        if flash_event_native_terminal(event) then
+            event.expired = true
+            return nil
+        end
+        if not flash_event_native_phase(event) then
+            event.invalid = true
+            return nil
+        end
+        if now > event.start + .6 + EVENT_NATIVE_EXTENSION_LIMIT then
+            event.expired = true
+            return nil
+        end
+    end
+    snap = snap or self:get_snapshot()
+    if type(snap) ~= "table" or snap.source_known ~= true or snap.unsupported then
+        event.invalid = true
+        return nil
+    end
+    if snap.source_generation ~= self._source_generation then
+        event.invalid = true
+        return nil
+    end
+    local projectile = snap.projectile
+    if type(projectile) ~= "table" then
+        event.invalid = true
+        return nil
+    end
+    if projectile.kind ~= "ability" and projectile.kind ~= "throwable" then
+        event.invalid = true
+        return nil
+    end
+    if not (projectile.charges and projectile.charges.known == true) then
+        event.invalid = true
+        return nil
+    end
+    if projectile.projectile_id ~= event.projectile_id
+        or self._projectile_id ~= event.projectile_id then
+        event.invalid = true
+        return nil
+    end
+    if not self:_grenade_flash_fresh(snap, projectile) then
+        event.invalid = true
+        return nil
+    end
+    local entry_panel, grenades, bases, ghosts = self:_grenade_flash_chain()
+    if not entry_panel or not grenades or not bases or not ghosts
+        or entry_panel ~= event.entry_panel or grenades ~= event.parent
+        or bases[1] ~= event.bases[1] or bases[2] ~= event.bases[2]
+        or ghosts[1] ~= event.ghosts[1] or ghosts[2] ~= event.ghosts[2] then
+        event.invalid = true
+        return nil
+    end
+    return {
+        entry_panel = entry_panel,
+        parent = grenades,
+        manager = self._hud_manager or (managers and managers.hud),
+        targets = {ghosts[1], ghosts[2]},
+        bases = {bases[1], bases[2]},
+        ghost_names = {FLASH_SOURCES[1].ghost, FLASH_SOURCES[2].ghost},
+        base_names = {FLASH_SOURCES[1].base, FLASH_SOURCES[2].base},
+        alpha = extended and EVENT_NATIVE_EXTENSION_ALPHA or (1 - elapsed / .6),
+        scale = 2,
+        event_mode = true,
+        extended = extended or nil,
+    }
+end
+
+function M:_capture_grenade_flash_event()
+    if not enabled() then return end
+    notify()
+    local snap = self:get_snapshot()
+    if type(snap) ~= "table" or snap.source_known ~= true or snap.unsupported then return end
+    if snap.source_generation ~= self._source_generation then return end
+    local projectile = snap.projectile
+    if type(projectile) ~= "table" then return end
+    if projectile.kind ~= "ability" and projectile.kind ~= "throwable" then return end
+    if not (projectile.charges and projectile.charges.known == true) then return end
+    if not self:_grenade_flash_fresh(snap, projectile) then return end
+    local entry_panel, grenades, bases, ghosts = self:_grenade_flash_chain()
+    if not entry_panel or not grenades or not bases or not ghosts then return end
+    local now, clock = current_game_time()
+    if now == nil or clock == nil then return end
+    self._grenade_flash_event = {
+        generation = self._source_generation,
+        projectile_id = self._projectile_id,
+        manager = self._hud_manager or (managers and managers.hud),
+        player_manager = self._player_manager or (managers and managers.player),
+        player_unit = self._player_unit,
+        session = self._session,
+        peer_id = self._peer_id,
+        equipment = self._equipment_table,
+        selections = self._selections_table,
+        registry = self._grenade_registry,
+        gpc = self._gpc,
+        entry_panel = entry_panel,
+        parent = grenades,
+        bases = {bases[1], bases[2]},
+        ghosts = {ghosts[1], ghosts[2]},
+        ghost_names = {FLASH_SOURCES[1].ghost, FLASH_SOURCES[2].ghost},
+        base_names = {FLASH_SOURCES[1].base, FLASH_SOURCES[2].base},
+        clock = clock,
+        start = now,
+        last_seen = now,
+        expired = false,
+    }
+end
+
 local function install(class, method, fn)
     if not class or not Hooks then return end
     local ok, target = pcall(function() return class[method] end)
@@ -1244,6 +1865,14 @@ elseif RequiredScript == "lib/managers/hudmanagerpd2" then
     local function local_panel(self, i)
         return managers and self == managers.hud and HUDManager and i == HUDManager.PLAYER_PANEL
     end
+    install(HUDManager, "animate_grenade_flash", function(self, i)
+        if not local_panel(self, i) then return end
+        M:_capture_grenade_flash_event()
+        local rt = kyohud.hud.runtime
+        if rt and type(rt.sync_local_grenade_flash_event) == "function" then
+            pcall(rt.sync_local_grenade_flash_event, rt)
+        end
+    end)
     install(HUDManager, "set_teammate_ability_radial", function(self, i, data)
         if local_panel(self, i) then M:_capture_activity(data and data.current, data and data.total) end
     end)
@@ -1336,6 +1965,7 @@ local function install_residual_phase_wrappers()
         M[name] = wrapper
     end
     install("refresh", "equipment_collect", false)
+    install("_capture_grenade_flash_event", "equipment_collect", false)
     install("_fresh_cooldown", "equipment_snapshot", true)
     install("_present", "equipment_present", false)
     install("_animate_recharge", "equipment_present", true)
