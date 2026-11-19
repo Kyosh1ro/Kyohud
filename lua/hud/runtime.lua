@@ -54,6 +54,9 @@ local BG_A = 0.86
 local BG_THROTTLE = 0.05
 local STOIC_TRACE_LIMIT = 40
 local PRIORITY_TRACE_LIMIT = 16
+local H5_HACKER_ACTIVE_GROUP = "local_p_hacker_active"
+local KINGPIN_LOCAL_SOURCE = "chico_injector_local"
+local KINGPIN_TERMINAL_SOURCE = "chico_injector_terminal"
 local BG_TINT
 
 local CALL_OK = "ok"
@@ -112,8 +115,16 @@ function RT:_residual_load()
         pcall(function() objectives_handle:close() end)
         completion_mode = true
     end
+    local kingpin_mode = false
+    if not completion_mode then
+        local ok_kingpin, kingpin_handle = pcall(io.open, ModPath .. "KYO_KINGPIN_PERF", "r")
+        if ok_kingpin and kingpin_handle then
+            pcall(function() kingpin_handle:close() end)
+            kingpin_mode = true
+        end
+    end
     self._residual_probe = {
-        mode = completion_mode and "completion" or nil,
+        mode = completion_mode and "completion" or (kingpin_mode and "kingpin" or nil),
         active = false,
         done = false,
         aborted = false,
@@ -124,6 +135,11 @@ function RT:_residual_load()
         gap_33 = 0,
         gap_50 = 0,
         gap_max = 0,
+        kingpin_publication_depth = 0,
+        kingpin_publication_pending = false,
+        kingpin_publication_invalid = false,
+        kingpin_publication_start = nil,
+        kingpin_publication_manager = nil,
         phases = {
             alerts = {count = 0, sum = 0, max = 0},
             assault = {count = 0, sum = 0, max = 0},
@@ -152,6 +168,33 @@ function RT:_residual_load()
             harmony_delayed_post = {count = 0, sum = 0, max = 0},
             reserve = {count = 0, sum = 0, max = 0},
             copr = {count = 0, sum = 0, max = 0},
+            hacker_active = {count = 0, sum = 0, max = 0},
+            kingpin_active = {count = 0, sum = 0, max = 0},
+            kingpin_event_prepare = {count = 0, sum = 0, max = 0},
+            kingpin_event_chain = {count = 0, sum = 0, max = 0},
+            kingpin_event_priority = {count = 0, sum = 0, max = 0},
+            kingpin_event_post = {count = 0, sum = 0, max = 0},
+            kingpin_event_final = {count = 0, sum = 0, max = 0},
+            kingpin_event_terminal = {count = 0, sum = 0, max = 0},
+            kingpin_publication_total = {count = 0, sum = 0, max = 0},
+            kingpin_publication_capture = {count = 0, sum = 0, max = 0},
+            kingpin_throttle_full = {count = 0, sum = 0, max = 0},
+            kingpin_prepare_attempt = {count = 0, sum = 0, max = 0},
+            kingpin_prepare_fast = {count = 0, sum = 0, max = 0},
+            kingpin_prepare_full = {count = 0, sum = 0, max = 0},
+            kingpin_reject_dirty = {count = 0, sum = 0, max = 0},
+            kingpin_reject_cache = {count = 0, sum = 0, max = 0},
+            kingpin_reject_activation = {count = 0, sum = 0, max = 0},
+            kingpin_reject_snapshot = {count = 0, sum = 0, max = 0},
+            kingpin_reject_layout = {count = 0, sum = 0, max = 0},
+            kingpin_reject_identity = {count = 0, sum = 0, max = 0},
+            kingpin_reject_cooldown = {count = 0, sum = 0, max = 0},
+            kingpin_reject_verify = {count = 0, sum = 0, max = 0},
+            kingpin_reject_render = {count = 0, sum = 0, max = 0},
+            kingpin_reject_source = {count = 0, sum = 0, max = 0},
+            kingpin_reject_exception = {count = 0, sum = 0, max = 0},
+            kingpin_reject_postverify = {count = 0, sum = 0, max = 0},
+            kingpin_reject_other = {count = 0, sum = 0, max = 0},
             harmony_duplicates = {count = 0, sum = 0, max = 0},
             combat_draw = {count = 0, sum = 0, max = 0},
             objectives_anim = {count = 0, sum = 0, max = 0},
@@ -205,11 +248,336 @@ function RT:_residual_record(name, start)
     if delta > phase.max then phase.max = delta end
 end
 
+local function kingpin_new_bin()
+    return {
+        count = 0,
+        events = 0,
+        heap_drop_count = 0,
+        heap_drop_kb = 0,
+        clock_missing = 0,
+        heap_missing = 0,
+        max_gap_ms = nil,
+        max_gap_clock_ms = nil,
+        max_gap_heap_delta_kb = nil,
+        max_gap_runtime_ms = nil,
+        max_gap_prepare_ms = nil,
+        max_gap_chain_ms = nil,
+        max_gap_priority_ms = nil,
+        max_gap_post_ms = nil,
+        max_gap_final_ms = nil,
+        runtime_ms = 0,
+        prepare_ms = 0,
+        chain_ms = 0,
+        priority_ms = 0,
+        post_ms = 0,
+        final_ms = 0,
+        clock_elapsed_ms = 0,
+        clock_count = 0,
+        heap_rise_kb = 0,
+        heap_rise_count = 0,
+        heap_drop_gap_max_ms = nil,
+        publication_ms = 0,
+        capture_ms = 0,
+        throttle_ms = 0,
+        max_gap_publication_ms = nil,
+        max_gap_capture_ms = nil,
+        max_gap_throttle_ms = nil,
+    }
+end
+
+local function kingpin_read_clock()
+    if type(os) ~= "table" or type(os.clock) ~= "function" then return nil end
+    local ok, value = pcall(os.clock)
+    if not ok or not finite(value) or value < 0 then return nil end
+    return value
+end
+
+local function kingpin_read_heap()
+    if type(collectgarbage) ~= "function" then return nil end
+    local ok, value = pcall(collectgarbage, "count")
+    if not ok or not finite(value) or value < 0 then return nil end
+    return value
+end
+
+local function kingpin_report_int(value)
+    if type(value) ~= "number" or not finite(value) then return "unknown" end
+    return string.format("%d", value)
+end
+
+local function kingpin_report_num(value)
+    if type(value) ~= "number" or not finite(value) then return "unknown" end
+    return string.format("%.3f", value)
+end
+
+local function kingpin_format_bin(label, bin)
+    return string.format(
+        "[KyoHUD][KingpinIntervals]: bin=%s count=%s events=%s "
+        .. "heap_drop_count=%s heap_drop_kb=%s clock_missing=%s "
+        .. "heap_missing=%s max_gap_ms=%s max_gap_clock_ms=%s "
+        .. "max_gap_heap_delta_kb=%s max_gap_runtime_ms=%s "
+        .. "max_gap_prepare_ms=%s max_gap_chain_ms=%s "
+        .. "max_gap_priority_ms=%s max_gap_post_ms=%s "
+        .. "max_gap_final_ms=%s runtime_ms=%s prepare_ms=%s chain_ms=%s "
+        .. "priority_ms=%s post_ms=%s final_ms=%s clock_elapsed_ms=%s "
+        .. "clock_count=%s heap_rise_kb=%s heap_rise_count=%s "
+        .. "heap_drop_gap_max_ms=%s publication_ms=%s capture_ms=%s throttle_ms=%s "
+        .. "max_gap_publication_ms=%s max_gap_capture_ms=%s max_gap_throttle_ms=%s",
+        label,
+        kingpin_report_int(bin.count),
+        kingpin_report_int(bin.events),
+        kingpin_report_int(bin.heap_drop_count),
+        kingpin_report_num(bin.heap_drop_kb),
+        kingpin_report_int(bin.clock_missing),
+        kingpin_report_int(bin.heap_missing),
+        kingpin_report_num(bin.max_gap_ms),
+        kingpin_report_num(bin.max_gap_clock_ms),
+        kingpin_report_num(bin.max_gap_heap_delta_kb),
+        kingpin_report_num(bin.max_gap_runtime_ms),
+        kingpin_report_num(bin.max_gap_prepare_ms),
+        kingpin_report_num(bin.max_gap_chain_ms),
+        kingpin_report_num(bin.max_gap_priority_ms),
+        kingpin_report_num(bin.max_gap_post_ms),
+        kingpin_report_num(bin.max_gap_final_ms),
+        kingpin_report_num(bin.runtime_ms),
+        kingpin_report_num(bin.prepare_ms),
+        kingpin_report_num(bin.chain_ms),
+        kingpin_report_num(bin.priority_ms),
+        kingpin_report_num(bin.post_ms),
+        kingpin_report_num(bin.final_ms),
+        kingpin_report_num(bin.clock_elapsed_ms),
+        kingpin_report_int(bin.clock_count),
+        kingpin_report_num(bin.heap_rise_kb),
+        kingpin_report_int(bin.heap_rise_count),
+        kingpin_report_num(bin.heap_drop_gap_max_ms),
+        kingpin_report_num(bin.publication_ms),
+        kingpin_report_num(bin.capture_ms),
+        kingpin_report_num(bin.throttle_ms),
+        kingpin_report_num(bin.max_gap_publication_ms),
+        kingpin_report_num(bin.max_gap_capture_ms),
+        kingpin_report_num(bin.max_gap_throttle_ms))
+end
+
+local function kingpin_emit(line)
+    if type(log) == "function" then pcall(log, line) end
+end
+
+function RT:_kingpin_interval_sample(t)
+    local p = self._residual_probe
+    if not p or p.done or not p.active then return end
+    if p.mode ~= "kingpin" then return end
+    if type(t) ~= "number" or not finite(t) then return end
+    local iv = p.kingpin_intervals
+    if iv == nil then
+        iv = {
+            attempts = 0,
+            capped = false,
+            reported = false,
+            bins = {
+                published = kingpin_new_bin(),
+                terminal = kingpin_new_bin(),
+                no_publication = kingpin_new_bin(),
+            },
+            prev_t = nil,
+            prev_clock = nil,
+            prev_heap = nil,
+            prev_terminal = 0,
+            prev_prepare = 0,
+            prev_runtime = 0,
+            prev_event_prepare = 0,
+            prev_event_chain = 0,
+            prev_event_priority = 0,
+            prev_event_post = 0,
+            prev_event_final = 0,
+        }
+        p.kingpin_intervals = iv
+    end
+    if iv.capped then return end
+
+    local clock_now = kingpin_read_clock()
+    local heap_now = kingpin_read_heap()
+
+    local attempts = (iv.attempts or 0) + 1
+    iv.attempts = attempts
+    if attempts >= 4096 then iv.capped = true end
+
+    local ph = p.phases
+    local cur_terminal = (ph.kingpin_event_terminal and ph.kingpin_event_terminal.count) or 0
+    local cur_prepare = (ph.kingpin_prepare_attempt and ph.kingpin_prepare_attempt.count) or 0
+    local cur_runtime = (ph.runtime and ph.runtime.sum) or 0
+    local cur_event_prepare = (ph.kingpin_event_prepare and ph.kingpin_event_prepare.sum) or 0
+    local cur_event_chain = (ph.kingpin_event_chain and ph.kingpin_event_chain.sum) or 0
+    local cur_event_priority = (ph.kingpin_event_priority and ph.kingpin_event_priority.sum) or 0
+    local cur_event_post = (ph.kingpin_event_post and ph.kingpin_event_post.sum) or 0
+    local cur_event_final = (ph.kingpin_event_final and ph.kingpin_event_final.sum) or 0
+    local cur_publication = (ph.kingpin_publication_total and ph.kingpin_publication_total.sum) or 0
+    local cur_capture = (ph.kingpin_publication_capture and ph.kingpin_publication_capture.sum) or 0
+    local cur_throttle = (ph.kingpin_throttle_full and ph.kingpin_throttle_full.sum) or 0
+
+    if attempts == 1 then
+        iv.prev_t = t
+        iv.prev_clock = clock_now
+        iv.prev_heap = heap_now
+        iv.prev_terminal = cur_terminal
+        iv.prev_prepare = cur_prepare
+        iv.prev_runtime = cur_runtime
+        iv.prev_event_prepare = cur_event_prepare
+        iv.prev_event_chain = cur_event_chain
+        iv.prev_event_priority = cur_event_priority
+        iv.prev_event_post = cur_event_post
+        iv.prev_event_final = cur_event_final
+        iv.prev_publication = cur_publication
+        iv.prev_capture = cur_capture
+        iv.prev_throttle = cur_throttle
+        return
+    end
+
+    local terminal_delta = cur_terminal - (iv.prev_terminal or 0)
+    local prepare_delta = cur_prepare - (iv.prev_prepare or 0)
+    local runtime_delta = cur_runtime - (iv.prev_runtime or 0)
+    local event_prepare_delta = cur_event_prepare - (iv.prev_event_prepare or 0)
+    local event_chain_delta = cur_event_chain - (iv.prev_event_chain or 0)
+    local event_priority_delta = cur_event_priority - (iv.prev_event_priority or 0)
+    local event_post_delta = cur_event_post - (iv.prev_event_post or 0)
+    local event_final_delta = cur_event_final - (iv.prev_event_final or 0)
+    local publication_delta = cur_publication - (iv.prev_publication or 0)
+    local capture_delta = cur_capture - (iv.prev_capture or 0)
+    local throttle_delta = cur_throttle - (iv.prev_throttle or 0)
+
+    local bin
+    if terminal_delta > 0 then
+        bin = iv.bins.terminal
+    elseif prepare_delta > 0 then
+        bin = iv.bins.published
+    else
+        bin = iv.bins.no_publication
+    end
+
+    local gap_ms = nil
+    if iv.prev_t ~= nil then
+        local gap = (t - iv.prev_t) * 1000
+        if finite(gap) and gap >= 0 then gap_ms = gap end
+    end
+
+    local clock_delta_ms = nil
+    if clock_now ~= nil and iv.prev_clock ~= nil and clock_now >= iv.prev_clock then
+        local delta = (clock_now - iv.prev_clock) * 1000
+        if finite(delta) then clock_delta_ms = delta end
+    end
+    if clock_delta_ms == nil then
+        bin.clock_missing = bin.clock_missing + 1
+    else
+        bin.clock_elapsed_ms = bin.clock_elapsed_ms + clock_delta_ms
+        bin.clock_count = bin.clock_count + 1
+    end
+
+    local heap_delta_kb = nil
+    if heap_now ~= nil and iv.prev_heap ~= nil then
+        local delta = heap_now - iv.prev_heap
+        if finite(delta) then heap_delta_kb = delta end
+    end
+    if heap_delta_kb == nil then
+        bin.heap_missing = bin.heap_missing + 1
+    elseif heap_delta_kb > 0 then
+        bin.heap_rise_kb = bin.heap_rise_kb + heap_delta_kb
+        bin.heap_rise_count = bin.heap_rise_count + 1
+    elseif heap_delta_kb < 0 then
+        bin.heap_drop_count = bin.heap_drop_count + 1
+        bin.heap_drop_kb = bin.heap_drop_kb + (-heap_delta_kb)
+        if gap_ms ~= nil and (bin.heap_drop_gap_max_ms == nil or gap_ms > bin.heap_drop_gap_max_ms) then
+            bin.heap_drop_gap_max_ms = gap_ms
+        end
+    end
+
+    bin.count = bin.count + 1
+    bin.events = bin.events + terminal_delta + prepare_delta
+
+    local runtime_ms = runtime_delta * 1000
+    local event_prepare_ms = event_prepare_delta * 1000
+    local event_chain_ms = event_chain_delta * 1000
+    local event_priority_ms = event_priority_delta * 1000
+    local event_post_ms = event_post_delta * 1000
+    local event_final_ms = event_final_delta * 1000
+    bin.runtime_ms = bin.runtime_ms + runtime_ms
+    bin.prepare_ms = bin.prepare_ms + event_prepare_ms
+    bin.chain_ms = bin.chain_ms + event_chain_ms
+    bin.priority_ms = bin.priority_ms + event_priority_ms
+    bin.post_ms = bin.post_ms + event_post_ms
+    bin.final_ms = bin.final_ms + event_final_ms
+    local publication_ms = publication_delta * 1000
+    local capture_ms = capture_delta * 1000
+    local throttle_ms = throttle_delta * 1000
+    bin.publication_ms = (bin.publication_ms or 0) + publication_ms
+    bin.capture_ms = (bin.capture_ms or 0) + capture_ms
+    bin.throttle_ms = (bin.throttle_ms or 0) + throttle_ms
+
+    if gap_ms ~= nil then
+        if bin.max_gap_ms == nil or gap_ms > bin.max_gap_ms then
+            bin.max_gap_ms = gap_ms
+            bin.max_gap_clock_ms = clock_delta_ms
+            bin.max_gap_heap_delta_kb = heap_delta_kb
+            bin.max_gap_runtime_ms = runtime_ms
+            bin.max_gap_prepare_ms = event_prepare_ms
+            bin.max_gap_chain_ms = event_chain_ms
+            bin.max_gap_priority_ms = event_priority_ms
+            bin.max_gap_post_ms = event_post_ms
+            bin.max_gap_final_ms = event_final_ms
+            bin.max_gap_publication_ms = publication_ms
+            bin.max_gap_capture_ms = capture_ms
+            bin.max_gap_throttle_ms = throttle_ms
+        end
+    end
+
+    iv.prev_t = t
+    iv.prev_clock = clock_now
+    iv.prev_heap = heap_now
+    iv.prev_terminal = cur_terminal
+    iv.prev_prepare = cur_prepare
+    iv.prev_runtime = cur_runtime
+    iv.prev_event_prepare = cur_event_prepare
+    iv.prev_event_chain = cur_event_chain
+    iv.prev_event_priority = cur_event_priority
+    iv.prev_event_post = cur_event_post
+    iv.prev_event_final = cur_event_final
+    iv.prev_publication = cur_publication
+    iv.prev_capture = cur_capture
+    iv.prev_throttle = cur_throttle
+end
+
+function RT:_kingpin_interval_report(status)
+    local p = self._residual_probe
+    if not p or p.mode ~= "kingpin" then return end
+    local iv = p.kingpin_intervals
+    if type(iv) ~= "table" or iv.reported then return end
+    iv.reported = true
+    local bins = iv.bins
+    local ok_pub, line_pub = pcall(kingpin_format_bin, "published", bins.published)
+    if not ok_pub then line_pub = "[KyoHUD][KingpinIntervals]: bin=published format_failed" end
+    local ok_term, line_term = pcall(kingpin_format_bin, "terminal", bins.terminal)
+    if not ok_term then line_term = "[KyoHUD][KingpinIntervals]: bin=terminal format_failed" end
+    local ok_nop, line_nop = pcall(kingpin_format_bin, "no_publication", bins.no_publication)
+    if not ok_nop then line_nop = "[KyoHUD][KingpinIntervals]: bin=no_publication format_failed" end
+    local ok_meta, line_meta = pcall(string.format,
+        "[KyoHUD][KingpinIntervals]: meta attempts=%s capped=%s status=%s; "
+        .. "Lua heap KB net; os.clock wall elapsed not CPU; "
+        .. "HUD entry intervals not GPU and not presented frames; no_publication not inactive; "
+        .. "publication_ms includes capture and event; throttle_ms includes verification and render; "
+        .. "runtime/event scopes may overlap do not add; "
+        .. "never add or subtract independent maxima; "
+        .. "heap drop not GC cause; first partial and abort partial excluded",
+        tostring(iv.attempts), tostring(iv.capped), tostring(status))
+    if not ok_meta then line_meta = "[KyoHUD][KingpinIntervals]: meta format_failed" end
+    kingpin_emit(line_pub)
+    kingpin_emit(line_term)
+    kingpin_emit(line_nop)
+    kingpin_emit(line_meta)
+end
+
 function RT:_residual_abort(reason)
     local p = self._residual_probe
     if not p or p.done then return end
     p.done = true
     p.active = false
+    self:_kingpin_interval_report("abort")
     if p.aborted then return end
     p.aborted = true
     pcall(log, "[KyoHUD][ResidualProbe] aborted: " .. (reason or "invalid"))
@@ -222,11 +590,17 @@ function RT:_residual_finish()
     p.active = false
     local ph = p.phases
     local label = "HUD intervals, not GPU; os.clock quantized; runtime inclusive; nested under assault; mission_feed outside runtime; mission_sync/layout/verify inclusive all callers incl recovery; mission_title_sync inclusive title sync/fitting nested under mission_sync for all callers and mission_labels_verify inclusive label measurement/certification nested under mission_layout/_update_layout changed predicate AND mission_verify for all callers, neither pure text_rect nor translation time; do not add nested mission totals to module totals; objectives_anim runtime inclusive; objectives_anim_idle/active split eligible animate only (early returns unclassified) and the finishing frame counts active; objectives_callback nested/overlapping, no sum totals"
-        .. "; harmony_delayed_sync/priority/delayed_post/duplicates nested under harmony but all callers count (overlaps possible); reserve aggregates pre-priority sync and post-priority release checks, nested under harmony, all callers count; copr aggregates pre-priority sync and post-priority release checks, nested under harmony, all callers count; backdrop work unclassified residue; combat_draw outside runtime"
+        .. "; harmony_delayed_sync/priority/delayed_post/duplicates nested under harmony but all callers count (overlaps possible); reserve aggregates pre-priority sync and post-priority release checks, nested under harmony, all callers count; copr aggregates pre-priority sync and post-priority release checks, nested under harmony, all callers count; hacker_active is nested-inclusive around the hacker-active event plus its pre-priority sync and post-priority checks for all callers and stays distinct from the separate harmony_priority checks; kingpin_active is nested-inclusive around the Kingpin activity event plus its pre-priority sync, post-priority checks and terminal/invalid branch for all callers, overlaps generic equipment phases, and is never summed with them; backdrop work unclassified residue; combat_draw outside runtime"
         .. "; equipment_collect/equipment_snapshot/equipment_present/equipment_verify are nested-inclusive overlapping equipment phases (snapshot and verify inside present, H5 certification verify, HUD transition callers included) and equipment_throttled counts equipment update throttle early returns; they overlap each other and the overall equipment bucket, so never sum them"
         .. "; player_capture/player_render/player_verify are nested inclusive overlapping player phases (render and verify nest under capture through the real player path) and player_native_acquire/crew_native_acquire time only the real _h5_acquire_group native acquisition for local_ prefixed and crew_ groups respectively, excluding coordination and target collection; never sum them"
+        .. "; kingpin_event_prepare/chain/priority/post/final/terminal are Kingpin event ONLY nested sub-phases counted solely inside the synchronous phase==kingpin_active seam plus its existing terminal/invalid branch; they exclude normal runtime/throttled phase detail (still in the old kingpin_active total), pre-seam native work, source qualification and GPU/GC and are never additive to module or kingpin_active totals; kingpin_event_priority/post/final are recorded only on non-stable events (first acquisition, new activation, re-acquired lease or released binding) and are legitimately zero on a stable continuation because the chain has just re-verified the held lease and the prepare has just certified the owned render, while the generic priority and the per-frame throttle verification still run every frame"
+        .. "; kingpin_publication_total is nested-inclusive only around the native HUD set_player_ability_radial relay plus the nested set_teammate_ability_radial capture/seam it triggers; it excludes pre-call PlayerDamage work, later same-method PostHooks and outer wrappers; it is wall elapsed, not CPU or presented frames; overlapping inner scopes do not add"
+        .. "; kingpin_publication_capture times only the two publication capture callbacks (_capture_activity and _capture_kingpin_activity), excluding the local rejection fallback, the pre-seam gate and the native setter/event seam; kingpin_throttle_full times the full throttled equipment update including render and all certification but not the equipment_throttled preamble; both are wall elapsed, not CPU or presented frames; publication includes capture/event and throttle includes verification/render; runtime/event scopes overlap and independent maxima must never be added or subtracted"
+        .. "; kingpin_prepare_attempt/fast/full and kingpin_reject_dirty/cache/activation/snapshot/layout/identity/cooldown/verify/render/source/exception/postverify/other are count-only counters, not timings; only count is emitted, sum/max remain zero"
     if p.mode == "completion" then
         label = label .. "; mode=completion"
+    elseif p.mode == "kingpin" then
+        label = label .. "; mode=kingpin; capture anchored to previous validated update time; excludes pre-trigger and native work"
     end
     local inconclusive = ""
     if ph.runtime.sum == 0 then inconclusive = "; timing inconclusive" end
@@ -252,7 +626,19 @@ function RT:_residual_finish()
         .. "mission_labels_verify %d %.3f %.3f; "
         .. "harmony_delayed_sync %d %.3f %.3f; harmony_priority %d %.3f %.3f; "
         .. "harmony_delayed_post %d %.3f %.3f; reserve %d %.3f %.3f; "
-        .. "copr %d %.3f %.3f; "
+        .. "copr %d %.3f %.3f; hacker_active %d %.3f %.3f; "
+        .. "kingpin_active %d %.3f %.3f; "
+        .. "kingpin_event_prepare %d %.3f %.3f; kingpin_event_chain %d %.3f %.3f; "
+        .. "kingpin_event_priority %d %.3f %.3f; kingpin_event_post %d %.3f %.3f; "
+        .. "kingpin_event_final %d %.3f %.3f; kingpin_event_terminal %d %.3f %.3f; "
+        .. "kingpin_publication_total %d %.3f %.3f; "
+        .. "kingpin_publication_capture %d %.3f %.3f; kingpin_throttle_full %d %.3f %.3f; "
+        .. "kingpin_prepare_attempt %d; kingpin_prepare_fast %d; kingpin_prepare_full %d; "
+        .. "kingpin_reject_dirty %d; kingpin_reject_cache %d; kingpin_reject_activation %d; "
+        .. "kingpin_reject_snapshot %d; kingpin_reject_layout %d; kingpin_reject_identity %d; "
+        .. "kingpin_reject_cooldown %d; kingpin_reject_verify %d; kingpin_reject_render %d; "
+        .. "kingpin_reject_source %d; kingpin_reject_exception %d; kingpin_reject_postverify %d; "
+        .. "kingpin_reject_other %d; "
         .. "harmony_duplicates %d %.3f %.3f; "
         .. "combat_draw %d %.3f %.3f; "
         .. "gaps >16.7ms %d >33.3ms %d >50ms %d max_ms %.3f; %s%s",
@@ -295,16 +681,52 @@ function RT:_residual_finish()
         ph.harmony_delayed_post.count, ph.harmony_delayed_post.sum * 1000, ph.harmony_delayed_post.max * 1000,
         ph.reserve.count, ph.reserve.sum * 1000, ph.reserve.max * 1000,
         ph.copr.count, ph.copr.sum * 1000, ph.copr.max * 1000,
+        ph.hacker_active.count, ph.hacker_active.sum * 1000, ph.hacker_active.max * 1000,
+        ph.kingpin_active.count, ph.kingpin_active.sum * 1000, ph.kingpin_active.max * 1000,
+        ph.kingpin_event_prepare.count, ph.kingpin_event_prepare.sum * 1000, ph.kingpin_event_prepare.max * 1000,
+        ph.kingpin_event_chain.count, ph.kingpin_event_chain.sum * 1000, ph.kingpin_event_chain.max * 1000,
+        ph.kingpin_event_priority.count, ph.kingpin_event_priority.sum * 1000, ph.kingpin_event_priority.max * 1000,
+        ph.kingpin_event_post.count, ph.kingpin_event_post.sum * 1000, ph.kingpin_event_post.max * 1000,
+        ph.kingpin_event_final.count, ph.kingpin_event_final.sum * 1000, ph.kingpin_event_final.max * 1000,
+        ph.kingpin_event_terminal.count, ph.kingpin_event_terminal.sum * 1000, ph.kingpin_event_terminal.max * 1000,
+        ph.kingpin_publication_total.count, ph.kingpin_publication_total.sum * 1000, ph.kingpin_publication_total.max * 1000,
+        ph.kingpin_publication_capture.count, ph.kingpin_publication_capture.sum * 1000, ph.kingpin_publication_capture.max * 1000,
+        ph.kingpin_throttle_full.count, ph.kingpin_throttle_full.sum * 1000, ph.kingpin_throttle_full.max * 1000,
+        ph.kingpin_prepare_attempt.count,
+        ph.kingpin_prepare_fast.count,
+        ph.kingpin_prepare_full.count,
+        ph.kingpin_reject_dirty.count,
+        ph.kingpin_reject_cache.count,
+        ph.kingpin_reject_activation.count,
+        ph.kingpin_reject_snapshot.count,
+        ph.kingpin_reject_layout.count,
+        ph.kingpin_reject_identity.count,
+        ph.kingpin_reject_cooldown.count,
+        ph.kingpin_reject_verify.count,
+        ph.kingpin_reject_render.count,
+        ph.kingpin_reject_source.count,
+        ph.kingpin_reject_exception.count,
+        ph.kingpin_reject_postverify.count,
+        ph.kingpin_reject_other.count,
         ph.harmony_duplicates.count, ph.harmony_duplicates.sum * 1000, ph.harmony_duplicates.max * 1000,
         ph.combat_draw.count, ph.combat_draw.sum * 1000, ph.combat_draw.max * 1000,
         p.gap_16, p.gap_33, p.gap_50, p.gap_max,
         label, inconclusive)
     if ok_format then pcall(log, message) end
+    self:_kingpin_interval_report("finish")
 end
 
 function RT:_residual_tick(t)
     local p = self._residual_probe
-    if not p or p.done then return end
+    if not p then return end
+    -- An incomplete publication pair (including one unwound by a native error)
+    -- must never be validated across a later tick.
+    p.kingpin_publication_depth = 0
+    p.kingpin_publication_pending = false
+    p.kingpin_publication_invalid = false
+    p.kingpin_publication_start = nil
+    p.kingpin_publication_manager = nil
+    if p.done then return end
 
     if not p.active and kyohud.settings.enable_hud_foundation ~= true then
         p.warm_start = nil
@@ -338,6 +760,7 @@ function RT:_residual_tick(t)
                 if gap_ms > p.gap_max then p.gap_max = gap_ms end
             end
         end
+        self:_kingpin_interval_sample(t)
         p.last_t = t
         if p.capture_start ~= nil and (t - p.capture_start) >= 20 then
             self:_residual_finish()
@@ -348,6 +771,29 @@ function RT:_residual_tick(t)
     if not live then
         p.warm_start = nil
         p.last_t = nil
+        return
+    end
+    if p.mode == "kingpin" then
+        local mgr = self._manager
+        local eligible = live
+            and kyohud.settings.enable_hud_foundation == true
+            and kyohud.settings.enable_equipment == true
+            and self._disabled ~= true
+            and self._freeflight ~= true
+            and not is_vr()
+            and mgr ~= nil
+            and self._mounted == true
+            and managers ~= nil
+            and managers.hud == mgr
+        if not eligible then
+            p.last_t = nil
+            return
+        end
+        if p.last_t ~= nil and t < p.last_t then
+            p.last_t = nil
+            return
+        end
+        p.last_t = t
         return
     end
     if p.mode == "completion" then
@@ -394,6 +840,241 @@ function RT:_residual_note_completion()
     local objectives = kyohud.hud.objectives
     if not objectives or objectives._mounted ~= true then return end
     if not self:_residual_player_alive() then return end
+    local t = p.last_t
+    if type(t) ~= "number" or not finite(t) then return end
+    p.active = true
+    p.capture_start = t
+end
+
+function RT:_kingpin_transition(stage, reason, prov)
+    local p = self._residual_probe
+    if not p then return end
+    if p.mode ~= "kingpin" then return end
+    if p.active ~= true then return end
+    if p.done then return end
+    local trace_count = p.trace_count or 0
+    if type(trace_count) ~= "number" or trace_count >= 48 then return end
+
+    local function read_field(obj, key)
+        if obj == nil then return nil, false end
+        local ok, value = pcall(function() return obj[key] end)
+        if not ok then return nil, false end
+        return value, true
+    end
+
+    local function scalar(value)
+        if value == nil then return "unknown" end
+        local value_type = type(value)
+        if value_type == "boolean" then return value and "true" or "false" end
+        if value_type == "number" then
+            if not finite(value) then return "unknown" end
+            return tostring(value)
+        end
+        if value_type == "string" then return value end
+        return "unknown"
+    end
+
+    local function read_visible(obj)
+        if obj == nil then return "unknown" end
+        local method, ok = read_field(obj, "visible")
+        if not ok or type(method) ~= "function" then return "unknown" end
+        local called, value = pcall(method, obj)
+        if not called then return "unknown" end
+        if value == true or value == false then return value end
+        return "unknown"
+    end
+
+    local function emit(record)
+        local count = p.trace_count or 0
+        if type(count) ~= "number" or count >= 48 then return false end
+        p.trace_count = count + 1
+        p.seq = (p.seq or 0) + 1
+        pcall(function()
+            local message = string.format(
+                "[KyoHUD][KingpinTransition] seq=%s stage=%s t=%s anchor=%s app=%s publication=%s p_visible=%s p_verified=%s e_visible=%s native_parent_visible=%s meter_visible=%s icon_visible=%s p_ran=%s e_ran=%s reason=%s",
+                scalar(p.seq),
+                scalar(record.stage),
+                scalar(record.t),
+                scalar(record.anchor),
+                scalar(record.ap),
+                scalar(record.publication),
+                scalar(record.p_visible),
+                scalar(record.p_verified),
+                scalar(record.e_visible),
+                scalar(record.native_parent_visible),
+                scalar(record.meter_visible),
+                scalar(record.icon_visible),
+                scalar(record.p_ran),
+                scalar(record.e_ran),
+                scalar(record.reason)
+            )
+            log(message)
+        end)
+        return true
+    end
+
+    local P = kyohud.hud.player
+    local E = kyohud.hud.equipment
+    local p_root
+    local p_verified
+    local p_ran
+    if P ~= nil then
+        p_root = read_field(P, "_root")
+        p_verified = read_field(P, "_render_verified")
+        p_ran = read_field(P, "_update_ran_now")
+    end
+    local e_root
+    local e_ran
+    if E ~= nil then
+        e_root = read_field(E, "_root")
+        e_ran = read_field(E, "_update_ran_now")
+    end
+    local p_visible = read_visible(p_root)
+    local e_visible = read_visible(e_root)
+
+    local binding = self._hacker_active_binding
+    local binding_kind
+    local leased = false
+    if type(binding) == "table" then
+        binding_kind = read_field(binding, "source_kind")
+        local binding_leased = read_field(binding, "leased")
+        leased = binding_kind == "chico_injector_local" and binding_leased == true
+        if binding_kind == "chico_injector_local" then
+            p._kingpin_native_parent = read_field(binding, "parent")
+            local leaves = read_field(binding, "leaves")
+            if type(leaves) == "table" then
+                p._kingpin_native_meter = read_field(leaves, 1)
+                p._kingpin_native_icon = read_field(leaves, 2)
+            end
+        end
+    end
+    local native_parent_visible = read_visible(p._kingpin_native_parent)
+    local meter_visible = read_visible(p._kingpin_native_meter)
+    local icon_visible = read_visible(p._kingpin_native_icon)
+
+    local ap = "unknown"
+    do
+        local ok, value = pcall(function() return Application:time() end)
+        if ok then ap = value end
+    end
+
+    local has_prov = type(prov) == "table" or type(prov) == "number"
+    local raw_publication_stage = stage == "terminal_enter"
+        or stage == "terminal_exit"
+        or stage == "publication_rejected"
+    local raw_remaining
+    local raw_total
+    if type(prov) == "table" then
+        local remaining_value = read_field(prov, "remaining")
+        raw_remaining = remaining_value
+        if finite(remaining_value) then p._kingpin_remaining = remaining_value end
+        local total_value = read_field(prov, "published_total")
+        if not finite(total_value) then
+            total_value = read_field(prov, "duration")
+        end
+        raw_total = total_value
+        if finite(total_value) then p._kingpin_total = total_value end
+    elseif type(prov) == "number" then
+        raw_remaining = prov
+        if finite(prov) then p._kingpin_remaining = prov end
+    end
+    local remaining
+    local total
+    if raw_publication_stage then
+        remaining = raw_remaining
+        total = raw_total
+    else
+        remaining = p._kingpin_remaining
+        total = p._kingpin_total
+    end
+    local publication
+    if raw_publication_stage then
+        local remaining_text = finite(remaining) and tostring(remaining) or "unknown"
+        local total_text = finite(total) and tostring(total) or "unknown"
+        publication = remaining_text .. "/" .. total_text
+    elseif finite(remaining) and finite(total) then
+        publication = tostring(remaining) .. "/" .. tostring(total)
+    elseif finite(remaining) then
+        publication = tostring(remaining) .. "/unknown"
+    elseif type(p._kingpin_publication) == "string" then
+        publication = p._kingpin_publication
+    else
+        publication = "unknown"
+    end
+    if has_prov then
+        if raw_publication_stage then
+            if finite(raw_remaining) then p._kingpin_publication = publication end
+        elseif finite(remaining) then
+            p._kingpin_publication = publication
+        end
+    end
+
+    local record = {
+        stage = stage,
+        reason = reason,
+        t = p.last_t,
+        anchor = "last_validated_update",
+        ap = ap,
+        publication = publication,
+        p_visible = p_visible,
+        p_verified = p_verified,
+        e_visible = e_visible,
+        native_parent_visible = native_parent_visible,
+        meter_visible = meter_visible,
+        icon_visible = icon_visible,
+        p_ran = p_ran,
+        e_ran = e_ran,
+    }
+
+    if stage == "positive" then
+        p._kingpin_pending_positive = record
+        return
+    end
+
+    if stage == "source_reject" or stage == "release_before" or stage == "terminal_enter"
+        or stage == "publication_rejected" then
+        local pending = p._kingpin_pending_positive
+        if pending ~= nil then
+            pending.stage = "last_positive"
+            emit(pending)
+            p._kingpin_pending_positive = nil
+        end
+    end
+
+    if stage == "runtime_state" then
+        local runtime_state = scalar(p_visible)
+            .. "|" .. scalar(p_verified)
+            .. "|" .. scalar(e_visible)
+            .. "|" .. scalar(native_parent_visible)
+            .. "|" .. scalar(meter_visible)
+            .. "|" .. scalar(icon_visible)
+            .. "|" .. scalar(leased)
+        if runtime_state ~= p._kingpin_runtime_state then
+            p._kingpin_runtime_state = runtime_state
+            emit(record)
+        end
+    else
+        emit(record)
+    end
+end
+
+function RT:_residual_note_kingpin()
+    local p = self._residual_probe
+    if not p or p.done or p.active then return end
+    if p.mode ~= "kingpin" then return end
+    local settings = kyohud.settings
+    if settings.enable_hud_foundation ~= true then return end
+    if settings.enable_equipment ~= true then return end
+    if self._disabled == true or self._freeflight == true then return end
+    if is_vr() then return end
+    local mgr = self._manager
+    if not mgr or self._mounted ~= true or not managers or managers.hud ~= mgr then return end
+    if not self:_residual_player_alive() then return end
+    local E = kyohud.hud.equipment
+    if type(E) ~= "table" or type(E.get_kingpin_activity_source) ~= "function" then return end
+    local ok_source, source = pcall(E.get_kingpin_activity_source, E)
+    if not ok_source or type(source) ~= "table" then return end
+    if source.kind ~= "chico_injector_local" or source.active ~= true then return end
     local t = p.last_t
     if type(t) ~= "number" or not finite(t) then return end
     p.active = true
@@ -764,7 +1445,7 @@ function RT:update(manager, t, dt)
     local C = kyohud.hud.crew
     if P then P._update_ran_now = false; P._verify_ok_now = false end
     if W then W._update_ran_now = false; W._verify_ok_now = false end
-    if E then E._update_ran_now = false; E._verify_ok_now = false end
+    if E then E._update_ran_now = false; E._verify_ok_now = false; E._kingpin_source_cache = nil end
     if C then C._update_ran_now = false; C._verify_ok_now = false end
     if not t then
         self:_residual_record("runtime", runtime_start)
@@ -792,6 +1473,7 @@ function RT:update(manager, t, dt)
         self:_residual_record("crew", phase_start)
         phase_start = self:_residual_stamp()
         self:_sync_local_backdrop(t, crew_receipt)
+        pcall(self._kingpin_transition, self, "runtime_state")
         self:_residual_record("harmony", phase_start)
     end
 
@@ -1404,6 +2086,92 @@ function RT:_apply_native_priority_unprofiled(t, post_release)
         end
         return leaves
     end
+    -- Local Hacker ACTIVE: replace only the native radial_ability container
+    -- observation with its two owned, held bitmap leaves. Everything is proved
+    -- fresh on every call; any invalid proof restores the leaves and falls back
+    -- to the original container guard.
+    local function local_hacker_replaced_leaves(entry, entry_panel, radial, parent)
+        local binding = self._hacker_active_binding
+        if not binding or binding.certified ~= true or binding.release_pending == true then
+            return nil
+        end
+        if binding.manager ~= mgr or binding.root_gen ~= self._generation then return nil end
+        if binding.entry ~= entry or binding.entry_panel ~= entry_panel
+            or binding.radial ~= radial or binding.parent ~= parent then
+            return nil
+        end
+        local E = kyohud.hud.equipment
+        if not E then return nil end
+        if binding.terminal == true then
+            if binding.source_kind ~= KINGPIN_LOCAL_SOURCE then return nil end
+            local proof_ok, proved = pcall(self._terminal_proof, self, binding)
+            if not proof_ok or proved ~= true then return nil end
+            return binding.leaves
+        end
+        local src_ok, source = pcall(E.get_local_ability_activity_source, E)
+        if not src_ok or type(source) ~= "table" or source.active ~= true
+            or source.event_id ~= binding.source_event_id
+            or source.kind ~= binding.source_kind then
+            return nil
+        end
+        local verify_ok, verified = pcall(E._verify_local_ability_activity, E, source)
+        if not verify_ok or verified ~= true then return nil end
+        local leaves = binding.leaves
+        if type(leaves) ~= "table" or #leaves ~= 2 then return nil end
+        local ms, meter = safe_call(parent, "child", "ability_meter")
+        local is, icon = safe_call(parent, "child", "ability_icon")
+        if ms ~= CALL_OK or is ~= CALL_OK or not meter or not icon
+            or not panel_alive(meter) or not panel_alive(icon)
+            or meter ~= leaves[1] or icon ~= leaves[2] then
+            return nil
+        end
+        local chs, children = safe_call(parent, "children")
+        if chs ~= CALL_OK or type(children) ~= "table" then return nil end
+        local count = 0
+        local seen = {}
+        for _, child in pairs(children) do
+            count = count + 1
+            if count > 2 then return nil end
+            if child ~= meter and child ~= icon then return nil end
+            if seen[child] then return nil end
+            seen[child] = true
+        end
+        if count ~= 2 then return nil end
+        local parent_visible = _effective_visible(parent, reads)
+        local parent_alpha = _effective_alpha(parent, reads)
+        if parent_visible ~= true or parent_alpha == nil or parent_alpha <= 0 then
+            return nil
+        end
+        local parent_bounds = _bounds_in_common(parent, common_parent, reads)
+        if not parent_bounds or parent_bounds.w <= 0 or parent_bounds.h <= 0 then
+            return nil
+        end
+        for i = 1, 2 do
+            local leaf = leaves[i]
+            local lp, leaf_parent = _pass_read(reads, leaf, "parent")
+            local lv, leaf_visible = _pass_read(reads, leaf, "visible")
+            if lp ~= CALL_OK or leaf_parent ~= parent then return nil end
+            if lv ~= CALL_OK or leaf_visible ~= false then return nil end
+            if self:_h5_group_holds_visible(H5_HACKER_ACTIVE_GROUP, leaf) ~= true then
+                return nil
+            end
+            local leaf_bounds = _bounds_in_common(leaf, common_parent, reads)
+            if not leaf_bounds or leaf_bounds.w <= 0 or leaf_bounds.h <= 0 then
+                return nil
+            end
+            local leaf_alpha = _effective_alpha(leaf, reads)
+            if leaf_alpha == nil or leaf_alpha <= 0 then return nil end
+        end
+        local cs, color = safe_call(meter, "color")
+        if cs ~= CALL_OK or color == nil then return nil end
+        local color_ok, r, g, b, a = pcall(function()
+            return color.r, color.g, color.b, color.a
+        end)
+        if not color_ok then return nil end
+        if not finite(r) or r < 0 or r > 1 then return nil end
+        if not finite(g) or not finite(b) or not finite(a) then return nil end
+        return leaves
+    end
     local function check_leaf(leaf_panel, leaf_path)
         if not leaf_panel or not panel_alive(leaf_panel) then return end
         if S.hide_crew and S.hide_local then return end
@@ -1492,7 +2260,27 @@ function RT:_apply_native_priority_unprofiled(t, post_release)
                     if rc and panel_alive(rc) then check_leaf(rc, rc_path) end
                     local ra_path = path_of("player/radial_health_panel/radial_ability")
                     local ra = known_child(radial, "radial_ability", nil, ra_path)
-                    if ra and panel_alive(ra) then check_leaf(ra, ra_path) end
+                    if ra and panel_alive(ra) then
+                        local replaced = local_hacker_replaced_leaves(entry, entry_panel, radial, ra)
+                        if replaced then
+                            for i, leaf in ipairs(replaced) do
+                                local leaf_path
+                                if collect and S._priority_first == nil then
+                                    leaf_path = "player/radial_health_panel/radial_ability/"
+                                        .. (i == 1 and "ability_meter" or "ability_icon")
+                                end
+                                check_leaf(leaf, leaf_path)
+                            end
+                        else
+                            local active_binding = self._hacker_active_binding
+                            if active_binding and active_binding.manager == mgr
+                                and active_binding.entry == entry
+                                and active_binding.entry_panel == entry_panel then
+                                self:_release_hacker_active(true)
+                            end
+                            check_leaf(ra, ra_path)
+                        end
+                    end
                     local rr_path = path_of("player/radial_health_panel/radial_rip")
                     local rr = known_child(radial, "radial_rip", nil, rr_path)
                     if rr and panel_alive(rr) then check_leaf(rr, rr_path) end
@@ -1637,6 +2425,18 @@ function RT:_apply_native_priority_unprofiled(t, post_release)
             safe_call(self._local_bg_panel, "set_visible", false)
         end
     end
+    local kingpin_probe = self._residual_probe
+    if kingpin_probe and kingpin_probe.mode == "kingpin"
+        and kingpin_probe.active == true and not kingpin_probe.done then
+        if S.hide_local then
+            if kingpin_probe._kingpin_hide_latch ~= true then
+                kingpin_probe._kingpin_hide_latch = true
+                pcall(self._kingpin_transition, self, "priority_hide")
+            end
+        else
+            kingpin_probe._kingpin_hide_latch = nil
+        end
+    end
     if trace then
         if S.hide_local then
             if self._priority_trace_episode ~= true then
@@ -1666,6 +2466,7 @@ local H5_VISIBLE_GROUPS = {
     local_p_cooldown = true,
     local_p_damage = true,
     local_p_grenade_flash = true,
+    local_p_hacker_active = true,
 }
 local DAMAGE_FEEDBACK_ROOT_NAME = "kyohud_damage_feedback"
 local DAMAGE_FEEDBACK_EDGE_NAMES = {
@@ -2176,7 +2977,10 @@ local function h5_local_peer_id()
     return peer_id
 end
 
-local function h5_equipment_integrated_row_ok(E, cooldown)
+local function h5_equipment_integrated_row_ok(E, cooldown, charges)
+    if type(E.integrated_recharge_text) ~= "function" then return false end
+    local expected_text = E:integrated_recharge_text(cooldown, charges)
+    if type(expected_text) ~= "string" then return false end
     local remaining = cooldown.remaining
     local duration = cooldown.duration
     if not finite(remaining) or remaining <= 0 then return false end
@@ -2188,7 +2992,7 @@ local function h5_equipment_integrated_row_ok(E, cooldown)
     local root_status, row_visible = safe_call(row._root, "visible")
     if root_status ~= CALL_OK or row_visible ~= true then return false end
     local text_status, text = safe_call(row._value, "text")
-    if text_status ~= CALL_OK or text ~= string.format("%ds", math.ceil(remaining)) then return false end
+    if text_status ~= CALL_OK or text ~= expected_text then return false end
     local progress = math.min(1, math.max(0, 1 - remaining / duration))
     if not finite(row._progress) or math.abs(row._progress - progress) > 0.02 then return false end
     local reveal = row._recharge_reveal
@@ -2233,7 +3037,7 @@ local function h5_equipment_cooldown_ok(E)
     if type(cooldown) ~= "table" or cooldown.known ~= true or cooldown.active ~= true then return false end
     if not finite(cooldown.remaining) or cooldown.remaining <= 0 then return false end
     if cooldown.integrated == true then
-        if not h5_equipment_integrated_row_ok(E, cooldown) then return false end
+        if not h5_equipment_integrated_row_ok(E, cooldown, projectile.charges) then return false end
     else
         if type(E._visible_rows) ~= "table" or E._visible_rows[5] ~= true then return false end
         local row = type(E._rows) == "table" and E._rows[5] or nil
@@ -2658,6 +3462,9 @@ function RT:_h5_release_group(group_key)
         end
     end
     self._h5_groups[group_key] = nil
+    if group_key == H5_HACKER_ACTIVE_GROUP then
+        self._hacker_active_binding = nil
+    end
     return true
 end
 
@@ -3383,6 +4190,16 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
         end
     end
 
+    if self._h5_groups and self._h5_groups[H5_HACKER_ACTIVE_GROUP] then
+        local hacker_state = self._h5_groups[H5_HACKER_ACTIVE_GROUP]
+        local hacker_binding = self._hacker_active_binding
+        if hacker_binding and hacker_binding.leased == true
+            and hacker_state._release_pending ~= true
+            and hacker_state.generation == hacker_binding.lease_gen
+            and h5_same_targets(hacker_state.targets, hacker_binding.leaves) then
+            handled_keys[H5_HACKER_ACTIVE_GROUP] = true
+        end
+    end
     if self._h5_groups then
         for key, state in pairs(self._h5_groups) do
             if not handled_keys[key] then
@@ -3455,6 +4272,12 @@ function RT:_release_all_h5()
     h5_child_index_reset()
     damage_feedback_hide_owned()
     if not self._h5_groups then
+        local hacker_binding = self._hacker_active_binding
+        if not hacker_binding or hacker_binding.release_pending ~= true then
+            self._hacker_active_binding = nil
+        end
+        self._hacker_active_conflict_event = nil
+        self._hacker_active_conflict_targets = nil
         self:_sync_h5_id_label_visibility()
         return
     end
@@ -3470,6 +4293,14 @@ function RT:_release_all_h5()
     if not any_pending then
         self._h5_groups = nil
     end
+    if not (self._h5_groups and self._h5_groups[H5_HACKER_ACTIVE_GROUP]) then
+        local hacker_binding = self._hacker_active_binding
+        if not hacker_binding or hacker_binding.release_pending ~= true then
+            self._hacker_active_binding = nil
+        end
+    end
+    self._hacker_active_conflict_event = nil
+    self._hacker_active_conflict_targets = nil
     self:_sync_h5_id_label_visibility()
 end
 
@@ -5220,14 +6051,701 @@ function RT:_copr_replacement_post_priority_unprofiled(t)
     end
 end
 
+function RT:_hacker_active_allowed(mgr, E)
+    if kyohud.settings.enable_hud_foundation ~= true
+        or kyohud.settings.enable_equipment ~= true then return false end
+    if is_vr() or self._disabled == true or self._freeflight == true
+        or self._mounted ~= true then return false end
+    if not mgr or not managers or managers.hud ~= mgr then return false end
+    if type(E) ~= "table" or E._mounted ~= true
+        or E._manager ~= mgr or E._hud_manager ~= mgr then return false end
+    if not E._root or not panel_alive(E._root) then return false end
+    return true
+end
+
+function RT:_hacker_native_bounds(panel)
+    if not panel_alive(panel) then return nil end
+    local x, y, w, h = h5_flash_bounds(panel)
+    if x == nil or w <= 0 or h <= 0 then return nil end
+    return x, y, w, h
+end
+
+function RT:_hacker_native_color(panel)
+    local cs, color = safe_call(panel, "color")
+    if cs ~= CALL_OK or color == nil then return nil end
+    local ok, r, g, b, a = pcall(function()
+        return color.r, color.g, color.b, color.a
+    end)
+    if not ok then return nil end
+    if not finite(r) or r < 0 or r > 1 then return nil end
+    if not finite(g) or not finite(b) or not finite(a) then return nil end
+    return r, g, b, a
+end
+
+function RT:_hacker_foreign_conflict(leaves)
+    local nv = kyohud.hud.native_visibility
+    if not nv or type(nv._entries) ~= "table" then return false end
+    local owner = self._h5_owner .. "_" .. H5_HACKER_ACTIVE_GROUP
+    for i = 1, 2 do
+        local leaf = leaves[i]
+        for _, entry in ipairs(nv._entries) do
+            if entry.object == leaf and entry.property == "visible"
+                and entry.owner ~= owner then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function h5_idstring_key(value)
+    if value == nil then return nil end
+    if type(value) == "string" then return value end
+    local ok, key = pcall(function() return value:key() end)
+    if ok and key ~= nil then return key end
+    return nil
+end
+
+local function h5_texture_matches(actual, expected)
+    if type(expected) ~= "string" or expected == "" then return false end
+    if type(actual) == "string" then
+        if actual == expected then return true end
+        local ok_actual, actual_id = pcall(Idstring, actual)
+        local ok_expected, expected_id = pcall(Idstring, expected)
+        if not ok_actual or not ok_expected
+            or actual_id == nil or expected_id == nil then return false end
+        local actual_key = h5_idstring_key(actual_id)
+        local expected_key = h5_idstring_key(expected_id)
+        return actual_key ~= nil and actual_key == expected_key
+    end
+    local ok_expected, expected_id = pcall(Idstring, expected)
+    if not ok_expected or expected_id == nil then return false end
+    local actual_key = h5_idstring_key(actual)
+    local expected_key = h5_idstring_key(expected_id)
+    return actual_key ~= nil and actual_key == expected_key
+end
+
+-- The terminal path trusts a render verifier only while it is still the exact
+-- aggregate wrapper installed by the module itself. A replaced or missing
+-- verifier fails closed; it is never called to fabricate a proof.
+local function h5_equipment_verifier_identity(E)
+    if type(E) ~= "table" then return false end
+    local wrappers = E._residual_phase_wrappers
+    if type(wrappers) ~= "table" then return false end
+    local installed = wrappers.verify
+    if type(installed) ~= "function" then return false end
+    return type(E.verify) == "function" and E.verify == installed
+end
+
+local function h5_player_verifier_identity(P)
+    if type(P) ~= "table" then return false end
+    local installed = P._residual_phase_player_verify
+    if type(installed) ~= "function" then return false end
+    return type(P.verify) == "function" and P.verify == installed
+end
+
+-- Read-only terminal Kingpin proof shared by the priority scanner and the
+-- post-priority check. It never presents, repairs, acquires or releases anything:
+-- it only re-proves the terminal source, the exact native subtree/census, the
+-- last published meter ratio and icon, the held two-leaf lease and the fresh
+-- inactive P/E renders. Any uncertainty is false.
+function RT:_terminal_proof(binding, allow_unset)
+    if type(binding) ~= "table" then return false end
+    if binding.terminal ~= true and allow_unset ~= true then return false end
+    if binding.leased ~= true or binding.release_pending == true then return false end
+    if binding.source_kind ~= KINGPIN_LOCAL_SOURCE then return false end
+    if type(binding.leaves) ~= "table" or #binding.leaves ~= 2 then return false end
+    local mgr = self._manager
+    local E = kyohud.hud.equipment
+    if not self:_hacker_active_allowed(mgr, E) then return false end
+    if not h5_equipment_verifier_identity(E) then return false end
+    if binding.manager ~= mgr or binding.root_gen ~= self._generation then return false end
+    if binding.entry_panel == nil or not panel_alive(binding.entry_panel) then return false end
+    if kyohud.settings.enable_player ~= true then return false end
+    local src_ok, source = pcall(E.get_kingpin_terminal_source, E)
+    if not src_ok or type(source) ~= "table"
+        or source.kind ~= KINGPIN_TERMINAL_SOURCE
+        or source.active ~= false then return false end
+    if binding.source_event_id ~= source.event_id then return false end
+    if self._hacker_active_conflict_event == source.event_id
+        and h5_same_targets(self._hacker_active_conflict_targets, binding.leaves) then
+        return false
+    end
+    if self:_hacker_foreign_conflict(binding.leaves) then return false end
+    local state = self._h5_groups and self._h5_groups[H5_HACKER_ACTIVE_GROUP]
+    if not state or state._release_pending == true
+        or state.property ~= "visible"
+        or state.generation ~= binding.lease_gen
+        or not h5_same_targets(state.targets, binding.leaves) then
+        return false
+    end
+    local panels = mgr._teammate_panels
+    local entry = type(panels) == "table" and panels[h5_player_slot()] or nil
+    if type(entry) ~= "table" or entry._ai == true then return false end
+    if entry ~= binding.entry then return false end
+    local entry_panel = entry._panel
+    if entry_panel ~= binding.entry_panel or not panel_alive(entry_panel) then return false end
+    local common = self._parent_panel
+    if not common or not panel_alive(common) then return false end
+    if not dr_reaches_exposed(entry_panel, common) then return false end
+    local ps, player = safe_call(entry_panel, "child", "player")
+    if ps ~= CALL_OK or player ~= binding.player or not panel_alive(player) then return false end
+    local pp, player_parent = safe_call(player, "parent")
+    if pp ~= CALL_OK or player_parent ~= entry_panel then return false end
+    local rs, radial = safe_call(player, "child", "radial_health_panel")
+    if rs ~= CALL_OK or radial ~= binding.radial or not panel_alive(radial) then return false end
+    local rp, radial_parent = safe_call(radial, "parent")
+    if rp ~= CALL_OK or radial_parent ~= player then return false end
+    local abs, parent = safe_call(radial, "child", "radial_ability")
+    if abs ~= CALL_OK or parent ~= binding.parent or not panel_alive(parent) then return false end
+    local ap, ability_parent = safe_call(parent, "parent")
+    if ap ~= CALL_OK or ability_parent ~= radial then return false end
+    local ms, meter = safe_call(parent, "child", "ability_meter")
+    local is, icon = safe_call(parent, "child", "ability_icon")
+    if ms ~= CALL_OK or is ~= CALL_OK or meter ~= binding.leaves[1]
+        or icon ~= binding.leaves[2]
+        or not panel_alive(meter) or not panel_alive(icon) then return false end
+    local mp, meter_parent = safe_call(meter, "parent")
+    local ip, icon_parent = safe_call(icon, "parent")
+    if mp ~= CALL_OK or meter_parent ~= parent then return false end
+    if ip ~= CALL_OK or icon_parent ~= parent then return false end
+    local chs, children = safe_call(parent, "children")
+    if chs ~= CALL_OK or type(children) ~= "table" then return false end
+    local count = 0
+    local seen = {}
+    for _, child in pairs(children) do
+        count = count + 1
+        if count > 2 then return false end
+        if child ~= meter and child ~= icon then return false end
+        if seen[child] then return false end
+        seen[child] = true
+    end
+    if count ~= 2 then return false end
+    if not dr_active_container(entry_panel) or not dr_active_container(player)
+        or not dr_active_container(radial) or not dr_active_container(parent) then
+        return false
+    end
+    if not dr_reaches(parent, common) or not dr_reaches(meter, common)
+        or not dr_reaches(icon, common) then return false end
+    if not self:_hacker_native_bounds(parent) then return false end
+    if not self:_hacker_native_bounds(meter) then return false end
+    if not self:_hacker_native_bounds(icon) then return false end
+    local pv, parent_visible = safe_call(parent, "visible")
+    if pv ~= CALL_OK or parent_visible ~= true then return false end
+    local pa, parent_alpha = safe_call(parent, "alpha")
+    if pa ~= CALL_OK or not finite(parent_alpha) or parent_alpha <= 0 then return false end
+    local published_remaining = source.published_remaining
+    local published_total = source.published_total
+    if not finite(published_remaining) or not finite(published_total)
+        or published_remaining <= 0 or published_total <= 0 then return false end
+    if published_remaining > published_total + 0.001 then return false end
+    local ratio = published_remaining / published_total
+    local meter_r, meter_g, meter_b, meter_a = self:_hacker_native_color(meter)
+    if not finite(meter_r) or math.abs(meter_r - ratio) > 0.001 then return false end
+    if not finite(meter_g) or math.abs(meter_g - 1) > 0.001 then return false end
+    if not finite(meter_b) or math.abs(meter_b - 1) > 0.001 then return false end
+    if not finite(meter_a) or math.abs(meter_a - 1) > 0.001 or meter_a <= 0 then
+        return false
+    end
+    local tex_ok, texture = safe_call(icon, "texture_name")
+    local expected_texture = type(source.icon) == "table" and source.icon.texture or nil
+    if tex_ok ~= CALL_OK or not h5_texture_matches(texture, expected_texture) then
+        return false
+    end
+    for i = 1, 2 do
+        local leaf = binding.leaves[i]
+        local v_ok, visible = safe_call(leaf, "visible")
+        if v_ok ~= CALL_OK or visible ~= false then return false end
+        if self:_h5_group_holds_visible(H5_HACKER_ACTIVE_GROUP, leaf) ~= true then
+            return false
+        end
+        local leaf_alpha = _effective_alpha(leaf, {})
+        if not finite(leaf_alpha) or leaf_alpha <= 0 then return false end
+    end
+    local P = kyohud.hud.player
+    if type(P) ~= "table" or P._mounted ~= true or P._manager ~= mgr
+        or not P._root or not panel_alive(P._root) then return false end
+    if not h5_player_verifier_identity(P) then return false end
+    local p_verify_ok, p_verified = pcall(P.verify, P)
+    if not p_verify_ok or p_verified ~= true then return false end
+    if _effective_visible(P._root, {}) ~= true then return false end
+    local p_alpha = _effective_alpha(P._root, {})
+    if p_alpha == nil or p_alpha <= 0 then return false end
+    if not E._root or not panel_alive(E._root) then return false end
+    if _effective_visible(E._root, {}) ~= true then return false end
+    local e_alpha = _effective_alpha(E._root, {})
+    if e_alpha == nil or e_alpha <= 0 then return false end
+    local e_verify_ok, e_verified = pcall(E._verify_kingpin_terminal, E, source)
+    if not e_verify_ok or e_verified ~= true then return false end
+    return true
+end
+
+function RT:_hacker_active_chain()
+    local mgr = self._manager
+    local E = kyohud.hud.equipment
+    if not self:_hacker_active_allowed(mgr, E) then return nil end
+    local source = E:get_local_ability_activity_source()
+    if type(source) ~= "table" or source.active ~= true then return nil end
+    local source_kind = source.kind
+    if source.manager ~= mgr or source.hud_manager ~= mgr then return nil end
+    if source.generation ~= E._source_generation then return nil end
+    local panels = mgr._teammate_panels
+    local entry = type(panels) == "table" and panels[h5_player_slot()] or nil
+    if type(entry) ~= "table" or entry._ai == true then return nil end
+    local entry_panel = entry._panel
+    if not entry_panel or not panel_alive(entry_panel) then return nil end
+    local common = self._parent_panel
+    if not common or not panel_alive(common) then return nil end
+    if not dr_reaches_exposed(entry_panel, common) then return nil end
+    local ps, player = safe_call(entry_panel, "child", "player")
+    if ps ~= CALL_OK or not player or not panel_alive(player) then return nil end
+    local pp, player_parent = safe_call(player, "parent")
+    if pp ~= CALL_OK or player_parent ~= entry_panel then return nil end
+    local rs, radial = safe_call(player, "child", "radial_health_panel")
+    if rs ~= CALL_OK or not radial or not panel_alive(radial) then return nil end
+    local rp, radial_parent = safe_call(radial, "parent")
+    if rp ~= CALL_OK or radial_parent ~= player then return nil end
+    local abs, parent = safe_call(radial, "child", "radial_ability")
+    if abs ~= CALL_OK or not parent or not panel_alive(parent) then return nil end
+    local ap, parent_parent = safe_call(parent, "parent")
+    if ap ~= CALL_OK or parent_parent ~= radial then return nil end
+    local ms, meter = safe_call(parent, "child", "ability_meter")
+    local is, icon = safe_call(parent, "child", "ability_icon")
+    if ms ~= CALL_OK or is ~= CALL_OK or not meter or not icon
+        or not panel_alive(meter) or not panel_alive(icon) then return nil end
+    local mp, meter_parent = safe_call(meter, "parent")
+    local ip, icon_parent = safe_call(icon, "parent")
+    if mp ~= CALL_OK or meter_parent ~= parent then return nil end
+    if ip ~= CALL_OK or icon_parent ~= parent then return nil end
+    local chs, children = safe_call(parent, "children")
+    if chs ~= CALL_OK or type(children) ~= "table" then return nil end
+    local count = 0
+    local seen = {}
+    for _, child in pairs(children) do
+        count = count + 1
+        if count > 2 then return nil end
+        if child ~= meter and child ~= icon then return nil end
+        if seen[child] then return nil end
+        seen[child] = true
+    end
+    if count ~= 2 then return nil end
+    if not dr_active_container(entry_panel) or not dr_active_container(player)
+        or not dr_active_container(radial) or not dr_active_container(parent) then
+        return nil
+    end
+    if not dr_reaches(parent, common) or not dr_reaches(meter, common)
+        or not dr_reaches(icon, common) then return nil end
+    if not self:_hacker_native_bounds(parent) then return nil end
+    if not self:_hacker_native_bounds(meter) then return nil end
+    if not self:_hacker_native_bounds(icon) then return nil end
+    local meter_r, meter_g, meter_b, meter_a = self:_hacker_native_color(meter)
+    if not finite(meter_r) then return nil end
+    if source_kind == "chico_injector_local" then
+        local progress = source.remaining / source.duration
+        if not finite(progress) or progress < 0 or progress > 1 then return nil end
+        local ratio_ok = math.abs(meter_r - progress) <= .001
+            and math.abs(meter_g - 1) <= .001
+        if not ratio_ok or math.abs(meter_b - 1) > .001
+            or math.abs(meter_a - 1) > .001 or meter_a <= 0 then
+            return nil
+        end
+        local tex_ok, texture = safe_call(icon, "texture_name")
+        local expected_texture = type(source.icon) == "table" and source.icon.texture or nil
+        if tex_ok ~= CALL_OK or not h5_texture_matches(texture, expected_texture) then
+            return nil
+        end
+    end
+    local defer_full_verify = false
+    if source_kind == KINGPIN_LOCAL_SOURCE
+        and h5_equipment_verifier_identity(E) then
+        local exposed_ok, exposed = pcall(E._hacker_root_exposed, E)
+        defer_full_verify = exposed_ok and exposed == true
+    end
+    -- Defer the initial full render check to the FINAL full check below, which
+    -- runs on a fresh source read; this reuses no cached result or prior proof.
+    if not defer_full_verify then
+        local verify_ok, verified = pcall(E._verify_local_ability_activity, E, source)
+        if not verify_ok or verified ~= true then
+            local recover = false
+            if E._update_ran_now == true then
+                local exposed_ok, exposed = pcall(E._hacker_root_exposed, E)
+                recover = exposed_ok and exposed == false
+            end
+            if not recover then return nil end
+            local prep_ok, prepared = pcall(E.prepare_local_ability_activity_event, E)
+            if not prep_ok or prepared ~= true then return nil end
+        end
+    end
+    local fresh = E:get_local_ability_activity_source()
+    if type(fresh) ~= "table" or fresh.event_id ~= source.event_id
+        or fresh.kind ~= source_kind then return nil end
+    local fresh_ok, fresh_verified = pcall(E._verify_local_ability_activity, E, fresh)
+    if not fresh_ok or fresh_verified ~= true then return nil end
+    return {
+        entry = entry,
+        entry_panel = entry_panel,
+        player = player,
+        radial = radial,
+        parent = parent,
+        meter = meter,
+        icon = icon,
+        leaves = {meter, icon},
+        source = fresh,
+    }
+end
+
+function RT:_release_hacker_active(clear_binding)
+    local binding = self._hacker_active_binding
+    local trace_kingpin = type(binding) == "table"
+        and binding.source_kind == "chico_injector_local"
+        and (binding.leased == true or binding.release_pending == true)
+    if trace_kingpin then
+        pcall(self._kingpin_transition, self, "release_before")
+    end
+    local released = self:_h5_release_group(H5_HACKER_ACTIVE_GROUP)
+    if not binding then return released end
+    if not released then
+        binding.release_pending = true
+        binding.certified = false
+        binding.terminal = nil
+        binding.terminal_event_id = nil
+        binding.terminal_receipt = nil
+        if clear_binding then binding.clear_on_release = true end
+        if trace_kingpin then
+            pcall(self._kingpin_transition, self, "release_after", "restore_failed")
+        end
+        return false
+    end
+    binding.leased = false
+    binding.lease_gen = nil
+    binding.certified = false
+    binding.release_pending = false
+    binding.terminal = nil
+    binding.terminal_event_id = nil
+    binding.terminal_receipt = nil
+    if clear_binding or binding.clear_on_release then
+        binding.clear_on_release = nil
+        self._hacker_active_binding = nil
+    end
+    if trace_kingpin then
+        pcall(self._kingpin_transition, self, "release_after")
+    end
+    return true
+end
+
+function RT:_acquire_hacker_active(mgr, chain)
+    if type(chain) ~= "table" or type(chain.leaves) ~= "table"
+        or #chain.leaves ~= 2 then return false end
+    local binding = self._hacker_active_binding
+    if binding and binding.release_pending == true then
+        self:_release_hacker_active(false)
+        binding = self._hacker_active_binding
+        if binding and binding.release_pending == true then return false end
+    end
+    if self._hacker_active_conflict_event == chain.source.event_id
+        and h5_same_targets(self._hacker_active_conflict_targets, chain.leaves) then
+        return false
+    end
+    if self:_hacker_foreign_conflict(chain.leaves) then
+        self._hacker_active_conflict_event = chain.source.event_id
+        self._hacker_active_conflict_targets = {chain.leaves[1], chain.leaves[2]}
+        self:_release_hacker_active(true)
+        return false
+    end
+    self:_h5_acquire_group(H5_HACKER_ACTIVE_GROUP, chain.leaves, {
+        entry_panel = chain.entry_panel,
+        manager = mgr,
+        root_gen = self._generation,
+    }, "visible")
+    local state = self._h5_groups and self._h5_groups[H5_HACKER_ACTIVE_GROUP]
+    local lease_gen = state and state.generation or nil
+    local acquired = state ~= nil and state._release_pending ~= true
+        and state.property == "visible"
+        and h5_same_targets(state.targets, chain.leaves)
+    if acquired then
+        for i = 1, 2 do
+            local leaf = chain.leaves[i]
+            local v_ok, visible = safe_call(leaf, "visible")
+            local held = false
+            if v_ok == CALL_OK and visible == false then
+                held = self:_h5_group_holds_visible(H5_HACKER_ACTIVE_GROUP, leaf)
+            end
+            if v_ok ~= CALL_OK or visible ~= false or held ~= true then
+                acquired = false
+                break
+            end
+        end
+    end
+    if not acquired then
+        self:_release_hacker_active(true)
+        return false
+    end
+    self._hacker_active_conflict_event = nil
+    self._hacker_active_conflict_targets = nil
+    binding = self._hacker_active_binding
+    if not binding or binding.source_event_id ~= chain.source.event_id
+        or binding.source_kind ~= chain.source.kind
+        or binding.lease_gen ~= lease_gen
+        or binding.entry_panel ~= chain.entry_panel
+        or binding.parent ~= chain.parent then
+        binding = {
+            manager = mgr,
+            entry = chain.entry,
+            entry_panel = chain.entry_panel,
+            root_gen = self._generation,
+            player = chain.player,
+            radial = chain.radial,
+            parent = chain.parent,
+            leaves = {chain.leaves[1], chain.leaves[2]},
+            source_event_id = chain.source.event_id,
+            source_kind = chain.source.kind,
+            lease_gen = lease_gen,
+            leased = true,
+            certified = true,
+            release_pending = false,
+            clear_on_release = false,
+        }
+        self._hacker_active_binding = binding
+    else
+        binding.manager = mgr
+        binding.entry = chain.entry
+        binding.entry_panel = chain.entry_panel
+        binding.root_gen = self._generation
+        binding.player = chain.player
+        binding.radial = chain.radial
+        binding.parent = chain.parent
+        binding.leaves = {chain.leaves[1], chain.leaves[2]}
+        binding.lease_gen = lease_gen
+        binding.leased = true
+        binding.certified = true
+        binding.release_pending = false
+    end
+    return true
+end
+
+-- Qualified Kingpin terminal continuation. It can only continue the already-held
+-- exact local binding/group/lease; it never acquires a missing lease or
+-- reacquires after release. The inactive owned equipment is prepared and both
+-- renders are freshly certified before the terminal receipt is marked.
+function RT:_continue_kingpin_terminal(mgr, E)
+    local binding = self._hacker_active_binding
+    if type(binding) ~= "table" or binding.leased ~= true
+        or binding.release_pending == true then return false end
+    if binding.source_kind ~= KINGPIN_LOCAL_SOURCE then return false end
+    if type(binding.leaves) ~= "table" or #binding.leaves ~= 2 then return false end
+    if not self:_hacker_active_allowed(mgr, E) then return false end
+    if binding.manager ~= mgr or binding.root_gen ~= self._generation then return false end
+    if kyohud.settings.enable_player ~= true then return false end
+    local src_ok, source = pcall(E.get_kingpin_terminal_source, E)
+    if not src_ok or type(source) ~= "table"
+        or source.kind ~= KINGPIN_TERMINAL_SOURCE then return false end
+    if source.event_id ~= binding.source_event_id then return false end
+    if self._hacker_active_conflict_event == source.event_id
+        and h5_same_targets(self._hacker_active_conflict_targets, binding.leaves) then
+        return false
+    end
+    if self:_hacker_foreign_conflict(binding.leaves) then
+        self._hacker_active_conflict_event = source.event_id
+        self._hacker_active_conflict_targets = {binding.leaves[1], binding.leaves[2]}
+        return false
+    end
+    if binding.terminal ~= true then
+        local P = kyohud.hud.player
+        if type(P) ~= "table" or P._mounted ~= true or P._manager ~= mgr
+            or not P._root or not panel_alive(P._root) then return false end
+        if not E._root or not panel_alive(E._root) then return false end
+        if not h5_player_verifier_identity(P) then return false end
+        if not h5_equipment_verifier_identity(E) then return false end
+        -- No P repair/show here: a render loss must release, not be hidden by a
+        -- repair that makes the terminal qualification pass.
+        local p_ok, p_verified = pcall(P.verify, P)
+        if not p_ok or p_verified ~= true then return false end
+        if _effective_visible(P._root, {}) ~= true then return false end
+        local p_alpha = _effective_alpha(P._root, {})
+        if p_alpha == nil or p_alpha <= 0 then return false end
+        local e_ok, e_verified = pcall(E.verify, E)
+        if not e_ok or e_verified ~= true then return false end
+        if _effective_visible(E._root, {}) ~= true then return false end
+        local e_alpha = _effective_alpha(E._root, {})
+        if e_alpha == nil or e_alpha <= 0 then return false end
+        local prep_ok, prepared = pcall(E._prepare_kingpin_terminal_event, E, source)
+        if not prep_ok or prepared ~= true then return false end
+        local fresh_ok, fresh = pcall(E.get_kingpin_terminal_source, E)
+        if not fresh_ok or type(fresh) ~= "table"
+            or fresh.kind ~= KINGPIN_TERMINAL_SOURCE
+            or fresh.event_id ~= source.event_id then return false end
+        source = fresh
+    end
+    local proof_ok, proved = pcall(self._terminal_proof, self, binding,
+        binding.terminal ~= true)
+    if not proof_ok or proved ~= true then return false end
+    if binding.terminal ~= true then
+        binding.terminal = true
+        binding.terminal_event_id = source.event_id
+        binding.terminal_receipt = {
+            event_id = source.event_id,
+            generation = source.generation,
+            lease_gen = binding.lease_gen,
+            expire_time = source.expire_time,
+            published_remaining = source.published_remaining,
+            published_total = source.published_total,
+        }
+        binding.certified = true
+        pcall(self._kingpin_transition, self, "terminal_hold", "qualified", {
+            remaining = source.published_remaining,
+            published_total = source.published_total,
+        })
+    end
+    return true
+end
+
+function RT:_sync_hacker_active()
+    local mgr = self._manager
+    local E = kyohud.hud.equipment
+    if not self:_hacker_active_allowed(mgr, E) then
+        self:_release_hacker_active(true)
+        self._hacker_active_conflict_event = nil
+        self._hacker_active_conflict_targets = nil
+        return false
+    end
+    local binding = self._hacker_active_binding
+    if binding and binding.release_pending == true then
+        self:_release_hacker_active(false)
+        binding = self._hacker_active_binding
+        if binding and binding.release_pending == true then return false end
+    end
+    local source = E:get_local_ability_activity_source()
+    if type(source) ~= "table" then
+        if self:_continue_kingpin_terminal(mgr, E) then return true end
+        self:_release_hacker_active(true)
+        return false
+    end
+    if binding and binding.terminal == true then
+        binding.terminal = nil
+        binding.terminal_event_id = nil
+        binding.terminal_receipt = nil
+    end
+    if self._hacker_active_conflict_event ~= source.event_id then
+        self._hacker_active_conflict_event = nil
+        self._hacker_active_conflict_targets = nil
+    end
+    if binding and binding.leased == true and source.active == true
+        and binding.source_kind ~= source.kind then
+        self:_release_hacker_active(true)
+        binding = self._hacker_active_binding
+    end
+    if binding and binding.leased == true and source.active == true
+        and binding.source_event_id == source.event_id
+        and binding.source_kind == source.kind
+        and type(binding.leaves) == "table" and #binding.leaves == 2 then
+        local state = self._h5_groups and self._h5_groups[H5_HACKER_ACTIVE_GROUP]
+        local lost = state == nil or state._release_pending == true
+            or state.property ~= "visible"
+            or state.generation ~= binding.lease_gen
+            or not h5_same_targets(state.targets, binding.leaves)
+        if not lost then
+            for i = 1, 2 do
+                local leaf = binding.leaves[i]
+                local v_ok, visible = safe_call(leaf, "visible")
+                if v_ok ~= CALL_OK or visible ~= false
+                    or self:_h5_group_holds_visible(H5_HACKER_ACTIVE_GROUP, leaf) ~= true then
+                    lost = true
+                    break
+                end
+            end
+        end
+        if lost then
+            self._hacker_active_conflict_event = binding.source_event_id
+            self._hacker_active_conflict_targets = {binding.leaves[1], binding.leaves[2]}
+            self:_release_hacker_active(true)
+            return false
+        end
+    end
+    local chain = self:_hacker_active_chain()
+    if not chain then
+        self:_release_hacker_active(true)
+        return false
+    end
+    return self:_acquire_hacker_active(mgr, chain)
+end
+
+function RT:_hacker_active_post_priority(t)
+    local binding = self._hacker_active_binding
+    if not binding or binding.leased ~= true then return end
+    local mgr = self._manager
+    local E = kyohud.hud.equipment
+    local ok = false
+    local terminal_hold = false
+    if binding.terminal == true then
+        local proof_ok, proved = pcall(self._terminal_proof, self, binding)
+        terminal_hold = proof_ok and proved == true
+        ok = terminal_hold
+    elseif self:_hacker_active_allowed(mgr, E) then
+        local src_ok, source = pcall(E.get_local_ability_activity_source, E)
+        if src_ok and type(source) == "table"
+            and source.event_id == binding.source_event_id
+            and source.kind == binding.source_kind then
+            local verify_ok, verified = pcall(E._verify_local_ability_activity, E, source)
+            local fresh_ok, fresh = pcall(E.get_local_ability_activity_source, E)
+            ok = verify_ok and verified == true
+                and fresh_ok and type(fresh) == "table"
+                and fresh.event_id == source.event_id
+                and fresh.kind == source.kind
+                and _effective_visible(E._root, {}) == true
+                and (_effective_alpha(E._root, {}) or 0) > 0
+        end
+    end
+    if terminal_hold then return end
+    if ok then
+        local state = self._h5_groups and self._h5_groups[H5_HACKER_ACTIVE_GROUP]
+        if state and state._release_pending ~= true
+            and state.generation == binding.lease_gen
+            and state.property == "visible"
+            and h5_same_targets(state.targets, binding.leaves) then
+            local held = true
+            for i = 1, 2 do
+                local leaf = binding.leaves[i]
+                local v_ok, visible = safe_call(leaf, "visible")
+                if v_ok ~= CALL_OK or visible ~= false
+                    or self:_h5_group_holds_visible(H5_HACKER_ACTIVE_GROUP, leaf) ~= true then
+                    held = false
+                    break
+                end
+            end
+            if held then return end
+        end
+    end
+    self:_release_hacker_active(true)
+    if t ~= nil and kyohud.settings.enable_hud_foundation == true then
+        self:_apply_native_priority(t, true)
+    end
+end
+
 function RT:_sync_local_backdrop(t, crew_receipt)
     self:_sync_delayed_replacement(self._manager)
     self:_sync_reserve_replacement(self._manager)
     self:_sync_copr_replacement(self._manager)
+    local probe = self._residual_probe
+    local timed = probe and not probe.done and probe.active
+        and type(self._residual_stamp) == "function"
+        and type(self._residual_record) == "function"
+    local E = kyohud.hud.equipment
+    local binding = self._hacker_active_binding
+    local active_phase = "hacker_active"
+    if (type(E) == "table" and E._projectile_id == "chico_injector")
+        or (binding and binding.source_kind == "chico_injector_local") then
+        active_phase = "kingpin_active"
+    end
+    local hacker_start = timed and self:_residual_stamp() or nil
+    self:_sync_hacker_active()
+    if timed then self:_residual_record(active_phase, hacker_start) end
     self:_apply_native_priority(t)
     self:_delayed_replacement_post_priority(t)
     self:_reserve_replacement_post_priority(t)
     self:_copr_replacement_post_priority(t)
+    local hacker_post_start = timed and self:_residual_stamp() or nil
+    self:_hacker_active_post_priority(t)
+    if timed then self:_residual_record(active_phase, hacker_post_start) end
     if self._stoic_trace_enabled == true then self:_stoic_trace_record() end
     local certifications = self:_coordinate_h5_native_duplicates(crew_receipt)
     if t ~= nil then
@@ -5446,6 +6964,212 @@ function RT:sync_local_grenade_flash_event()
         end
         E._grenade_flash_ok = false
         E._grenade_flash_source = nil
+        return false
+    end
+    return true
+end
+
+-- Kingpin shares the one exclusive lease arbiter and synchronous seam while its
+-- source is valid. A terminal/invalid publication releases only a Kingpin-owned
+-- lease, republishes the inactive owned equipment and restores the original
+-- native priority for any visible remaining container. A Hacker binding is never
+-- disturbed here and no native parent is written.
+function RT:sync_local_kingpin_activity_event(terminal_zero, publication_current, publication_total)
+    local terminal_prov
+    if terminal_zero == true then
+        local probe = self._residual_probe
+        local trace_count = probe and probe.trace_count or 0
+        if probe and probe.mode == "kingpin" and probe.active == true and not probe.done
+            and type(trace_count) == "number" and trace_count < 48 then
+            terminal_prov = { remaining = publication_current, published_total = publication_total }
+        end
+        pcall(self._kingpin_transition, self, "terminal_enter", nil, terminal_prov)
+    end
+    local E = kyohud.hud.equipment
+    local source
+    if type(E) == "table" and type(E.get_local_ability_activity_source) == "function" then
+        local ok, got = pcall(E.get_local_ability_activity_source, E)
+        if ok then source = got end
+    end
+    if type(source) == "table" and source.kind == "chico_injector_local"
+        and source.active == true then
+        self:_residual_note_kingpin()
+        pcall(self._kingpin_transition, self, "positive", nil, source)
+        local result = self:sync_local_hacker_activity_event("kingpin_active")
+        if result ~= true and self:_hacker_active_allowed(self._manager, E) then
+            pcall(self._apply_native_priority, self, nil)
+        end
+        return result
+    end
+    local probe = self._residual_probe
+    local timed = probe and not probe.done and probe.active
+        and type(self._residual_stamp) == "function"
+        and type(self._residual_record) == "function"
+    local start = timed and self:_residual_stamp() or nil
+    if publication_current ~= nil and publication_current ~= 0 then
+        local trace_count = probe and probe.trace_count or 0
+        if probe and probe.mode == "kingpin" and probe.active == true and not probe.done
+            and type(trace_count) == "number" and trace_count < 48 then
+            local reject_prov = { remaining = publication_current, published_total = publication_total }
+            pcall(self._kingpin_transition, self, "publication_rejected", "source_unqualified", reject_prov)
+        end
+    end
+    local binding = self._hacker_active_binding
+    if binding and binding.source_kind == "chico_injector_local" then
+        self:_release_hacker_active(true)
+    end
+    local mgr = self._manager
+    if type(E) ~= "table" or not self:_hacker_active_allowed(mgr, E) then
+        if timed then
+            self:_residual_record("kingpin_active", start)
+            self:_residual_record("kingpin_event_terminal", start)
+        end
+        if terminal_zero == true then
+            pcall(self._kingpin_transition, self, "terminal_exit", "runtime_ineligible", terminal_prov)
+        end
+        return false
+    end
+    local prev_ran = E._update_ran_now
+    local prev_ok = E._verify_ok_now
+    local ok, result = pcall(function()
+        E:_present()
+        local repaired = false
+        if terminal_zero == true and kyohud.settings.enable_player == true then
+            local P = kyohud.hud.player
+            if type(P) == "table" and P._mounted == true and P._manager == mgr
+                and P._root and panel_alive(P._root) and P._render_verified == true then
+                local vs, visible = safe_call(P._root, "visible")
+                if vs == CALL_OK and visible == false then
+                    local repair_ok, repair_result = pcall(P._repair_and_certify, P, mgr)
+                    repaired = repair_ok and repair_result == true
+                    if not repaired then
+                        safe_call(P._root, "set_visible", false)
+                    end
+                end
+            end
+        end
+        self:_apply_native_priority(nil)
+        if repaired then
+            self:_sync_local_backdrop(nil)
+        end
+        return true
+    end)
+    E._update_ran_now = prev_ran
+    E._verify_ok_now = prev_ok
+    if timed then
+        self:_residual_record("kingpin_active", start)
+        self:_residual_record("kingpin_event_terminal", start)
+    end
+    if terminal_zero == true then
+        pcall(self._kingpin_transition, self, "terminal_exit", nil, terminal_prov)
+    end
+    return ok and result == true
+end
+
+-- Synchronous local Hacker ACTIVE seam. Runs after the unchanged native
+-- activation original and after the equipment event capture. It presents and
+-- certifies the owned ACTIVE row, proves the exact two native bitmap leaves,
+-- then acquires only those two visible leaves. No parent write and no global
+-- radial_ability bypass; failures release and keep the original priority.
+function RT:sync_local_hacker_activity_event(phase)
+    if kyohud.settings.enable_hud_foundation ~= true
+        or kyohud.settings.enable_equipment ~= true then return false end
+    if is_vr() or self._disabled == true or self._freeflight == true then return false end
+    local mgr = self._manager
+    if not mgr or self._mounted ~= true or not managers or managers.hud ~= mgr then
+        return false
+    end
+    local E = kyohud.hud.equipment
+    if not self:_hacker_active_allowed(mgr, E) then return false end
+    local source = E:get_local_ability_activity_source()
+    if type(source) ~= "table" then return false end
+    if self._local_hacker_activity_sync == true then return false end
+    self._local_hacker_activity_sync = true
+    local prev_ran = E._update_ran_now
+    local prev_ok = E._verify_ok_now
+    local probe = self._residual_probe
+    local timed = probe and not probe.done and probe.active
+        and type(self._residual_stamp) == "function"
+        and type(self._residual_record) == "function"
+    local start = timed and self:_residual_stamp() or nil
+    -- Timed event sub-phases only for the Kingpin seam. An exception inside the
+    -- protected closure may omit later sub-phase records; pcall handling, call
+    -- order, return values and early returns stay unchanged.
+    local event_timed = timed and phase == "kingpin_active"
+    local ok, result = pcall(function()
+        local ev_start = event_timed and self:_residual_stamp() or nil
+        local prepared = E:prepare_local_ability_activity_event()
+        if event_timed then self:_residual_record("kingpin_event_prepare", ev_start) end
+        if prepared ~= true then return false end
+        local binding_before = self._hacker_active_binding
+        local stable_before = binding_before ~= nil
+            and binding_before.leased == true
+            and binding_before.release_pending ~= true
+            and binding_before.source_event_id ~= nil
+            and type(binding_before.lease_gen) == "number"
+        ev_start = event_timed and self:_residual_stamp() or nil
+        local chained = self:_sync_hacker_active()
+        if event_timed then self:_residual_record("kingpin_event_chain", ev_start) end
+        if chained ~= true then return false end
+        local binding_after = self._hacker_active_binding
+        local stable_lease = stable_before
+            and binding_after ~= nil and binding_after.leased == true
+            and binding_after.source_event_id == binding_before.source_event_id
+            and binding_after.lease_gen == binding_before.lease_gen
+        if stable_lease then
+            -- Throttle-skip marker, paired with M:_throttle_kingpin_activity in
+            -- lua/hud/equipment.lua (E is the kyohud.hud.equipment singleton).
+            E._kingpin_stable_event_seq = (E._kingpin_stable_event_seq or 0) + 1
+            return true
+        end
+        ev_start = event_timed and self:_residual_stamp() or nil
+        self:_apply_native_priority(nil)
+        if event_timed then self:_residual_record("kingpin_event_priority", ev_start) end
+        ev_start = event_timed and self:_residual_stamp() or nil
+        self:_hacker_active_post_priority(nil)
+        if event_timed then self:_residual_record("kingpin_event_post", ev_start) end
+        ev_start = event_timed and self:_residual_stamp() or nil
+        local binding = self._hacker_active_binding
+        local src_ok, current = pcall(E.get_local_ability_activity_source, E)
+        local exposed = false
+        if src_ok and type(current) == "table" and current.active == true
+            and binding and binding.leased == true
+            and binding.release_pending ~= true
+            and binding.source_event_id == current.event_id
+            and binding.source_kind == current.kind
+            and type(binding.leaves) == "table" and #binding.leaves == 2
+            and _effective_visible(E._root, {}) == true
+            and (_effective_alpha(E._root, {}) or 0) > 0 then
+            local verify_ok, verified = pcall(E._verify_local_ability_activity, E, current)
+            if verify_ok and verified == true then
+                exposed = true
+                for i = 1, 2 do
+                    local leaf = binding.leaves[i]
+                    local v_ok, visible = safe_call(leaf, "visible")
+                    if v_ok ~= CALL_OK or visible ~= false
+                        or self:_h5_group_holds_visible(H5_HACKER_ACTIVE_GROUP, leaf) ~= true then
+                        exposed = false
+                        break
+                    end
+                end
+            end
+        end
+        if event_timed then self:_residual_record("kingpin_event_final", ev_start) end
+        if exposed then return true end
+        local hidden = _effective_visible(E._root, {}) ~= true
+            or (_effective_alpha(E._root, {}) or 0) <= 0
+        self:_release_hacker_active(true)
+        if hidden then self:_apply_native_priority(nil) end
+        return false
+    end)
+    self._local_hacker_activity_sync = false
+    E._update_ran_now = prev_ran
+    E._verify_ok_now = prev_ok
+    if timed and start ~= nil then
+        self:_residual_record(phase or "hacker_active", start)
+    end
+    if not ok or result ~= true then
+        self:_release_hacker_active(true)
         return false
     end
     return true

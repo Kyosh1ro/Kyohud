@@ -441,9 +441,15 @@ class EquipmentDetachedSnapshotAndInvalidValuesTests(unittest.TestCase):
             _db_q1_raw_restored = snap2.deployables.doctor_bag.quantities[1].raw
             _db_q1_known_restored = snap2.deployables.doctor_bag.quantities[1].known
 
-            -- Detach test: mutate nested quantities (no intervening refresh)
+            -- Detach test: mutate nested quantities (no intervening refresh);
+            -- the returned copy is shared within one snapshot generation, so the
+            -- mutation must NOT corrupt the internal snapshot, and refresh must
+            -- rebuild the detached copy (repair boundary).
             snap2.deployables.doctor_bag.quantities[1].raw = 9999
             snap2.deployables.trip_mine.quantities[1].known = true
+            _db_internal_after_mutation = EQ._snapshot.deployables.doctor_bag.quantities[1].raw
+            _tm_internal_after_mutation = EQ._snapshot.deployables.trip_mine.quantities[1].known
+            EQ:refresh(managers.hud)
             local snap3 = EQ:get_snapshot()
             _db_q1_raw_after_mutation = snap3.deployables.doctor_bag.quantities[1].raw
             _tm_q1_known_after_mutation = snap3.deployables.trip_mine.quantities[1].known
@@ -474,11 +480,16 @@ class EquipmentDetachedSnapshotAndInvalidValuesTests(unittest.TestCase):
             "RED: restored doctor_bag raw must have known=true")
         self.assertEqual(float(g._db_q1_raw_restored), 1.0,
             "RED: restored doctor_bag raw must be 1.0")
-        # Detached: mutation must not affect subsequent snapshot
+        # Detached: mutation must not corrupt the internal snapshot
+        self.assertEqual(float(g._db_internal_after_mutation), 1.0,
+            "RED: mutating the returned copy must not corrupt the internal snapshot")
+        self.assertFalse(bool(g._tm_internal_after_mutation),
+            "RED: mutating the returned copy must not corrupt the internal snapshot")
+        # Refresh rebuilds the detached copy (repair boundary)
         self.assertEqual(float(g._db_q1_raw_after_mutation), 1.0,
-            "RED: mutating snapshot raw must not affect subsequent snapshot")
+            "RED: refresh must rebuild the detached copy, repairing the mutation")
         self.assertFalse(bool(g._tm_q1_known_after_mutation),
-            "RED: mutating snapshot known must not affect subsequent snapshot")
+            "RED: refresh must rebuild the detached copy, repairing the mutation")
 
 
 class EquipmentIdentityChangeTests(unittest.TestCase):

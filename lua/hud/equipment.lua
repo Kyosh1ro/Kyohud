@@ -17,11 +17,69 @@ M._selections_table = M._selections_table
 M._source_generation = M._source_generation or 0
 M._invalidated = M._invalidated or true
 M._snapshot = M._snapshot
+M._hacker_activity = M._hacker_activity
+M._hacker_activity_ok = M._hacker_activity_ok or false
 -- quality split approved 2026-11-10
 M._update_ran_now = M._update_ran_now or false
 M._verify_ok_now = M._verify_ok_now or false
+M._kingpin_terminal_ok = M._kingpin_terminal_ok or false
 
 local GRENADE_FLASH_TRACE_LIMIT = 16
+local HACKER_PROJECTILE_ID = "pocket_ecm_jammer"
+local HACKER_ACTIVITY_SOURCE = "pocket_ecm_jammer_local"
+local KINGPIN_PROJECTILE_ID = "chico_injector"
+local KINGPIN_ACTIVITY_SOURCE = "chico_injector_local"
+local KINGPIN_TERMINAL_SOURCE = "chico_injector_terminal"
+local KINGPIN_TERMINAL_REASONS = {
+    upgrade_inactive = true,
+    expired = true,
+}
+local KINGPIN_VERIFY_RECEIPT = {}
+
+local KINGPIN_PROBE_TARGETS = {
+    _capture_activity = "kingpin_publication_capture",
+    _capture_kingpin_activity = "kingpin_publication_capture",
+    _throttle_kingpin_activity = "kingpin_throttle_full",
+}
+
+local function kingpin_probe_wrap(original, phase)
+    return function(self, ...)
+        local rt = kyohud.hud.runtime
+        local probe = rt and rt._residual_probe
+        local start
+        if self ~= nil and probe ~= nil and probe.mode == "kingpin"
+            and probe.active == true and probe.done ~= true
+            and self._projectile_id == KINGPIN_PROJECTILE_ID then
+            start = rt:_residual_stamp()
+        end
+        local result = original(self, ...)
+        if start ~= nil then
+            rt:_residual_record(phase, start)
+        end
+        return result
+    end
+end
+
+do
+    for key in pairs(KINGPIN_PROBE_TARGETS) do rawset(M, key, nil) end
+    local mt = getmetatable(M)
+    if type(mt) ~= "table" then
+        mt = {}
+        setmetatable(M, mt)
+    end
+    local previous_newindex = rawget(mt, "__newindex")
+    rawset(mt, "__newindex", function(t, name, value)
+        local phase = type(name) == "string" and KINGPIN_PROBE_TARGETS[name] or nil
+        if phase ~= nil and type(value) == "function" then
+            rawset(t, name, kingpin_probe_wrap(value, phase))
+            return
+        end
+        if type(previous_newindex) == "function" then
+            return previous_newindex(t, name, value)
+        end
+        rawset(t, name, value)
+    end)
+end
 
 local function grenade_flash_trace_key(stage, reason)
     return tostring(stage) .. "|" .. tostring(reason)
@@ -116,9 +174,13 @@ local function is_finite_positive_integer(v, max)
     return true
 end
 
+local function lookup_method(obj, method)
+    return obj[method]
+end
+
 local function safe_call(obj, method, ...)
     if obj == nil then return false, nil end
-    local ok_get, fn = pcall(function() return obj[method] end)
+    local ok_get, fn = pcall(lookup_method, obj, method)
     if not ok_get or type(fn) ~= "function" then return false, nil end
     return pcall(fn, obj, ...)
 end
@@ -135,9 +197,44 @@ local function residual_context()
     return rt
 end
 
+local KINGPIN_REJECT_PHASE = {
+    dirty = "kingpin_reject_dirty",
+    cache = "kingpin_reject_cache",
+    activation = "kingpin_reject_activation",
+    snapshot = "kingpin_reject_snapshot",
+    layout = "kingpin_reject_layout",
+    identity = "kingpin_reject_identity",
+    cooldown = "kingpin_reject_cooldown",
+    verify = "kingpin_reject_verify",
+    render = "kingpin_reject_render",
+    source = "kingpin_reject_source",
+    exception = "kingpin_reject_exception",
+    postverify = "kingpin_reject_postverify",
+    other = "kingpin_reject_other",
+}
+
+local function residual_count(name)
+    local rt = kyohud.hud.runtime
+    local probe = rt and rt._residual_probe
+    if not probe or probe.done or not probe.active then return end
+    local phase = probe.phases[name]
+    if phase then phase.count = phase.count + 1 end
+end
+
+local function residual_count_kingpin_reject(reason)
+    local rt = kyohud.hud.runtime
+    local probe = rt and rt._residual_probe
+    if not probe or probe.done or not probe.active then return end
+    local name = KINGPIN_REJECT_PHASE[reason]
+    if name == nil then name = KINGPIN_REJECT_PHASE.other end
+    local phase = probe.phases[name]
+    if phase then phase.count = phase.count + 1 end
+end
+
 function M:refresh(manager)
     self._invalidated = true
     self._snapshot = nil
+    self._detached_cache = nil
 
     if type(managers) ~= "table" or manager == nil or manager ~= managers.hud then
         self._hud_manager = nil
@@ -267,6 +364,8 @@ function M:refresh(manager)
     if identity_changed then
         self._source_generation = self._source_generation + 1
         self._activity = nil
+        self._hacker_activity = nil
+        self._hacker_activity_ok = false
         self._cable_zero = nil
         self._cooldown_event = nil
         self._amount_text = nil
@@ -418,6 +517,8 @@ function M:_capture_consumables(pm, peer_id)
     local record = timers and timers.replenish_grenades
     if self._projectile_id ~= projectile.projectile_id or self._gpc ~= gpc or self._grenade_registry ~= registry then
         self._activity = nil
+        self._hacker_activity = nil
+        self._hacker_activity_ok = false
         local event = self._cooldown_event
         local keep_event = type(event) == "table" and not event.cancelled
             and event.manager == pm and event.timers == timers and record ~= nil
@@ -571,35 +672,57 @@ function M:get_snapshot()
         }
     end
 
-    local detached_deployables = {}
-    for eq_id, entry in pairs(self._snapshot.deployables) do
-        local detached_quantities = {}
-        for _, q in ipairs(entry.quantities) do
-            table.insert(detached_quantities, {raw = q.raw, known = q.known})
+    local cache = self._detached_cache
+    if cache == nil or cache.snapshot ~= self._snapshot then
+        local detached_deployables = {}
+        for eq_id, entry in pairs(self._snapshot.deployables) do
+            local detached_quantities = {}
+            for _, q in ipairs(entry.quantities) do
+                table.insert(detached_quantities, {raw = q.raw, known = q.known})
+            end
+            detached_deployables[eq_id] = {
+                equipment_id = entry.equipment_id,
+                quantities = detached_quantities,
+                selection_index = entry.selection_index,
+                amount_text = entry.amount_text
+            }
         end
-        detached_deployables[eq_id] = {
-            equipment_id = entry.equipment_id,
-            quantities = detached_quantities,
-            selection_index = entry.selection_index,
-            amount_text = entry.amount_text
+        cache = {
+            snapshot = self._snapshot,
+            deployables = detached_deployables,
+            selected_index = self._snapshot.selected_index,
+            selected_effective = self._snapshot.selected_effective,
+            source_generation = self._snapshot.source_generation,
+            source_known = self._snapshot.source_known,
+            unsupported = self._snapshot.unsupported,
+            cables = detached(self._snapshot.cables),
+            projectile = detached(self._snapshot.projectile)
         }
+        self._detached_cache = cache
     end
 
     return {
-        deployables = detached_deployables,
-        selected_index = self._snapshot.selected_index,
-        selected_effective = self._snapshot.selected_effective,
-        source_generation = self._snapshot.source_generation,
-        source_known = self._snapshot.source_known,
-        unsupported = self._snapshot.unsupported,
-        cables = detached(self._snapshot.cables),
-        projectile = detached(self._snapshot.projectile),
+        deployables = cache.deployables,
+        selected_index = cache.selected_index,
+        selected_effective = cache.selected_effective,
+        source_generation = cache.source_generation,
+        source_known = cache.source_known,
+        unsupported = cache.unsupported,
+        cables = cache.cables,
+        projectile = cache.projectile,
         cooldown = self:_fresh_cooldown(),
         activity = self:_timed_snapshot(self._snapshot.activity)
     }
 end
 
 function M:_timed_snapshot(value)
+    if type(value) == "table" and value.source == KINGPIN_ACTIVITY_SOURCE then
+        local source = self:get_kingpin_activity_source()
+        if type(source) ~= "table" then
+            return {known = false, active = false}
+        end
+        return detached(value)
+    end
     local result = detached(value or {known = false, active = false})
     if result.known and result.active and result.sampled_at and result.remaining then
         local ok, timer = safe_call(TimerManager, "game")
@@ -615,6 +738,7 @@ end
 
 function M:invalidate()
     self._snapshot = nil
+    self._detached_cache = nil
     self._invalidated = true
     self._activity = nil
     self._cooldown_event = nil
@@ -627,10 +751,33 @@ function M:invalidate()
     self._grenade_flash_source = nil
     self._grenade_flash_rejected = nil
     self._grenade_flash_event = nil
+    self._hacker_activity = nil
+    self._hacker_activity_ok = false
+    self._kingpin_activity = nil
+    self._kingpin_activity_ok = false
+    self._kingpin_terminal_ok = false
+    self._kingpin_present_cache = nil
+    self._kingpin_source_cache = nil
+    self._kingpin_stable_event_seq = nil
+    self._throttle_seen_seq = nil
     self._dirty = true
 end
 
+function M:_read_local_jammer_record(unit)
+    if unit == nil then return nil end
+    local inv_ok, inventory = safe_call(unit, "inventory")
+    if not inv_ok or inventory == nil then return nil end
+    local data_ok, data = pcall(function() return inventory._jammer_data end)
+    if not data_ok or type(data) ~= "table" then return nil end
+    local effect = data.effect
+    if effect ~= "jamming" and effect ~= "feedback" then return nil end
+    if not is_valid_known_quantity(data.t) then return nil end
+    return {inventory = inventory, data = data, effect = effect, t = data.t}
+end
+
 function M:_capture_activity(left, total)
+    self._kingpin_activity = nil
+    self._kingpin_activity_ok = false
     local pm = managers and managers.player
     local ok, unit = safe_call(pm, "player_unit")
     local equipment = pm and pm._equipment
@@ -643,20 +790,213 @@ function M:_capture_activity(left, total)
         or not got or self._projectile_id ~= projectile_id then
         self:refresh(managers and managers.hud)
     end
-    if self._invalidated then return end
+    if self._invalidated then
+        self._hacker_activity = nil
+        self._hacker_activity_ok = false
+        return
+    end
     if total == nil then total = left end
+    local now, clock
     if left == 0 then
         self._activity = {known = true, active = false, remaining = 0}
     elseif is_valid_positive_quantity(left) and is_valid_positive_quantity(total) then
-        local ok, timer = safe_call(TimerManager, "game")
-        local good, now = safe_call(ok and timer or nil, "time")
-        if not good or not is_valid_known_quantity(now) then self._activity = nil; return end
+        local clock_ok, timer = safe_call(TimerManager, "game")
+        local good, current = safe_call(clock_ok and timer or nil, "time")
+        if not good or not is_valid_known_quantity(current) then
+            self._activity = nil
+            self._hacker_activity = nil
+            self._hacker_activity_ok = false
+            return
+        end
+        clock = timer
+        now = current
         self._activity = {known = true, active = true, remaining = left, duration = total,
             sampled_at = now, clock_kind = "game"}
     else
         self._activity = nil
     end
+    self._hacker_activity = nil
+    self._hacker_activity_ok = false
+    if self._activity and self._activity.known and self._activity.active
+        and self._projectile_id == HACKER_PROJECTILE_ID
+        and projectile_id == HACKER_PROJECTILE_ID and now ~= nil and clock ~= nil then
+        local jammer = self:_read_local_jammer_record(self._player_unit)
+        if jammer then
+            self._hacker_activity_serial = (self._hacker_activity_serial or 0) + 1
+            local generation = self._source_generation
+            local event_id = tostring(generation) .. ":" .. tostring(self._hacker_activity_serial)
+            self._activity.source = HACKER_ACTIVITY_SOURCE
+            self._hacker_activity = {
+                kind = HACKER_ACTIVITY_SOURCE,
+                event_id = event_id,
+                serial = self._hacker_activity_serial,
+                activity = self._activity,
+                projectile_id = HACKER_PROJECTILE_ID,
+                manager = managers and managers.hud or nil,
+                hud_manager = self._hud_manager,
+                player_manager = pm,
+                player_unit = unit,
+                session = self._session,
+                peer_id = self._peer_id,
+                equipment = self._equipment_table,
+                selections = self._selections_table,
+                registry = self._grenade_registry,
+                gpc = self._gpc,
+                generation = generation,
+                clock = clock,
+                start = now,
+                last_seen = now,
+                deadline = now + left,
+                remaining = left,
+                duration = total,
+                inventory = jammer.inventory,
+                jammer = jammer.data,
+                jammer_effect = jammer.effect,
+                jammer_t = jammer.t,
+            }
+        end
+    end
     self._snapshot.activity = self._activity or {known = false, active = false}
+end
+
+-- Kingpin is a distinct local source: the radial publication carries the real
+-- current/total, while the exact temporary record is read against Application's
+-- own expiry. No game/player clock is subtracted from that expiry and no ratio
+-- is converted to seconds.
+function M:_capture_kingpin_activity(left, total)
+    self._kingpin_activity = nil
+    self._kingpin_activity_ok = false
+    if self._invalidated or type(self._snapshot) ~= "table" then return false end
+    local pm = managers and managers.player
+    local ok, unit = safe_call(pm, "player_unit")
+    if not ok or unit == nil or unit ~= self._player_unit or pm ~= self._player_manager then
+        return false
+    end
+    if self._hud_manager ~= managers.hud or self._projectile_id ~= KINGPIN_PROJECTILE_ID then
+        return false
+    end
+    local got, entry = safe_call(pm, "get_synced_grenades", self._peer_id)
+    if not got or type(entry) ~= "table" or entry.grenade ~= KINGPIN_PROJECTILE_ID then
+        return false
+    end
+    if self._equipment_table ~= pm._equipment then return false end
+    if self._grenade_registry ~= (pm._global and pm._global.synced_grenades) then return false end
+    if self._gpc ~= managers.game_play_central then return false end
+    if total == nil then total = left end
+    if not is_valid_positive_quantity(left) or not is_valid_positive_quantity(total) then
+        return false
+    end
+    if left > total + 0.001 then return false end
+    local upgrades = pm._temporary_upgrades
+    local category = type(upgrades) == "table" and upgrades.temporary or nil
+    local record = type(category) == "table" and category.chico_injector or nil
+    if type(record) ~= "table" or not is_valid_positive_quantity(record.expire_time) then
+        return false
+    end
+    local active_ok, active = safe_call(pm, "has_activate_temporary_upgrade",
+        "temporary", KINGPIN_PROJECTILE_ID)
+    if not active_ok or active ~= true then return false end
+    local uv_ok, upgrade = safe_call(pm, "upgrade_value", "temporary", KINGPIN_PROJECTILE_ID)
+    local duration = uv_ok and type(upgrade) == "table" and upgrade[2] or nil
+    if not is_valid_positive_quantity(duration) then return false end
+    if math.abs(duration - total) > 0.001 then return false end
+    local app = _G.Application
+    if app == nil then return false end
+    local app_ok, app_now = safe_call(app, "time")
+    if not app_ok or not is_valid_known_quantity(app_now) then return false end
+    if not (record.expire_time > app_now) then return false end
+    local cd_ok, character_damage = safe_call(unit, "character_damage")
+    if not cd_ok or character_damage == nil then return false end
+    local pt_ok, player_timer = safe_call(pm, "player_timer")
+    local gt_ok, game_timer = safe_call(TimerManager, "game")
+    if not pt_ok or player_timer == nil or not gt_ok or game_timer == nil then
+        return false
+    end
+    local pt_ok_time, player_time = safe_call(player_timer, "time")
+    local gt_ok_time, game_time = safe_call(game_timer, "time")
+    if not pt_ok_time or not is_valid_known_quantity(player_time)
+        or not gt_ok_time or not is_valid_known_quantity(game_time) then
+        return false
+    end
+    local session = self._session
+    local peer_id = self._peer_id
+    self._activity = {
+        known = true,
+        active = true,
+        remaining = left,
+        duration = duration,
+        sampled_at = nil,
+        clock_kind = "application",
+        source = KINGPIN_ACTIVITY_SOURCE,
+    }
+    self._snapshot.activity = self._activity
+    local generation = self._source_generation
+    local identity = {
+        record = record,
+        root = upgrades,
+        category = category,
+        application = app,
+        player_manager = pm,
+        player_unit = unit,
+        session = session,
+        peer_id = peer_id,
+        generation = generation,
+    }
+    local previous = self._kingpin_activation_identity
+    local same_activation = type(previous) == "table"
+        and previous.record == identity.record
+        and previous.root == identity.root
+        and previous.category == identity.category
+        and previous.application == identity.application
+        and previous.player_manager == identity.player_manager
+        and previous.player_unit == identity.player_unit
+        and previous.session == identity.session
+        and previous.peer_id == identity.peer_id
+        and previous.generation == identity.generation
+    if same_activation then
+        if type(self._kingpin_activity_serial) ~= "number" then
+            self._kingpin_activity_serial = 1
+        end
+    else
+        self._kingpin_activation_identity = identity
+        self._kingpin_activity_serial = (self._kingpin_activity_serial or 0) + 1
+    end
+    local event_id = "kingpin:" .. tostring(generation) .. ":" .. tostring(self._kingpin_activity_serial)
+    self._kingpin_activity = {
+        kind = KINGPIN_ACTIVITY_SOURCE,
+        event_id = event_id,
+        serial = self._kingpin_activity_serial,
+        activity = self._activity,
+        projectile_id = KINGPIN_PROJECTILE_ID,
+        manager = managers.hud,
+        hud_manager = self._hud_manager,
+        player_manager = pm,
+        player_unit = unit,
+        character_damage = character_damage,
+        session = session,
+        peer_id = peer_id,
+        equipment = self._equipment_table,
+        selections = self._selections_table,
+        registry = self._grenade_registry,
+        gpc = self._gpc,
+        generation = generation,
+        temporary_root = upgrades,
+        temporary_category = category,
+        temporary_record = record,
+        expire_time = record.expire_time,
+        duration = duration,
+        remaining = left,
+        published_total = total,
+        application = app,
+        application_now = app_now,
+        start_application = app_now,
+        last_application = app_now,
+        player_timer = pt_ok and player_timer or nil,
+        game_timer = gt_ok and game_timer or nil,
+        player_time = player_time,
+        game_time = game_time,
+    }
+    return true
 end
 
 -- Additive local composition; native visibility is never acquired.
@@ -679,6 +1019,19 @@ end
 local function count_text(q, unlimited)
     if q and q.unlimited and q.known then return unlimited end
     return q and q.known and tostring(q.raw) or "--"
+end
+
+function M:integrated_recharge_text(cooldown, charges)
+    if type(cooldown) ~= "table" or type(charges) ~= "table" then return nil end
+    if charges.known ~= true or not is_valid_known_quantity(charges.raw) then return nil end
+    local remaining = cooldown.remaining
+    local duration = cooldown.duration
+    if not is_valid_positive_quantity(remaining) then return nil end
+    if not is_valid_positive_quantity(duration) then return nil end
+    if remaining > duration then return nil end
+    if charges.raw > 0 then return tostring(charges.raw) end
+    if charges.raw == 0 then return string.format("%ds", math.ceil(remaining)) end
+    return nil
 end
 
 function M:_geometry()
@@ -744,6 +1097,8 @@ function M:unmount()
     self._last_ui=nil;self._last_poll=nil
     self._icon_cache=nil
     self._required_width=nil;self._required_scale=nil
+    self._kingpin_present_cache=nil
+    self._kingpin_source_cache=nil
     self._grenade_flash_ok=false
     self._grenade_flash_source=nil
     self._grenade_flash_rejected=nil
@@ -798,6 +1153,744 @@ function M:_icon(id, projectile_default)
     end)
     bucket[id]=ok and result or false
     return ok and result or nil
+end
+
+local function hacker_idstring_key(value)
+    if value == nil then return nil end
+    if type(value) == "string" then return value end
+    local ok, key = pcall(function() return value:key() end)
+    if ok and key ~= nil then return key end
+    return nil
+end
+
+local function hacker_texture_matches(actual, expected)
+    if type(expected) ~= "string" or expected == "" then return false end
+    if type(actual) == "string" then
+        if actual == expected then return true end
+        local ok_actual, actual_id = pcall(Idstring, actual)
+        local ok_expected, expected_id = pcall(Idstring, expected)
+        if not ok_actual or not ok_expected
+            or actual_id == nil or expected_id == nil then return false end
+        local actual_key = hacker_idstring_key(actual_id)
+        local expected_key = hacker_idstring_key(expected_id)
+        return actual_key ~= nil and actual_key == expected_key
+    end
+    local ok_expected, expected_id = pcall(Idstring, expected)
+    if not ok_expected or expected_id == nil then return false end
+    local actual_key = hacker_idstring_key(actual)
+    local expected_key = hacker_idstring_key(expected_id)
+    return actual_key ~= nil and actual_key == expected_key
+end
+
+local function hacker_root_exposed(equipment)
+    local root = equipment._root
+    local parent = equipment._parent
+    if not live(root) or not live(parent) then return false end
+    local vs, visible = safe_call(root, "visible")
+    if not vs or visible ~= true then return false end
+    local as, alpha = safe_call(root, "alpha")
+    if not as or not finite(alpha) or alpha <= 0 then return false end
+    local current = root
+    local depth = 0
+    while current ~= parent and depth < 8 do
+        local ps, up = safe_call(current, "parent")
+        if not ps or not live(up) then return false end
+        local pvs, pvisible = safe_call(up, "visible")
+        if not pvs or pvisible ~= true then return false end
+        local pas, palpha = safe_call(up, "alpha")
+        if not pas or not finite(palpha) or palpha <= 0 then return false end
+        current = up
+        depth = depth + 1
+    end
+    return current == parent
+end
+
+function M:_hacker_root_exposed()
+    return hacker_root_exposed(self)
+end
+
+-- Silent, non-mutating source read. Returns a fresh table only while the exact
+-- retained local event, its identity chain, its inventory record and the game
+-- clock still agree. Non-Hacker activity is never reported here.
+function M:get_hacker_activity_source()
+    local prov = self._hacker_activity
+    if type(prov) ~= "table" then return nil end
+    if type(prov.activity) ~= "table" or prov.activity ~= self._activity
+        or prov.activity.source ~= HACKER_ACTIVITY_SOURCE
+        or prov.activity.known ~= true or prov.activity.active ~= true then
+        return nil
+    end
+    local pm = managers and managers.player
+    if not managers or not pm then return nil end
+    if prov.manager ~= managers.hud or prov.hud_manager ~= self._hud_manager then return nil end
+    if prov.player_manager ~= self._player_manager or prov.player_manager ~= pm then return nil end
+    if prov.player_unit ~= self._player_unit then return nil end
+    local unit_ok, unit = safe_call(pm, "player_unit")
+    if not unit_ok or unit == nil or unit ~= prov.player_unit then return nil end
+    if type(alive) == "function" then
+        local alive_ok, is_alive = pcall(alive, unit)
+        if not alive_ok or is_alive ~= true then return nil end
+    end
+    if prov.session ~= self._session or prov.peer_id ~= self._peer_id then return nil end
+    if self._session ~= prov.session then return nil end
+    local session_ok, session = safe_call(managers.network, "session")
+    if not session_ok or session ~= prov.session then return nil end
+    local peer_ok, peer = safe_call(session, "local_peer")
+    if not peer_ok or not peer then return nil end
+    local id_ok, peer_id = safe_call(peer, "id")
+    if not id_ok or peer_id ~= prov.peer_id then return nil end
+    if prov.equipment ~= self._equipment_table or prov.selections ~= self._selections_table then
+        return nil
+    end
+    if pm._equipment ~= prov.equipment or pm._equipment.selections ~= prov.selections then
+        return nil
+    end
+    if prov.registry ~= self._grenade_registry or prov.gpc ~= self._gpc then return nil end
+    if pm._global and pm._global.synced_grenades ~= prov.registry then return nil end
+    if managers.game_play_central ~= prov.gpc then return nil end
+    if prov.generation ~= self._source_generation then return nil end
+    if prov.projectile_id ~= HACKER_PROJECTILE_ID then return nil end
+    if self._projectile_id ~= HACKER_PROJECTILE_ID then return nil end
+    local got, entry = safe_call(pm, "get_synced_grenades", prov.peer_id)
+    if not got or type(entry) ~= "table" or entry.grenade ~= HACKER_PROJECTILE_ID then
+        return nil
+    end
+    if not is_valid_positive_quantity(prov.duration) or not is_valid_known_quantity(prov.deadline) then
+        return nil
+    end
+    local now, clock = current_game_time()
+    if now == nil or clock == nil or clock ~= prov.clock then return nil end
+    if now < prov.start then return nil end
+    local last = prov.last_seen
+    if not is_valid_known_quantity(last) then last = prov.start end
+    if now < last then return nil end
+    prov.last_seen = now
+    if now >= prov.deadline then return nil end
+    local jammer = self:_read_local_jammer_record(prov.player_unit)
+    if not jammer or jammer.inventory ~= prov.inventory or jammer.data ~= prov.jammer then
+        return nil
+    end
+    if now >= jammer.t then return nil end
+    prov.jammer_effect = jammer.effect
+    prov.jammer_t = jammer.t
+    local remaining = prov.deadline - now
+    if not is_valid_positive_quantity(remaining) then return nil end
+    local projectiles = tweak_data and tweak_data.blackmarket and tweak_data.blackmarket.projectiles
+    local td = projectiles and projectiles[HACKER_PROJECTILE_ID]
+    local icon_id = type(td) == "table" and td.icon or nil
+    local icon = self:_icon(icon_id, PROJECTILE_ICON_DEFAULT)
+    return {
+        kind = prov.kind,
+        event_id = prov.event_id,
+        event_serial = prov.serial,
+        activity = prov.activity,
+        projectile_id = HACKER_PROJECTILE_ID,
+        manager = prov.manager,
+        hud_manager = prov.hud_manager,
+        player_manager = prov.player_manager,
+        player_unit = prov.player_unit,
+        session = prov.session,
+        peer_id = prov.peer_id,
+        equipment = prov.equipment,
+        selections = prov.selections,
+        registry = prov.registry,
+        gpc = prov.gpc,
+        generation = prov.generation,
+        source_generation = prov.generation,
+        clock = prov.clock,
+        start = prov.start,
+        last_seen = now,
+        deadline = prov.deadline,
+        duration = prov.duration,
+        remaining = remaining,
+        active = true,
+        local_inventory = prov.inventory,
+        jammer = prov.jammer,
+        jammer_effect = jammer.effect,
+        jammer_t = jammer.t,
+        icon_id = icon_id,
+        icon = icon,
+    }
+end
+
+function M:_verify_hacker_activity(source)
+    self._hacker_activity_ok = false
+    source = source or self:get_hacker_activity_source()
+    if type(source) ~= "table" or source.active ~= true then return false end
+    local ok, result = pcall(function()
+        if not enabled() then return false end
+        if not live(self._root) or not live(self._parent) or type(self._rows) ~= "table" then
+            return false
+        end
+        if not hacker_root_exposed(self) then return false end
+        if self:verify() ~= true then return false end
+        if type(self._texts) ~= "table" then return false end
+        if not is_valid_positive_quantity(source.duration)
+            or not is_valid_positive_quantity(source.remaining) then return false end
+        local row6 = self._rows[6]
+        if not row6 or not live(row6._root) or not live(row6._label)
+            or not live(row6._value) then return false end
+        if type(self._visible_rows) ~= "table" or self._visible_rows[6] ~= true then
+            return false
+        end
+        local expected_value = string.format("%ds", math.ceil(source.remaining))
+        local expected_progress = math.min(1, math.max(0, source.remaining / source.duration))
+        local label_ok, label = safe_call(row6._label, "text")
+        local value_ok, value = safe_call(row6._value, "text")
+        if not label_ok or label ~= self._texts.active then return false end
+        if not value_ok or value ~= expected_value then return false end
+        if not finite(row6._progress)
+            or math.abs(row6._progress - expected_progress) > 0.001 then return false end
+        if row6:verify() ~= true then return false end
+        local row4 = self._rows[4]
+        if not row4 or not live(row4._root) or not live(row4._icon) then return false end
+        if type(self._visible_rows) ~= "table" or self._visible_rows[4] ~= true then
+            return false
+        end
+        if row4._icon:visible() ~= true then return false end
+        local descriptor = row4._icon_descriptor
+        local expected_texture = type(source.icon) == "table" and source.icon.texture or nil
+        if type(source.icon_id) ~= "string" or type(expected_texture) ~= "string"
+            or type(descriptor) ~= "table" or descriptor.texture ~= expected_texture then
+            return false
+        end
+        local texture = row4._icon:texture_name()
+        if not hacker_texture_matches(texture, expected_texture) then return false end
+        if row4:verify() ~= true then return false end
+        return true
+    end)
+    self._hacker_activity_ok = ok and result == true
+    return self._hacker_activity_ok
+end
+
+function M:prepare_hacker_activity_event()
+    self._hacker_activity_ok = false
+    if not live(self._root) or not live(self._parent) or type(self._rows) ~= "table" then
+        return false
+    end
+    self:_present()
+    return self:_verify_hacker_activity(self:get_hacker_activity_source())
+end
+
+-- Kingpin source read. The retained publication scalar stays frozen between
+-- publications; Application is only compared with its own record expiry and is
+-- required to be monotonic for the same exact record.
+function M:get_kingpin_activity_source()
+    local prov = self._kingpin_activity
+    if type(prov) ~= "table" then return nil end
+    if prov.invalid == true then return nil end
+    local cached = self._kingpin_source_cache
+    if cached ~= nil and cached.prov == prov then
+        return cached.source
+    end
+    local function reject(reason)
+        reason = reason or "source_guard"
+        local RT = kyohud.hud.runtime
+        if type(RT) == "table" and type(RT._kingpin_transition) == "function" then
+            pcall(RT._kingpin_transition, RT, "source_reject", reason, prov)
+        end
+        prov.invalid = true
+        if KINGPIN_TERMINAL_REASONS[reason] == true then
+            prov.terminal_candidate = reason
+            if is_valid_positive_quantity(prov.remaining) then
+                prov.terminal_remaining = prov.remaining
+            end
+            if is_valid_positive_quantity(prov.published_total) then
+                prov.terminal_total = prov.published_total
+            end
+        end
+        if type(prov.activity) == "table" then
+            prov.activity.known = false
+            prov.activity.active = false
+        end
+        return nil
+    end
+    if type(prov.activity) ~= "table" or prov.activity ~= self._activity
+        or prov.activity.source ~= KINGPIN_ACTIVITY_SOURCE
+        or prov.activity.known ~= true or prov.activity.active ~= true then
+        return reject()
+    end
+    local pm = managers and managers.player
+    if not managers or not pm then return reject() end
+    if prov.manager ~= managers.hud or prov.hud_manager ~= self._hud_manager then return reject() end
+    if prov.player_manager ~= self._player_manager or prov.player_manager ~= pm then return reject() end
+    if prov.player_unit ~= self._player_unit then return reject() end
+    local unit_ok, unit = safe_call(pm, "player_unit")
+    if not unit_ok or unit == nil or unit ~= prov.player_unit then return reject() end
+    if type(alive) == "function" then
+        local alive_ok, is_alive = pcall(alive, unit)
+        if not alive_ok or is_alive ~= true then return reject() end
+    end
+    local cd_ok, character_damage = safe_call(unit, "character_damage")
+    if not cd_ok or character_damage ~= prov.character_damage then return reject() end
+    if prov.session ~= self._session or prov.peer_id ~= self._peer_id then return reject() end
+    if self._session ~= prov.session then return reject() end
+    local session_ok, session = safe_call(managers.network, "session")
+    if not session_ok or session ~= prov.session then return reject() end
+    local peer_ok, peer = safe_call(session, "local_peer")
+    if not peer_ok or not peer then return reject() end
+    local id_ok, peer_id = safe_call(peer, "id")
+    if not id_ok or peer_id ~= prov.peer_id then return reject() end
+    if prov.equipment ~= self._equipment_table or prov.selections ~= self._selections_table then
+        return reject()
+    end
+    if pm._equipment ~= prov.equipment or pm._equipment.selections ~= prov.selections then
+        return reject()
+    end
+    if prov.registry ~= self._grenade_registry or prov.gpc ~= self._gpc then return reject() end
+    if pm._global and pm._global.synced_grenades ~= prov.registry then return reject() end
+    if managers.game_play_central ~= prov.gpc then return reject() end
+    if prov.generation ~= self._source_generation then return reject() end
+    if prov.projectile_id ~= KINGPIN_PROJECTILE_ID then return reject() end
+    if self._projectile_id ~= KINGPIN_PROJECTILE_ID then return reject() end
+    local got, entry = safe_call(pm, "get_synced_grenades", prov.peer_id)
+    if not got or type(entry) ~= "table" or entry.grenade ~= KINGPIN_PROJECTILE_ID then
+        return reject()
+    end
+    local upgrades = pm._temporary_upgrades
+    local category = type(upgrades) == "table" and upgrades.temporary or nil
+    local record = type(category) == "table" and category.chico_injector or nil
+    if upgrades ~= prov.temporary_root or category ~= prov.temporary_category
+        or record ~= prov.temporary_record then return reject() end
+    if type(record) ~= "table" or not is_valid_positive_quantity(record.expire_time) then
+        return reject()
+    end
+    local active_ok, active = safe_call(pm, "has_activate_temporary_upgrade",
+        "temporary", KINGPIN_PROJECTILE_ID)
+    if not active_ok then return reject("upgrade_unreadable") end
+    if active ~= true then return reject("upgrade_inactive") end
+    local uv_ok, upgrade = safe_call(pm, "upgrade_value", "temporary", KINGPIN_PROJECTILE_ID)
+    local duration = uv_ok and type(upgrade) == "table" and upgrade[2] or nil
+    if not is_valid_positive_quantity(duration)
+        or math.abs(duration - prov.duration) > 0.001 then return reject() end
+    local app = _G.Application
+    if app == nil or app ~= prov.application then return reject() end
+    local app_ok, app_now = safe_call(app, "time")
+    if not app_ok or not is_valid_known_quantity(app_now) then return reject() end
+    if app_now < prov.last_application then return reject() end
+    prov.last_application = app_now
+    if not (record.expire_time > app_now) then return reject("expired") end
+    if prov.player_timer ~= nil then
+        local ptm_ok, player_timer = safe_call(pm, "player_timer")
+        if not ptm_ok or player_timer == nil or player_timer ~= prov.player_timer then return reject() end
+        local pt_ok, player_time = safe_call(prov.player_timer, "time")
+        if not pt_ok or not is_valid_known_quantity(player_time) then return reject() end
+        if prov.player_time ~= nil and player_time < prov.player_time then return reject() end
+        prov.player_time = player_time
+    end
+    if prov.game_timer ~= nil then
+        local gtm_ok, game_timer = safe_call(TimerManager, "game")
+        if not gtm_ok or game_timer == nil or game_timer ~= prov.game_timer then return reject() end
+        local gt_ok, game_time = safe_call(prov.game_timer, "time")
+        if not gt_ok or not is_valid_known_quantity(game_time) then return reject() end
+        if prov.game_time ~= nil and game_time < prov.game_time then return reject() end
+        prov.game_time = game_time
+    end
+    if not is_valid_positive_quantity(prov.remaining) or not (prov.remaining > 0) then
+        return reject()
+    end
+    if prov.remaining > duration + 0.001 then return reject() end
+    local projectiles = tweak_data and tweak_data.blackmarket and tweak_data.blackmarket.projectiles
+    local td = projectiles and projectiles[KINGPIN_PROJECTILE_ID]
+    local icon_id = type(td) == "table" and td.icon or nil
+    local icon = self:_icon(icon_id, PROJECTILE_ICON_DEFAULT)
+    local result = {
+        kind = KINGPIN_ACTIVITY_SOURCE,
+        event_id = prov.event_id,
+        event_serial = prov.serial,
+        activity = prov.activity,
+        projectile_id = KINGPIN_PROJECTILE_ID,
+        manager = prov.manager,
+        hud_manager = prov.hud_manager,
+        player_manager = prov.player_manager,
+        player_unit = prov.player_unit,
+        character_damage = prov.character_damage,
+        session = prov.session,
+        peer_id = prov.peer_id,
+        equipment = prov.equipment,
+        selections = prov.selections,
+        registry = prov.registry,
+        gpc = prov.gpc,
+        generation = prov.generation,
+        source_generation = prov.generation,
+        temporary_root = prov.temporary_root,
+        temporary_category = prov.temporary_category,
+        temporary_record = prov.temporary_record,
+        expire_time = record.expire_time,
+        application = app,
+        application_now = app_now,
+        clock = app,
+        start = prov.start_application,
+        last_seen = app_now,
+        duration = duration,
+        remaining = prov.remaining,
+        published_total = prov.published_total,
+        active = true,
+        icon_id = icon_id,
+        icon = icon,
+    }
+    self._kingpin_source_cache = { prov = prov, source = result }
+    return result
+end
+
+-- Terminal Kingpin proof. This getter is never used by the generic ACTIVE
+-- dispatch: it only reads an invalidated positive provenance whose natural end
+-- reason was an inactive/expired temporary upgrade. Every retained identity is
+-- re-proved independently, the exact record must already be past its own
+-- Application deadline and the same publication is preserved without inventing
+-- remaining seconds. Any loss of proof latches this provenance terminal-invalid.
+function M:get_kingpin_terminal_source()
+    local prov = self._kingpin_activity
+    if type(prov) ~= "table" then return nil end
+    if prov.invalid ~= true then return nil end
+    local reason = prov.terminal_candidate
+    if KINGPIN_TERMINAL_REASONS[reason] ~= true then return nil end
+    if prov.terminal_invalid == true then return nil end
+    local function reject()
+        prov.terminal_invalid = true
+        return nil
+    end
+    if type(prov.activity) ~= "table" or prov.activity ~= self._activity
+        or prov.activity.source ~= KINGPIN_ACTIVITY_SOURCE then
+        return reject()
+    end
+    local pm = managers and managers.player
+    if not managers or not pm then return reject() end
+    if prov.manager ~= managers.hud or prov.hud_manager ~= self._hud_manager then return reject() end
+    if prov.player_manager ~= self._player_manager or prov.player_manager ~= pm then return reject() end
+    if prov.player_unit ~= self._player_unit then return reject() end
+    local unit_ok, unit = safe_call(pm, "player_unit")
+    if not unit_ok or unit == nil or unit ~= prov.player_unit then return reject() end
+    if type(alive) == "function" then
+        local alive_ok, is_alive = pcall(alive, unit)
+        if not alive_ok or is_alive ~= true then return reject() end
+    end
+    local cd_ok, character_damage = safe_call(unit, "character_damage")
+    if not cd_ok or character_damage ~= prov.character_damage then return reject() end
+    if prov.session ~= self._session or prov.peer_id ~= self._peer_id then return reject() end
+    if self._session ~= prov.session then return reject() end
+    local session_ok, session = safe_call(managers.network, "session")
+    if not session_ok or session ~= prov.session then return reject() end
+    local peer_ok, peer = safe_call(session, "local_peer")
+    if not peer_ok or not peer then return reject() end
+    local id_ok, peer_id = safe_call(peer, "id")
+    if not id_ok or peer_id ~= prov.peer_id then return reject() end
+    if prov.equipment ~= self._equipment_table or prov.selections ~= self._selections_table then
+        return reject()
+    end
+    if pm._equipment ~= prov.equipment or pm._equipment.selections ~= prov.selections then
+        return reject()
+    end
+    if prov.registry ~= self._grenade_registry or prov.gpc ~= self._gpc then return reject() end
+    if pm._global and pm._global.synced_grenades ~= prov.registry then return reject() end
+    if managers.game_play_central ~= prov.gpc then return reject() end
+    if prov.generation ~= self._source_generation then return reject() end
+    if prov.projectile_id ~= KINGPIN_PROJECTILE_ID then return reject() end
+    if self._projectile_id ~= KINGPIN_PROJECTILE_ID then return reject() end
+    local got, entry = safe_call(pm, "get_synced_grenades", prov.peer_id)
+    if not got or type(entry) ~= "table" or entry.grenade ~= KINGPIN_PROJECTILE_ID then
+        return reject()
+    end
+    local upgrades = pm._temporary_upgrades
+    local category = type(upgrades) == "table" and upgrades.temporary or nil
+    local record = type(category) == "table" and category.chico_injector or nil
+    if upgrades ~= prov.temporary_root or category ~= prov.temporary_category
+        or record ~= prov.temporary_record then return reject() end
+    if type(record) ~= "table" or not is_valid_positive_quantity(record.expire_time) then
+        return reject()
+    end
+    if not finite(prov.expire_time) or record.expire_time ~= prov.expire_time then
+        return reject()
+    end
+    local active_ok, active = safe_call(pm, "has_activate_temporary_upgrade",
+        "temporary", KINGPIN_PROJECTILE_ID)
+    if not active_ok then return reject() end
+    if active ~= false then return reject() end
+    local uv_ok, upgrade = safe_call(pm, "upgrade_value", "temporary", KINGPIN_PROJECTILE_ID)
+    local duration = uv_ok and type(upgrade) == "table" and upgrade[2] or nil
+    if not is_valid_positive_quantity(duration)
+        or not is_valid_positive_quantity(prov.duration)
+        or math.abs(duration - prov.duration) > 0.001 then return reject() end
+    local app = _G.Application
+    if app == nil or app ~= prov.application then return reject() end
+    local app_ok, app_now = safe_call(app, "time")
+    if not app_ok or not is_valid_known_quantity(app_now) then return reject() end
+    if not is_valid_known_quantity(prov.last_application) then return reject() end
+    if app_now < prov.last_application then return reject() end
+    prov.last_application = app_now
+    if not (record.expire_time <= app_now) then return reject() end
+    if prov.player_timer ~= nil then
+        local ptm_ok, player_timer = safe_call(pm, "player_timer")
+        if not ptm_ok or player_timer == nil or player_timer ~= prov.player_timer then return reject() end
+        local pt_ok, player_time = safe_call(prov.player_timer, "time")
+        if not pt_ok or not is_valid_known_quantity(player_time) then return reject() end
+        if prov.player_time ~= nil and player_time < prov.player_time then return reject() end
+        prov.player_time = player_time
+    end
+    if prov.game_timer ~= nil then
+        local gtm_ok, game_timer = safe_call(TimerManager, "game")
+        if not gtm_ok or game_timer == nil or game_timer ~= prov.game_timer then return reject() end
+        local gt_ok, game_time = safe_call(prov.game_timer, "time")
+        if not gt_ok or not is_valid_known_quantity(game_time) then return reject() end
+        if prov.game_time ~= nil and game_time < prov.game_time then return reject() end
+        prov.game_time = game_time
+    end
+    local published_remaining = prov.terminal_remaining
+    if not is_valid_positive_quantity(published_remaining) then
+        published_remaining = prov.remaining
+    end
+    local published_total = prov.terminal_total
+    if not is_valid_positive_quantity(published_total) then
+        published_total = prov.published_total
+    end
+    if not is_valid_positive_quantity(published_remaining)
+        or not is_valid_positive_quantity(published_total) then return reject() end
+    if published_remaining > published_total + 0.001 then return reject() end
+    local projectiles = tweak_data and tweak_data.blackmarket and tweak_data.blackmarket.projectiles
+    local td = projectiles and projectiles[KINGPIN_PROJECTILE_ID]
+    local icon_id = type(td) == "table" and td.icon or nil
+    if type(icon_id) ~= "string" then return reject() end
+    local icon = self:_icon(icon_id, PROJECTILE_ICON_DEFAULT)
+    if type(icon) ~= "table" or type(icon.texture) ~= "string" then return reject() end
+    return {
+        kind = KINGPIN_TERMINAL_SOURCE,
+        event_id = prov.event_id,
+        event_serial = prov.serial,
+        projectile_id = KINGPIN_PROJECTILE_ID,
+        manager = prov.manager,
+        hud_manager = prov.hud_manager,
+        player_manager = prov.player_manager,
+        player_unit = prov.player_unit,
+        character_damage = prov.character_damage,
+        session = prov.session,
+        peer_id = prov.peer_id,
+        equipment = prov.equipment,
+        selections = prov.selections,
+        registry = prov.registry,
+        gpc = prov.gpc,
+        generation = prov.generation,
+        source_generation = prov.generation,
+        temporary_root = prov.temporary_root,
+        temporary_category = prov.temporary_category,
+        temporary_record = prov.temporary_record,
+        expire_time = record.expire_time,
+        application = app,
+        application_now = app_now,
+        clock = app,
+        duration = duration,
+        published_remaining = published_remaining,
+        published_total = published_total,
+        published_ratio = published_remaining / published_total,
+        terminal = true,
+        terminal_reason = reason,
+        active = false,
+        icon_id = icon_id,
+        icon = icon,
+    }
+end
+
+function M:_verify_kingpin_activity(source)
+    self._kingpin_activity_ok = false
+    source = source or self:get_kingpin_activity_source()
+    if type(source) ~= "table" or source.active ~= true then return false end
+    local ok, result = pcall(function()
+        if not enabled() then return false end
+        if not live(self._root) or not live(self._parent) or type(self._rows) ~= "table" then
+            return false
+        end
+        if not hacker_root_exposed(self) then return false end
+        local verifier = self.verify
+        local verified, receipt = verifier(self, KINGPIN_VERIFY_RECEIPT)
+        if verified ~= true then return false end
+        local receipt_ok = receipt == KINGPIN_VERIFY_RECEIPT
+            and type(self._residual_phase_wrappers) == "table"
+            and self.verify == verifier
+            and self.verify == self._residual_phase_wrappers.verify
+        if type(self._texts) ~= "table" then return false end
+        if not is_valid_positive_quantity(source.duration)
+            or not is_valid_positive_quantity(source.remaining) then return false end
+        local row6 = self._rows[6]
+        if not row6 or not live(row6._root) or not live(row6._label)
+            or not live(row6._value) then return false end
+        if type(self._visible_rows) ~= "table" or self._visible_rows[6] ~= true then
+            return false
+        end
+        local expected_value = string.format("%ds", math.ceil(source.remaining))
+        local expected_progress = math.min(1, math.max(0, source.remaining / source.duration))
+        local label_ok, label = safe_call(row6._label, "text")
+        local value_ok, value = safe_call(row6._value, "text")
+        if not label_ok or label ~= self._texts.active then return false end
+        if not value_ok or value ~= expected_value then return false end
+        if not finite(row6._progress)
+            or math.abs(row6._progress - expected_progress) > 0.001 then return false end
+        if not receipt_ok and row6:verify() ~= true then return false end
+        local row4 = self._rows[4]
+        if not row4 or not live(row4._root) or not live(row4._icon) then return false end
+        if type(self._visible_rows) ~= "table" or self._visible_rows[4] ~= true then
+            return false
+        end
+        if row4._icon:visible() ~= true then return false end
+        local descriptor = row4._icon_descriptor
+        local expected_texture = type(source.icon) == "table" and source.icon.texture or nil
+        if type(source.icon_id) ~= "string" or type(expected_texture) ~= "string"
+            or type(descriptor) ~= "table" or descriptor.texture ~= expected_texture then
+            return false
+        end
+        local texture = row4._icon:texture_name()
+        if not hacker_texture_matches(texture, expected_texture) then return false end
+        if not receipt_ok and row4:verify() ~= true then return false end
+        return true
+    end)
+    self._kingpin_activity_ok = ok and result == true
+    return self._kingpin_activity_ok
+end
+
+function M:prepare_kingpin_activity_event()
+    self._kingpin_activity_ok = false
+    if not live(self._root) or not live(self._parent) or type(self._rows) ~= "table" then
+        return false
+    end
+    self:_present()
+    return self:_verify_kingpin_activity(self:get_kingpin_activity_source())
+end
+
+-- Terminal-owned rendering has no ACTIVE row. It certifies the current inactive
+-- snapshot actually produced by _present: fresh full equipment verification,
+-- exposed owned root, absent row 6 root/visible-row and the exact row 4 icon
+-- descriptor/resource. No native value is written.
+function M:_verify_kingpin_terminal(source)
+    self._kingpin_terminal_ok = false
+    source = source or self:get_kingpin_terminal_source()
+    if type(source) ~= "table" or source.kind ~= KINGPIN_TERMINAL_SOURCE
+        or source.active ~= false then return false end
+    local ok, result = pcall(function()
+        if not enabled() then return false end
+        if not live(self._root) or not live(self._parent) or type(self._rows) ~= "table" then
+            return false
+        end
+        local wrappers = self._residual_phase_wrappers
+        if type(wrappers) ~= "table" or type(wrappers.verify) ~= "function"
+            or self.verify ~= wrappers.verify then
+            return false
+        end
+        if not hacker_root_exposed(self) then return false end
+        if self:verify() ~= true then return false end
+        if type(self._texts) ~= "table" then return false end
+        local visible_rows = self._visible_rows
+        if type(visible_rows) ~= "table" then return false end
+        local row6 = self._rows[6]
+        if not row6 or not live(row6._root) then return false end
+        if visible_rows[6] == true then return false end
+        local r6_ok, r6_visible = safe_call(row6._root, "visible")
+        if not r6_ok or r6_visible ~= false then return false end
+        local row4 = self._rows[4]
+        if not row4 or not live(row4._root) or not live(row4._icon) then return false end
+        if visible_rows[4] ~= true then return false end
+        local icon_ok, icon_visible = safe_call(row4._icon, "visible")
+        if not icon_ok or icon_visible ~= true then return false end
+        local descriptor = row4._icon_descriptor
+        local expected_texture = type(source.icon) == "table" and source.icon.texture or nil
+        if type(source.icon_id) ~= "string" or type(expected_texture) ~= "string"
+            or type(descriptor) ~= "table" or descriptor.texture ~= expected_texture then
+            return false
+        end
+        local texture = row4._icon:texture_name()
+        if not hacker_texture_matches(texture, expected_texture) then return false end
+        if row4:verify() ~= true then return false end
+        return true
+    end)
+    self._kingpin_terminal_ok = ok and result == true
+    return self._kingpin_terminal_ok
+end
+
+function M:_prepare_kingpin_terminal_event(source)
+    self._kingpin_terminal_ok = false
+    if not live(self._root) or not live(self._parent) or type(self._rows) ~= "table" then
+        return false
+    end
+    self:_present()
+    local fresh = self:get_kingpin_terminal_source()
+    if type(fresh) ~= "table"
+        or (type(source) == "table" and fresh.event_id ~= source.event_id) then
+        return false
+    end
+    return self:_verify_kingpin_terminal(fresh)
+end
+
+-- Narrow internal dispatch used by the single exclusive lease. Hacker keeps its
+-- strict public getter; only the selected positive source is exposed here.
+function M:get_local_ability_activity_source()
+    local source = self:get_hacker_activity_source()
+    if type(source) == "table" and source.kind == HACKER_ACTIVITY_SOURCE then
+        return source
+    end
+    local kingpin = self:get_kingpin_activity_source()
+    if type(kingpin) == "table" and kingpin.kind == KINGPIN_ACTIVITY_SOURCE then
+        return kingpin
+    end
+    return nil
+end
+
+function M:_verify_local_ability_activity(source)
+    self._hacker_activity_ok = false
+    self._kingpin_activity_ok = false
+    if type(source) ~= "table" then return false end
+    if source.kind == HACKER_ACTIVITY_SOURCE then
+        return self:_verify_hacker_activity(source)
+    end
+    if source.kind == KINGPIN_ACTIVITY_SOURCE then
+        return self:_verify_kingpin_activity(source)
+    end
+    return false
+end
+
+function M:prepare_local_ability_activity_event()
+    self._hacker_activity_ok = false
+    self._kingpin_activity_ok = false
+    if not live(self._root) or not live(self._parent) or type(self._rows) ~= "table" then
+        return false
+    end
+    local kingpin_attempt = self._projectile_id == KINGPIN_PROJECTILE_ID
+    local incremental = false
+    local fast_reason
+    if kingpin_attempt then
+        residual_count("kingpin_prepare_attempt")
+        local source = self:get_local_ability_activity_source()
+        if type(source) == "table" and source.kind == KINGPIN_ACTIVITY_SOURCE then
+            local ok, presented, reason = pcall(self._present_kingpin_activity_event, self, source)
+            if ok then
+                incremental = presented == true
+                fast_reason = reason
+            else
+                fast_reason = "exception"
+            end
+        else
+            fast_reason = "source"
+        end
+    end
+    if not incremental then
+        if kingpin_attempt then
+            residual_count_kingpin_reject(fast_reason or "other")
+            residual_count("kingpin_prepare_full")
+        end
+        self:_present()
+    end
+    local fresh = self:get_local_ability_activity_source()
+    local verified = self:_verify_local_ability_activity(fresh)
+    if incremental and verified ~= true then
+        if kingpin_attempt then
+            residual_count_kingpin_reject("postverify")
+            residual_count("kingpin_prepare_full")
+        end
+        self:_present()
+        fresh = self:get_local_ability_activity_source()
+        verified = self:_verify_local_ability_activity(fresh)
+        incremental = false
+    end
+    if kingpin_attempt and incremental and verified == true then
+        residual_count("kingpin_prepare_fast")
+    end
+    return verified
 end
 
 local function flash_child(parent, name)
@@ -1447,7 +2540,232 @@ local function temporal_eligible(channel, projectile_kind, channel_index)
     return false
 end
 
+function M:_record_kingpin_present_cache(snap, cooldown)
+    self._kingpin_present_cache = nil
+    if self._invalidated or type(snap) ~= "table" or type(self._snapshot) ~= "table" then
+        return
+    end
+    if self._projectile_id ~= KINGPIN_PROJECTILE_ID then return end
+    local projectile = snap.projectile
+    if type(projectile) ~= "table"
+        or projectile.projectile_id ~= KINGPIN_PROJECTILE_ID then return end
+    if type(self._visible_rows) ~= "table" or self._visible_rows[6] ~= true then return end
+    local activity = snap.activity
+    if type(activity) ~= "table" or activity.source ~= KINGPIN_ACTIVITY_SOURCE
+        or activity.known ~= true or activity.active ~= true then return end
+    local prov = self._kingpin_activity
+    if type(prov) ~= "table" or prov.invalid == true
+        or prov.kind ~= KINGPIN_ACTIVITY_SOURCE or type(prov.event_id) ~= "string"
+        or type(prov.activity) ~= "table" or prov.activity ~= self._activity
+        or prov.activity.source ~= KINGPIN_ACTIVITY_SOURCE
+        or prov.activity.known ~= true or prov.activity.active ~= true
+        or prov.generation ~= self._source_generation
+        or prov.projectile_id ~= KINGPIN_PROJECTILE_ID then return end
+    local wrappers = self._residual_phase_wrappers
+    if type(wrappers) ~= "table" or self.verify ~= wrappers.verify then return end
+    local rows = self._rows
+    local row1 = type(rows) == "table" and rows[1] or nil
+    local row2 = type(rows) == "table" and rows[2] or nil
+    local row3 = type(rows) == "table" and rows[3] or nil
+    local row4 = type(rows) == "table" and rows[4] or nil
+    local row5 = type(rows) == "table" and rows[5] or nil
+    local row6 = type(rows) == "table" and rows[6] or nil
+    if not row1 or not row2 or not row3
+        or not row4 or not row5 or not row6 then return end
+    local charges = projectile.charges
+    self._kingpin_present_cache = {
+        event_id = prov.event_id,
+        verifier = self.verify,
+        root = self._root,
+        parent = self._parent,
+        manager = self._manager,
+        hud_manager = self._hud_manager,
+        rows = rows,
+        row1 = row1,
+        row2 = row2,
+        row3 = row3,
+        row4 = row4,
+        row5 = row5,
+        row6 = row6,
+        snapshot = self._snapshot,
+        generation = self._source_generation,
+        projectile_id = self._projectile_id,
+        texts = self._texts,
+        layout = self._layout,
+        hud_scale = kyohud.settings and kyohud.settings.hud_scale,
+        required_width = self._required_width,
+        required_scale = self._required_scale,
+        temporal_height = self._temporal_height,
+        cooldown_event = self._cooldown_event,
+        charges_known = type(charges) == "table" and charges.known == true,
+        charges_raw = type(charges) == "table" and charges.raw or nil,
+        cooldown_known = type(cooldown) == "table" and cooldown.known == true,
+        cooldown_active = type(cooldown) == "table" and cooldown.active == true,
+        cooldown_integrated = type(cooldown) == "table"
+            and cooldown.integrated == true and cooldown.active == true,
+        cooldown_duration = type(cooldown) == "table" and cooldown.duration or nil,
+        row5_visible = self._visible_rows[5] == true,
+    }
+end
+
+function M:_present_kingpin_activity_event(source)
+    self._kingpin_activity_ok = false
+    if not enabled() then return false, "source" end
+    if self._invalidated or self._dirty then return false, "dirty" end
+    if type(source) ~= "table" or source.kind ~= KINGPIN_ACTIVITY_SOURCE
+        or source.active ~= true or source.projectile_id ~= KINGPIN_PROJECTILE_ID
+        or source.generation ~= self._source_generation then
+        return false, "source"
+    end
+    local cache = self._kingpin_present_cache
+    if type(cache) ~= "table" then return false, "cache" end
+    local wrappers = self._residual_phase_wrappers
+    if type(wrappers) ~= "table" or self.verify ~= wrappers.verify
+        or cache.verifier ~= self.verify then
+        self._kingpin_present_cache = nil
+        return false, "identity"
+    end
+    if cache.event_id ~= source.event_id then
+        self._kingpin_present_cache = nil
+        return false, "activation"
+    end
+    local rows = self._rows
+    if type(rows) ~= "table" then
+        self._kingpin_present_cache = nil
+        return false, "identity"
+    end
+    if cache.root ~= self._root or cache.parent ~= self._parent
+        or cache.manager ~= self._manager or cache.hud_manager ~= self._hud_manager
+        or cache.rows ~= rows or cache.row1 ~= rows[1]
+        or cache.row2 ~= rows[2] or cache.row3 ~= rows[3]
+        or cache.row4 ~= rows[4]
+        or cache.row5 ~= rows[5] or cache.row6 ~= rows[6] then
+        self._kingpin_present_cache = nil
+        return false, "identity"
+    end
+    if cache.snapshot ~= self._snapshot then
+        self._kingpin_present_cache = nil
+        return false, "snapshot"
+    end
+    if cache.generation ~= self._source_generation
+        or cache.projectile_id ~= self._projectile_id then
+        self._kingpin_present_cache = nil
+        return false, "identity"
+    end
+    if cache.texts ~= self._texts then
+        self._kingpin_present_cache = nil
+        return false, "identity"
+    end
+    if cache.layout ~= self._layout then
+        self._kingpin_present_cache = nil
+        return false, "layout"
+    end
+    if cache.hud_scale ~= (kyohud.settings and kyohud.settings.hud_scale) then
+        self._kingpin_present_cache = nil
+        return false, "identity"
+    end
+    if cache.required_width ~= self._required_width then
+        self._kingpin_present_cache = nil
+        return false, "layout"
+    end
+    if cache.required_scale ~= self._required_scale then
+        self._kingpin_present_cache = nil
+        return false, "identity"
+    end
+    if cache.temporal_height ~= self._temporal_height then
+        self._kingpin_present_cache = nil
+        return false, "layout"
+    end
+    if cache.cooldown_event ~= self._cooldown_event then
+        self._kingpin_present_cache = nil
+        return false, "cooldown"
+    end
+    if type(self._visible_rows) ~= "table" or self._visible_rows[6] ~= true
+        or self._visible_rows[5] ~= cache.row5_visible then
+        self._kingpin_present_cache = nil
+        return false, "layout"
+    end
+    local snapshot = self._snapshot
+    local projectile = snapshot.projectile
+    local charges = type(projectile) == "table" and projectile.charges or nil
+    if type(projectile) ~= "table"
+        or projectile.projectile_id ~= KINGPIN_PROJECTILE_ID
+        or type(charges) ~= "table" or charges.known ~= cache.charges_known
+        or charges.raw ~= cache.charges_raw then
+        self._kingpin_present_cache = nil
+        return false, "snapshot"
+    end
+    local cooldown = self:_fresh_cooldown()
+    if type(cooldown) ~= "table" or cooldown.known ~= true then
+        self._kingpin_present_cache = nil
+        return false, "cooldown"
+    end
+    local integrated = cooldown.active == true and cooldown.integrated == true
+    local row5_shown = not integrated
+        and temporal_eligible(cooldown, projectile.kind, 1) == true
+    if cache.cooldown_known ~= true
+        or cache.cooldown_active ~= (cooldown.active == true)
+        or cache.cooldown_integrated ~= integrated
+        or cache.row5_visible ~= row5_shown then
+        self._kingpin_present_cache = nil
+        return false, "cooldown"
+    end
+    local cached_duration, current_duration = cache.cooldown_duration, cooldown.duration
+    if cached_duration ~= nil or current_duration ~= nil then
+        if not is_valid_positive_quantity(cached_duration)
+            or not is_valid_positive_quantity(current_duration)
+            or math.abs(cached_duration - current_duration) > 0.001 then
+            self._kingpin_present_cache = nil
+            return false, "cooldown"
+        end
+    end
+    local remaining, duration = source.remaining, source.duration
+    if not is_valid_positive_quantity(remaining)
+        or not is_valid_positive_quantity(duration) then
+        self._kingpin_present_cache = nil
+        return false, "source"
+    end
+    local texts = self._texts
+    local label = type(texts) == "table" and texts.active or nil
+    local cooldown_label = type(texts) == "table" and texts.cooldown or nil
+    if type(label) ~= "string" or type(cooldown_label) ~= "string" then
+        return false, "identity"
+    end
+    if self:verify() ~= true or not hacker_root_exposed(self) then
+        return false, "verify"
+    end
+    local row6 = cache.row6
+    local value = string.format("%ds", math.ceil(remaining))
+    local progress = math.min(1, math.max(0, remaining / duration))
+    local row6_ok, row6_rendered = pcall(function()
+        row6:render(label, value, progress)
+        return row6:verify() == true
+    end)
+    if not row6_ok or row6_rendered ~= true then return false, "render" end
+    if cache.row5_visible then
+        local row5 = cache.row5
+        local cooldown_remaining = cooldown.remaining
+        if not is_valid_positive_quantity(cooldown_remaining)
+            or not is_valid_positive_quantity(cooldown.duration) then
+            return false, "render"
+        end
+        local cooldown_value = string.format("%ds", math.ceil(cooldown_remaining))
+        local cooldown_progress = math.min(1, math.max(0, cooldown_remaining / cooldown.duration))
+        local row5_ok, row5_rendered = pcall(function()
+            row5:render(cooldown_label, cooldown_value, cooldown_progress)
+            return row5:verify() == true
+        end)
+        if not row5_ok or row5_rendered ~= true then return false, "render" end
+    end
+    self:_animate_recharge()
+    self:_sync_grenade_flash(self._snapshot)
+    local shown, visible = safe_call(self._root, "visible")
+    if shown == true and visible == true then return true end
+    return false, "render"
+end
+
 function M:_present()
+    self._kingpin_present_cache = nil
     if not live(self._root) or not self._rows then return end
 
     local snap=self:get_snapshot()
@@ -1486,10 +2804,10 @@ function M:_present()
     local grenade_value=count_text(projectile.charges)
     local grenade_progress
     if integrated then
-        local remaining=cooldown.remaining
-        if is_valid_positive_quantity(remaining) and is_valid_positive_quantity(cooldown.duration)
-            and remaining<=cooldown.duration then
-            grenade_value=string.format("%ds",math.ceil(remaining))
+        local recharge_text=self:integrated_recharge_text(cooldown,projectile.charges)
+        if recharge_text then
+            local remaining=cooldown.remaining
+            grenade_value=recharge_text
             grenade_progress=math.min(1,math.max(0,1-remaining/cooldown.duration))
         else
             integrated=false
@@ -1550,10 +2868,14 @@ function M:_present()
     end
     safe_call(self._root,"set_visible",true)
     self:_sync_grenade_flash(snap)
-    if not self:verify() then safe_call(self._root,"set_visible",false) end
+    if not self:verify() then
+        safe_call(self._root,"set_visible",false)
+    else
+        self:_record_kingpin_present_cache(snap, cooldown)
+    end
 end
 
-function M:verify()
+function M:verify(optional_receipt_request)
     -- quality split approved 2026-11-10
     self._verify_ok_now = false
     if not live(self._root) or not live(self._parent) or not self._layout or not self._rows then return false end
@@ -1576,6 +2898,9 @@ function M:verify()
     if #self._rows~=6 then return false end
     -- quality split approved 2026-11-10
     self._verify_ok_now = true
+    if optional_receipt_request == KINGPIN_VERIFY_RECEIPT then
+        return true, KINGPIN_VERIFY_RECEIPT
+    end
     return true
 end
 
@@ -1614,11 +2939,160 @@ function M:_animate_recharge()
     local remaining=cooldown.remaining
     if not (is_valid_positive_quantity(remaining) and is_valid_positive_quantity(cooldown.duration)
         and remaining<=cooldown.duration) then return end
+    local projectile=type(self._snapshot)=="table" and self._snapshot.projectile or nil
+    local charges=type(projectile)=="table" and projectile.charges or nil
+    local value=self:integrated_recharge_text(cooldown,charges)
+    if not value then return end
     local progress=math.min(1,math.max(0,1-remaining/cooldown.duration))
-    local value=string.format("%ds",math.ceil(remaining))
     if not row:animate_recharge(value,progress) then
         safe_call(self._root,"set_visible",false)
     end
+end
+
+function M:_throttle_hacker_activity()
+    if not enabled() then
+        self._hacker_activity_ok = false
+        return false
+    end
+    -- A selected Kingpin source has its own fresh throttle checks; the Hacker
+    -- source can never qualify chico_injector, so skip the full verifier here.
+    if self._projectile_id == KINGPIN_PROJECTILE_ID then
+        self._hacker_activity_ok = false
+        return false
+    end
+    local row6 = type(self._rows) == "table" and self._rows[6] or nil
+    if not row6 or not live(row6._root) or not live(row6._label)
+        or not live(row6._value) then
+        self._hacker_activity_ok = false
+        return false
+    end
+    if type(self._visible_rows) ~= "table" or self._visible_rows[6] ~= true then
+        self._hacker_activity_ok = false
+        return false
+    end
+    if self:verify() ~= true or row6:verify() ~= true then
+        self._hacker_activity_ok = false
+        return false
+    end
+    local source = self:get_hacker_activity_source()
+    if type(source) ~= "table" or source.active ~= true then
+        self._hacker_activity_ok = false
+        return false
+    end
+    local remaining, duration = source.remaining, source.duration
+    if not is_valid_positive_quantity(remaining)
+        or not is_valid_positive_quantity(duration) then
+        self._hacker_activity_ok = false
+        return false
+    end
+    local label = type(self._texts) == "table" and self._texts.active or nil
+    if type(label) ~= "string" then
+        self._hacker_activity_ok = false
+        return false
+    end
+    local value = string.format("%ds", math.ceil(remaining))
+    local progress = math.min(1, math.max(0, remaining / duration))
+    local render_ok, rendered = pcall(function()
+        row6:render(label, value, progress)
+        return row6:verify() == true
+    end)
+    if not render_ok or rendered ~= true then
+        self._hacker_activity_ok = false
+        return false
+    end
+    local fresh = self:get_hacker_activity_source()
+    if type(fresh) ~= "table" or fresh.active ~= true
+        or fresh.event_id ~= source.event_id then
+        self._hacker_activity_ok = false
+        return false
+    end
+    local verify_ok, verified = pcall(self._verify_hacker_activity, self, fresh)
+    if not verify_ok or verified ~= true then
+        self._hacker_activity_ok = false
+        return false
+    end
+    return true
+end
+
+function M:_throttle_kingpin_activity()
+    if not enabled() then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local selected = type(self._snapshot) == "table"
+        and type(self._snapshot.projectile) == "table"
+        and self._snapshot.projectile.projectile_id or nil
+    if type(self._kingpin_activity) ~= "table"
+        or self._projectile_id ~= KINGPIN_PROJECTILE_ID
+        or (selected ~= nil and selected ~= KINGPIN_PROJECTILE_ID) then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local row6 = type(self._rows) == "table" and self._rows[6] or nil
+    if not row6 or not live(row6._root) or not live(row6._label)
+        or not live(row6._value) then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    if type(self._visible_rows) ~= "table" or self._visible_rows[6] ~= true then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local stable_seq = self._kingpin_stable_event_seq or 0
+    local seen_seq = self._throttle_seen_seq or 0
+    -- Skip the expensive tail once per stable event: the seam's prepare+chain
+    -- already certified render, lease and source this frame. Non-stable frames
+    -- (acquisition, transition, conflict, terminal, no publication) and frames
+    -- after the consumed skip keep the full verification below. The residual
+    -- probe phase kingpin_throttle_full aggregates both skip and full frames.
+    if stable_seq > 0 and stable_seq ~= seen_seq then
+        self._throttle_seen_seq = stable_seq
+        self._kingpin_activity_ok = true
+        return true
+    end
+    self._throttle_seen_seq = stable_seq
+    if self:verify() ~= true or row6:verify() ~= true then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local source = self:get_kingpin_activity_source()
+    if type(source) ~= "table" or source.active ~= true then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local remaining, duration = source.remaining, source.duration
+    if not is_valid_positive_quantity(remaining)
+        or not is_valid_positive_quantity(duration) then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local label = type(self._texts) == "table" and self._texts.active or nil
+    if type(label) ~= "string" then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local value = string.format("%ds", math.ceil(remaining))
+    local progress = math.min(1, math.max(0, remaining / duration))
+    local render_ok, rendered = pcall(function()
+        row6:render(label, value, progress)
+        return row6:verify() == true
+    end)
+    if not render_ok or rendered ~= true then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local fresh = self:get_kingpin_activity_source()
+    if type(fresh) ~= "table" or fresh.active ~= true
+        or fresh.event_id ~= source.event_id then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    local verify_ok, verified = pcall(self._verify_kingpin_activity, self, fresh)
+    if not verify_ok or verified ~= true then
+        self._kingpin_activity_ok = false
+        return false
+    end
+    return true
 end
 
 function M:update(manager,t,dt)
@@ -1646,6 +3120,8 @@ function M:update(manager,t,dt)
             residual_rt:_residual_record("equipment_throttled", residual_start)
         end
         self:_throttle_grenade_flash()
+        self:_throttle_hacker_activity()
+        self:_throttle_kingpin_activity()
         self:_animate_recharge()
         return
     end
@@ -1810,14 +3286,19 @@ function M:_capture_grenade_flash_event()
     }
 end
 
-local function install(class, method, fn)
+local function install(class, method, fn, kind)
     if not class or not Hooks then return end
     local ok, target = pcall(function() return class[method] end)
     if not ok or type(target) ~= "function" then return end
     M._hooks = M._hooks or {}
     local id = "KyoHUD_Equipment_" .. tostring(RequiredScript) .. "_" .. method
+    if kind == "pre" then id = id .. "_pre" end
     if M._hooks[id] then return end
-    Hooks:PostHook(class, method, id, fn)
+    if kind == "pre" then
+        Hooks:PreHook(class, method, id, fn)
+    else
+        Hooks:PostHook(class, method, id, fn)
+    end
     M._hooks[id] = true
 end
 
@@ -1865,6 +3346,84 @@ elseif RequiredScript == "lib/managers/hudmanagerpd2" then
     local function local_panel(self, i)
         return managers and self == managers.hud and HUDManager and i == HUDManager.PLAYER_PANEL
     end
+    -- Opt-in Kingpin publication diagnostic: one paired Pre/Post sample around
+    -- the native HUD relay only. An incomplete, nested, foreign or capture-ended
+    -- chain is dropped instead of being counted twice or reported as valid.
+    local KINGPIN_PUBLICATION_PHASE = "kingpin_publication_total"
+    local function kingpin_publication_state()
+        local rt = kyohud.hud.runtime
+        if type(rt) ~= "table" then return nil, nil end
+        local probe = rt._residual_probe
+        if type(probe) ~= "table" then return nil, nil end
+        return rt, probe
+    end
+    local function kingpin_publication_ready(probe)
+        return probe.mode == "kingpin" and probe.active == true and probe.done ~= true
+    end
+    local function kingpin_publication_source_ok(self)
+        if type(managers) ~= "table" or managers.hud ~= self then return false end
+        local equipment = kyohud.hud.equipment
+        return type(equipment) == "table"
+            and equipment._projectile_id == KINGPIN_PROJECTILE_ID
+    end
+    local function kingpin_publication_enter(self)
+        local rt, probe = kingpin_publication_state()
+        if not rt or not probe then return end
+        local depth = probe.kingpin_publication_depth or 0
+        if depth > 0 then
+            probe.kingpin_publication_invalid = true
+            probe.kingpin_publication_depth = depth + 1
+            return
+        end
+        if not kingpin_publication_ready(probe) then return end
+        if not kingpin_publication_source_ok(self) then return end
+        if type(rt._residual_stamp) ~= "function" then return end
+        local start = rt:_residual_stamp()
+        if start == nil then return end
+        probe.kingpin_publication_depth = 1
+        probe.kingpin_publication_invalid = false
+        probe.kingpin_publication_pending = true
+        probe.kingpin_publication_start = start
+        probe.kingpin_publication_manager = self
+    end
+    local function kingpin_publication_exit(self)
+        local rt, probe = kingpin_publication_state()
+        if not rt or not probe then return end
+        local depth = probe.kingpin_publication_depth or 0
+        if depth <= 0 then return end
+        if not kingpin_publication_ready(probe) then
+            probe.kingpin_publication_depth = 0
+            probe.kingpin_publication_pending = false
+            probe.kingpin_publication_invalid = false
+            probe.kingpin_publication_start = nil
+            probe.kingpin_publication_manager = nil
+            return
+        end
+        if depth > 1 then
+            probe.kingpin_publication_depth = depth - 1
+            return
+        end
+        local valid = probe.kingpin_publication_pending == true
+            and probe.kingpin_publication_invalid ~= true
+            and probe.kingpin_publication_manager == self
+        local start = probe.kingpin_publication_start
+        local source_ok = valid and kingpin_publication_source_ok(self)
+        probe.kingpin_publication_depth = 0
+        probe.kingpin_publication_pending = false
+        probe.kingpin_publication_invalid = false
+        probe.kingpin_publication_start = nil
+        probe.kingpin_publication_manager = nil
+        if valid and source_ok and type(start) == "number"
+            and type(rt._residual_record) == "function" then
+            rt:_residual_record(KINGPIN_PUBLICATION_PHASE, start)
+        end
+    end
+    install(HUDManager, "set_player_ability_radial", function(self)
+        pcall(kingpin_publication_enter, self)
+    end, "pre")
+    install(HUDManager, "set_player_ability_radial", function(self)
+        pcall(kingpin_publication_exit, self)
+    end)
     install(HUDManager, "animate_grenade_flash", function(self, i)
         if not local_panel(self, i) then return end
         M:_capture_grenade_flash_event()
@@ -1874,10 +3433,50 @@ elseif RequiredScript == "lib/managers/hudmanagerpd2" then
         end
     end)
     install(HUDManager, "set_teammate_ability_radial", function(self, i, data)
-        if local_panel(self, i) then M:_capture_activity(data and data.current, data and data.total) end
+        if not local_panel(self, i) then return end
+        M:_capture_activity(data and data.current, data and data.total)
+        local kingpin_ok = type(data) == "table"
+            and M:_capture_kingpin_activity(data.current, data.total)
+        if M._projectile_id == KINGPIN_PROJECTILE_ID and kingpin_ok ~= true then
+            local current = data and data.current
+            if current ~= 0 then
+                M._activity = {known = false, active = false}
+                if type(M._snapshot) == "table" then
+                    M._snapshot.activity = M._activity
+                end
+            end
+        end
+        if kingpin_ok or M._projectile_id == KINGPIN_PROJECTILE_ID then
+            local rt = kyohud.hud.runtime
+            local terminal_zero = type(data) == "table" and data.current == 0
+            local publication_current = data and data.current
+            local publication_total = data and data.total
+            if rt and type(rt.sync_local_kingpin_activity_event) == "function" then
+                pcall(rt.sync_local_kingpin_activity_event, rt, terminal_zero, publication_current, publication_total)
+            end
+        end
     end)
     install(HUDManager, "activate_teammate_ability_radial", function(self, i, left, total)
-        if local_panel(self, i) then M:_capture_activity(left, total) end
+        if not local_panel(self, i) then return end
+        M:_capture_activity(left, total)
+        local kingpin_ok
+        if M._projectile_id == KINGPIN_PROJECTILE_ID then
+            kingpin_ok = M:_capture_kingpin_activity(left, total)
+            if kingpin_ok ~= true and left ~= 0 then
+                M._activity = {known = false, active = false}
+                if type(M._snapshot) == "table" then
+                    M._snapshot.activity = M._activity
+                end
+            end
+        end
+        local rt = kyohud.hud.runtime
+        if M._projectile_id == KINGPIN_PROJECTILE_ID then
+            if rt and type(rt.sync_local_kingpin_activity_event) == "function" then
+                pcall(rt.sync_local_kingpin_activity_event, rt, left == 0, left, total)
+            end
+        elseif rt and type(rt.sync_local_hacker_activity_event) == "function" then
+            pcall(rt.sync_local_hacker_activity_event, rt)
+        end
     end)
     install(HUDManager, "set_teammate_grenade_cooldown", function(self, i, data)
         if not local_panel(self, i) then return end
@@ -1944,13 +3543,24 @@ local function install_residual_phase_wrappers()
         local original = current
         local wrapper
         if returns_value then
-            wrapper = function(self, ...)
-                local rt = residual_context()
-                if not rt then return original(self, ...) end
-                local start = rt:_residual_stamp()
-                local result = original(self, ...)
-                rt:_residual_record(phase, start)
-                return result
+            if name == "verify" or name == "_present_kingpin_activity_event" then
+                wrapper = function(self, ...)
+                    local rt = residual_context()
+                    if not rt then return original(self, ...) end
+                    local start = rt:_residual_stamp()
+                    local result, receipt = original(self, ...)
+                    rt:_residual_record(phase, start)
+                    return result, receipt
+                end
+            else
+                wrapper = function(self, ...)
+                    local rt = residual_context()
+                    if not rt then return original(self, ...) end
+                    local start = rt:_residual_stamp()
+                    local result = original(self, ...)
+                    rt:_residual_record(phase, start)
+                    return result
+                end
             end
         else
             wrapper = function(self, ...)
@@ -1968,9 +3578,25 @@ local function install_residual_phase_wrappers()
     install("_capture_grenade_flash_event", "equipment_collect", false)
     install("_fresh_cooldown", "equipment_snapshot", true)
     install("_present", "equipment_present", false)
+    install("_present_kingpin_activity_event", "equipment_present", true)
     install("_animate_recharge", "equipment_present", true)
     install("_sync_grenade_flash", "equipment_present", true)
     install("_throttle_grenade_flash", "equipment_present", true)
     install("verify", "equipment_verify", true)
+    install("_capture_activity", "equipment_collect", false)
+    install("_capture_kingpin_activity", "equipment_collect", true)
+    install("get_hacker_activity_source", "equipment_snapshot", true)
+    install("get_kingpin_activity_source", "equipment_snapshot", true)
+    install("get_kingpin_terminal_source", "equipment_snapshot", true)
+    install("get_local_ability_activity_source", "equipment_snapshot", true)
+    install("_verify_hacker_activity", "equipment_verify", true)
+    install("_verify_kingpin_activity", "equipment_verify", true)
+    install("_verify_kingpin_terminal", "equipment_verify", true)
+    install("_verify_local_ability_activity", "equipment_verify", true)
+    install("prepare_kingpin_activity_event", "equipment_present", true)
+    install("_prepare_kingpin_terminal_event", "equipment_present", true)
+    install("prepare_local_ability_activity_event", "equipment_present", true)
+    install("_throttle_hacker_activity", "equipment_present", true)
+    install("_throttle_kingpin_activity", "equipment_present", true)
 end
 install_residual_phase_wrappers()

@@ -42,10 +42,10 @@ local function clamp(v, lo, hi)
     if v > hi then return hi end
     return v
 end
+local function near_style(a,b) return finite(a) and finite(b) and math.abs(a-b) <= 0.005 end
 local function style(p,color,alpha)
     local c=p:color()
-    local function s(a,b) return finite(a) and finite(b) and math.abs(a-b) <= 0.005 end
-    return c and s(c.r,color.r) and s(c.g,color.g) and s(c.b,color.b) and s(p:alpha(),alpha)
+    return c and near_style(c.r,color.r) and near_style(c.g,color.g) and near_style(c.b,color.b) and near_style(p:alpha(),alpha)
 end
 local function set_static(v,x,y,z)
     local fn=mvector3 and mvector3.set_static
@@ -65,6 +65,26 @@ local function measure(p)
     local _, _, w, h = p:text_rect()
     assert(finite(w) and finite(h), "invalid equipment measurement")
     return w, h
+end
+local function geom(p,x,y,w,h)
+    return near(p:x(),x) and near(p:y(),y) and near(p:w(),w) and near(p:h(),h)
+end
+local function rect(p,r)
+    return near(p:x(),r[1]) and near(p:y(),r[2]) and near(p:w(),r[3]) and near(p:h(),r[4])
+end
+local function verify_text(p,e,cell)
+    if cell and not e then return false end
+    if p:text()~=e.text then return false end
+    if not near(p:font_size(),e.size) then return false end
+    if cell then
+        local w,h=measure(p)
+        if not w or w>p:w()+.5 or h>p:h()+.5 then return false end
+    else
+        if not p:visible() then return false end
+        local tw,th=measure(p)
+        if tw and (tw>p:w()+.05 or th>p:h()+.05) then return false end
+    end
+    return true
 end
 
 function C.new(parent, name)
@@ -129,76 +149,102 @@ function Row:render(label, value, progress, selected, icon)
     local g=self._geometry
     self._progress=finite(progress) and math.min(1,math.max(0,progress)) or nil
     self._selected=selected == true
-    local ok=pcall(function()
-        self._icon_descriptor = icon
-        if icon and not live(self._icon) then
-            self._icon = self._root:bitmap({name="icon",layer=2,texture=icon.texture,texture_rect=icon.rect})
-        end
-        self._icon_offset = icon and g.h or 0
-        if live(self._icon) then
-            if icon then
-                self._icon:set_image(icon.texture,unpack(icon.rect))
-                local iw = (g.h-6) * icon.rect[3] / icon.rect[4]
-                iw = math.min(g.h-6,iw)
-                shape(self._icon,0,2,iw,iw*icon.rect[4]/icon.rect[3])
-                self._icon:set_color(WHITE)
-                self._icon:set_alpha(1)
+    local static_same = self._static_geometry == g
+        and self._static_label == label
+        and self._static_selected == self._selected
+        and self._static_icon == icon
+    local ok
+    if static_same then
+        ok=pcall(function()
+            if self._static_value ~= value then
+                self._static_value = value
+                self._expected_value=self:_fit(self._value,"value",value or "--",g.h*.56)
+                self._value:set_color(WHITE)
+                self._value:set_alpha(1)
+                self._value:set_visible(true)
+                if type(self._value.set_align)=="function" then self._value:set_align("center") end
             end
-            self._icon:set_visible(icon~=nil)
+            shape(self._fill,0,g.h-3,g.w*(self._progress or 0),2)
+            self._fill:set_visible(self._progress~=nil)
+            self._track:set_visible(self._progress~=nil)
+        end)
+        if not ok then self._static_geometry = nil end
+    else
+        ok=pcall(function()
+            self._icon_descriptor = icon
+            if icon and not live(self._icon) then
+                self._icon = self._root:bitmap({name="icon",layer=2,texture=icon.texture,texture_rect=icon.rect})
+            end
+            self._icon_offset = icon and g.h or 0
+            if live(self._icon) then
+                if icon then
+                    self._icon:set_image(icon.texture,unpack(icon.rect))
+                    local iw = (g.h-6) * icon.rect[3] / icon.rect[4]
+                    iw = math.min(g.h-6,iw)
+                    shape(self._icon,0,2,iw,iw*icon.rect[4]/icon.rect[3])
+                    self._icon:set_color(WHITE)
+                    self._icon:set_alpha(1)
+                end
+                self._icon:set_visible(icon~=nil)
+            end
+            shape(self._root,g.x,g.y,g.w,g.h)
+            shape(self._label,self._icon_offset,0,g.w*.61-self._icon_offset,g.h-4)
+            shape(self._value,g.w*.62,0,g.w*.38,g.h-4)
+            shape(self._track,0,g.h-3,g.w,2)
+            shape(self._fill,0,g.h-3,g.w*(self._progress or 0),2)
+            self._expected_label=self:_fit(self._label,"label",label or "",g.h*.56)
+            self._expected_value=self:_fit(self._value,"value",value or "--",g.h*.56)
+            self._label:set_color(self._selected and ACCENT or DIM)
+            if type(self._value.set_align)=="function" then self._value:set_align("center") end
+            self._value:set_color(WHITE)
+            self._label:set_alpha(1);self._value:set_alpha(1)
+            self._track:set_color(DIM);self._track:set_alpha(.2)
+            self._fill:set_color(ACCENT);self._fill:set_alpha(1)
+            self._label:set_visible(true);self._value:set_visible(true)
+            self._track:set_visible(self._progress~=nil);self._fill:set_visible(self._progress~=nil)
+            self._root:set_visible(true)
+        end)
+        if ok then
+            self._static_geometry = g
+            self._static_label = label
+            self._static_value = value
+            self._static_selected = self._selected
+            self._static_icon = icon
         end
-        shape(self._root,g.x,g.y,g.w,g.h)
-        shape(self._label,self._icon_offset,0,g.w*.61-self._icon_offset,g.h-4)
-        shape(self._value,g.w*.62,0,g.w*.38,g.h-4)
-        shape(self._track,0,g.h-3,g.w,2)
-        shape(self._fill,0,g.h-3,g.w*(self._progress or 0),2)
-        self._expected_label=self:_fit(self._label,"label",label or "",g.h*.56)
-        self._expected_value=self:_fit(self._value,"value",value or "--",g.h*.56)
-        self._label:set_color(self._selected and ACCENT or DIM)
-        if type(self._value.set_align)=="function" then self._value:set_align("center") end
-        self._value:set_color(WHITE)
-        self._label:set_alpha(1);self._value:set_alpha(1)
-        self._track:set_color(DIM);self._track:set_alpha(.2)
-        self._fill:set_color(ACCENT);self._fill:set_alpha(1)
-        self._label:set_visible(true);self._value:set_visible(true)
-        self._track:set_visible(self._progress~=nil);self._fill:set_visible(self._progress~=nil)
-        self._root:set_visible(true)
-    end)
+    end
     self._verified=ok and self:verify()
+end
+
+local function verify_temporal_body(self)
+    local g=self._geometry
+    if not geom(self._root,g.x,g.y,g.w,g.h) or not self._root:visible() then return false end
+    if not style(self._label,self._selected and ACCENT or DIM,1) or not style(self._value,WHITE,1)
+        or not style(self._track,DIM,.2) or not style(self._fill,ACCENT,1) then return false end
+    if not geom(self._label,self._icon_offset or 0,0,g.w*.61-(self._icon_offset or 0),g.h-4)
+        or not geom(self._value,g.w*.62,0,g.w*.38,g.h-4)
+        or not geom(self._track,0,g.h-3,g.w,2)
+        or not geom(self._fill,0,g.h-3,g.w*(self._progress or 0),2) then return false end
+    local lp,le=self._label,self._expected_label
+    local vp,ve=self._value,self._expected_value
+    if not verify_text(lp,le,false) then return false end
+    if not verify_text(vp,ve,false) then return false end
+    if self._icon_descriptor then
+        if not live(self._icon) or not self._icon:visible() then return false end
+        local r=self._icon_descriptor.rect
+        local iw=math.min(g.h-6,(g.h-6)*r[3]/r[4])
+        if not geom(self._icon,0,2,iw,iw*r[4]/r[3]) or not style(self._icon,WHITE,1) then return false end
+        local texture=self._icon:texture_name()
+        local desired=Idstring(self._icon_descriptor.texture)
+        if texture~=self._icon_descriptor.texture and texture:key()~=desired:key() then return false end
+    end
+    if type(self._value.align)=="function" and self._value:align()~="center" then return false end
+    return self._fill:visible()==(self._progress~=nil) and self._track:visible()==(self._progress~=nil)
 end
 
 function Row:verify()
     if self._tile then return self:_verify_cell() end
     if not self:_live() or not self._geometry or not self._expected_label or not self._expected_value then return false end
-    local ok,result=pcall(function()
-        local g=self._geometry
-        local function geom(p,x,y,w,h)
-            return near(p:x(),x) and near(p:y(),y) and near(p:w(),w) and near(p:h(),h)
-        end
-        if not geom(self._root,g.x,g.y,g.w,g.h) or not self._root:visible() then return false end
-        if not style(self._label,self._selected and ACCENT or DIM,1) or not style(self._value,WHITE,1)
-            or not style(self._track,DIM,.2) or not style(self._fill,ACCENT,1) then return false end
-        if not geom(self._label,self._icon_offset or 0,0,g.w*.61-(self._icon_offset or 0),g.h-4)
-            or not geom(self._value,g.w*.62,0,g.w*.38,g.h-4)
-            or not geom(self._track,0,g.h-3,g.w,2)
-            or not geom(self._fill,0,g.h-3,g.w*(self._progress or 0),2) then return false end
-        for _,pair in ipairs({{self._label,self._expected_label},{self._value,self._expected_value}}) do
-            local p,e=pair[1],pair[2]
-            if p:text()~=e.text or not near(p:font_size(),e.size) or not p:visible() then return false end
-            local tw,th=measure(p)
-            if tw and (tw>p:w()+.05 or th>p:h()+.05) then return false end
-        end
-        if self._icon_descriptor then
-            if not live(self._icon) or not self._icon:visible() then return false end
-            local r=self._icon_descriptor.rect
-            local iw=math.min(g.h-6,(g.h-6)*r[3]/r[4])
-            if not geom(self._icon,0,2,iw,iw*r[4]/r[3]) or not style(self._icon,WHITE,1) then return false end
-            local texture=self._icon:texture_name()
-            local desired=Idstring(self._icon_descriptor.texture)
-            if texture~=self._icon_descriptor.texture and texture:key()~=desired:key() then return false end
-        end
-        if type(self._value.align)=="function" and self._value:align()~="center" then return false end
-        return self._fill:visible()==(self._progress~=nil) and self._track:visible()==(self._progress~=nil)
-    end)
+    local ok,result=pcall(verify_temporal_body,self)
     return ok and result == true
 end
 
@@ -566,87 +612,84 @@ function Row:animate_recharge(value,progress)
     return self:_verify_cell()
 end
 
-function Row:_verify_cell()
-    local ok,result=pcall(function()
-        if not self:_live() or not self._geometry then return false end
-        local g=self._geometry
-        local function rect(p,r)
-            return near(p:x(),r[1]) and near(p:y(),r[2]) and near(p:w(),r[3]) and near(p:h(),r[4])
+local function verify_cell_body(self)
+    if not self:_live() or not self._geometry then return false end
+    local g=self._geometry
+    local s=self:_cell_shapes(self._icon_descriptor)
+    if self._cell_both then
+        if not live(self._cell_left_cut) or not self._cell_left_cut:visible()
+            or not rect(self._cell_left_cut,s.left) or not style(self._cell_left_cut,WHITE,.05) then return false end
+    elseif live(self._cell_left_cut) then return false end
+    if not live(self._cell_bg) or not live(self._cell_cut)
+        or not self._cell_bg:visible() or not self._cell_cut:visible()
+        or not rect(self._cell_bg,s.background) or not rect(self._cell_cut,s.cut)
+        or not style(self._cell_bg,WHITE,.05)
+        or not style(self._cell_cut,WHITE,.05) then return false end
+    if not self._root:visible() or not geom(self._root,g.x,g.y,g.w,g.h)
+        or not rect(self._label,s.label) or not rect(self._value,s.value) then return false end
+    local lp,le=self._label,self._expected_label
+    local vp,ve=self._value,self._expected_value
+    if not verify_text(lp,le,true) then return false end
+    if not verify_text(vp,ve,true) then return false end
+    if not self._value:visible() or not style(self._value,WHITE,1) then return false end
+    if type(self._value.align)~="function" or self._value:align()~="center" then return false end
+    if self._track:visible() or self._fill:visible() then return false end
+    if self._progress~=nil then
+        local progress=self._progress
+        local fill_h=g.h*progress
+        local shown=progress>0
+        local rv=self._recharge_reveal
+        if not live(rv) or rv:parent()~=self._root then return false end
+        if rv:layer()~=1 or not rv:visible() then return false end
+        local ra=rv:alpha()
+        if not finite(ra) or math.abs(ra-1)>.005 then return false end
+        if not near(rv:x(),0) or not near(rv:y(),g.h*(1-progress))
+            or not near(rv:w(),g.w) or not near(rv:h(),fill_h) then return false end
+        local need_left=self._cell_both==true and s.left[3]>0 and s.left[4]>0
+        local body={s.background[1],0,s.background[3],fill_h}
+        local cut={s.cut[1],0,s.cut[3]*progress,fill_h}
+        local left={0,0,s.left[3],fill_h}
+        local known={}
+        local function check(p,name,r)
+            if not live(p) or p:parent()~=rv or p:name()~=name then return false end
+            if not rect(p,r) or not style(p,ORANGE,REVEAL_ALPHA) then return false end
+            if p:visible()~=shown or p:layer()~=1 then return false end
+            known[p]=true
+            return true
         end
-        local s=self:_cell_shapes(self._icon_descriptor)
-        if self._cell_both then
-            if not live(self._cell_left_cut) or not self._cell_left_cut:visible()
-                or not rect(self._cell_left_cut,s.left) or not style(self._cell_left_cut,WHITE,.05) then return false end
-        elseif live(self._cell_left_cut) then return false end
-        if not live(self._cell_bg) or not live(self._cell_cut)
-            or not self._cell_bg:visible() or not self._cell_cut:visible()
-            or not rect(self._cell_bg,s.background) or not rect(self._cell_cut,s.cut)
-            or not style(self._cell_bg,WHITE,.05)
-            or not style(self._cell_cut,WHITE,.05) then return false end
-        if not self._root:visible() or not rect(self._root,{g.x,g.y,g.w,g.h})
-            or not rect(self._label,s.label) or not rect(self._value,s.value) then return false end
-        for _,pair in ipairs({{self._label,self._expected_label},{self._value,self._expected_value}}) do
-            local p,v=pair[1],pair[2]
-            if not v or p:text()~=v.text or not near(p:font_size(),v.size) then return false end
-            local w,h=measure(p)
-            if not w or w>p:w()+.5 or h>p:h()+.5 then return false end
-        end
-        if not self._value:visible() or not style(self._value,WHITE,1) then return false end
-        if type(self._value.align)~="function" or self._value:align()~="center" then return false end
-        if self._track:visible() or self._fill:visible() then return false end
-        if self._progress~=nil then
-            local progress=self._progress
-            local fill_h=g.h*progress
-            local shown=progress>0
-            local rv=self._recharge_reveal
-            if not live(rv) or rv:parent()~=self._root then return false end
-            if rv:layer()~=1 or not rv:visible() then return false end
-            local ra=rv:alpha()
-            if not finite(ra) or math.abs(ra-1)>.005 then return false end
-            if not near(rv:x(),0) or not near(rv:y(),g.h*(1-progress))
-                or not near(rv:w(),g.w) or not near(rv:h(),fill_h) then return false end
-            local need_left=self._cell_both==true and s.left[3]>0 and s.left[4]>0
-            local body={s.background[1],0,s.background[3],fill_h}
-            local cut={s.cut[1],0,s.cut[3]*progress,fill_h}
-            local left={0,0,s.left[3],fill_h}
-            local known={}
-            local function check(p,name,r)
-                if not live(p) or p:parent()~=rv or p:name()~=name then return false end
-                if not rect(p,r) or not style(p,ORANGE,REVEAL_ALPHA) then return false end
-                if p:visible()~=shown or p:layer()~=1 then return false end
-                known[p]=true
-                return true
-            end
-            if not check(self._reveal_bg,"reveal_background",body) then return false end
-            if not check(self._reveal_cut,"reveal_cut",cut) then return false end
-            if need_left then
-                if not check(self._reveal_left,"reveal_left",left) then return false end
-            elseif live(self._reveal_left) then
-                return false
-            end
-            local count=0
-            local seen={}
-            for _,child in pairs(rv:children()) do
-                count=count+1
-                if seen[child] or not known[child] then return false end
-                seen[child]=true
-            end
-            local expected_count=2
-            if need_left then expected_count=3 end
-            if count~=expected_count then return false end
-        elseif live(self._recharge_reveal) and self._recharge_reveal:visible() then
+        if not check(self._reveal_bg,"reveal_background",body) then return false end
+        if not check(self._reveal_cut,"reveal_cut",cut) then return false end
+        if need_left then
+            if not check(self._reveal_left,"reveal_left",left) then return false end
+        elseif live(self._reveal_left) then
             return false
         end
-        if self._icon_descriptor then
-            local p=self._icon
-            if not live(p) or not p:visible() or self._label:visible() or not rect(p,s.icon)
-                or not style(p,self._selected and ACCENT or WHITE,1) then return false end
-            local texture=p:texture_name()
-            if texture~=self._icon_descriptor.texture and texture:key()~=Idstring(self._icon_descriptor.texture):key() then return false end
-        elseif self._label:visible()~=true or (live(self._icon) and self._icon:visible()) then return false end
-        if not self:_verify_grenade_flash() then return false end
-        return true
-    end)
+        local count=0
+        local seen={}
+        for _,child in pairs(rv:children()) do
+            count=count+1
+            if seen[child] or not known[child] then return false end
+            seen[child]=true
+        end
+        local expected_count=2
+        if need_left then expected_count=3 end
+        if count~=expected_count then return false end
+    elseif live(self._recharge_reveal) and self._recharge_reveal:visible() then
+        return false
+    end
+    if self._icon_descriptor then
+        local p=self._icon
+        if not live(p) or not p:visible() or self._label:visible() or not rect(p,s.icon)
+            or not style(p,self._selected and ACCENT or WHITE,1) then return false end
+        local texture=p:texture_name()
+        if texture~=self._icon_descriptor.texture and texture:key()~=Idstring(self._icon_descriptor.texture):key() then return false end
+    elseif self._label:visible()~=true or (live(self._icon) and self._icon:visible()) then return false end
+    if not self:_verify_grenade_flash() then return false end
+    return true
+end
+
+function Row:_verify_cell()
+    local ok,result=pcall(verify_cell_body,self)
     return ok and result==true
 end
 
