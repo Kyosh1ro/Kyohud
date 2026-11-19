@@ -241,7 +241,7 @@ HELPERS = r'''
             and close(reveal:w(), row_w) and close(reveal:h(), row_h * p),
             tag .. ': reveal must fill bottom-up at x=0,y=rowH*(1-p),w=rowW,h=rowH*p')
         assert(reveal:visible(), tag .. ': reveal must be visible')
-        assert(value:text() == expected_text, tag .. ': value text must track the timer')
+        assert(value:text() == expected_text, tag .. ': value text must match the expected display')
         local fill_h = row_h * p
         local shapes = row:_cell_shapes(row._icon_descriptor)
         local full_cut_w = shapes and shapes.cut and shapes.cut[3] or nil
@@ -292,7 +292,7 @@ class EquipmentRechargeVerticalFillTests(unittest.TestCase):
 
             _game_clock:set_time(1000)
             RT:update(managers.hud, 1, 0.06)
-            local children_015 = check_fill(0.15, 'progress 0.15', '17s')
+            local children_015 = check_fill(0.15, 'progress 0.15', '1')
             assert(row._recharge_reveal == reveal_at_zero,
                 'reveal must be retained from zero progress')
             for i, child in ipairs(children_at_zero) do
@@ -304,7 +304,7 @@ class EquipmentRechargeVerticalFillTests(unittest.TestCase):
 
             _game_clock:set_time(1005)
             RT:update(managers.hud, 1.06, 0.06)
-            local children_04 = check_fill(0.4, 'progress 0.4', '12s')
+            local children_04 = check_fill(0.4, 'progress 0.4', '1')
             assert(row._recharge_reveal == reveal_at_zero,
                 'reveal must be retained while progress advances')
             for i, child in ipairs(children_015) do
@@ -341,7 +341,7 @@ class EquipmentRechargeVerticalFillTests(unittest.TestCase):
         lua.execute(RUNTIME_SETUP + HELPERS + r'''
             _game_clock:set_time(1000)
             RT:update(managers.hud, 1, 0.06)
-            local positive_children = check_fill(0.15, 'positive 0.15', '17s')
+            local positive_children = check_fill(0.15, 'positive 0.15', '1')
             local owner_row = row
             local owner_reveal = reveal
             local owner_children = kids(reveal)

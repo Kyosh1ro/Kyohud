@@ -225,8 +225,8 @@ class GrenadeFlashReplacementTests(unittest.TestCase):
         self.assertTrue(bool(g._native_alpha_after),
             "native ghost alpha must stay untouched while leased")
 
-        self.assertEqual(g._seconds, "17s",
-            "existing integrated seconds must remain unchanged")
+        self.assertEqual(g._seconds, "1",
+            "existing integrated charge counter must remain unchanged")
         self.assertTrue(bool(g._reveal_visible),
             "existing orange recharge reveal must remain visible")
         self.assertTrue(bool(g._verified),

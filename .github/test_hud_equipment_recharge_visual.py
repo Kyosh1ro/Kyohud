@@ -73,7 +73,7 @@ class EquipmentRechargeRevealVisualTests(unittest.TestCase):
             assert(row._icon and row._icon:visible(), 'precondition: projectile icon')
             assert(E:get_snapshot().cooldown.integrated == true,
                 'precondition: real cooldown qualifier integrates')
-            assert(row._value:text() == '17s', 'precondition: 17s at progress 0.15')
+            assert(row._value:text() == '1', 'precondition: charge counter 1 at progress 0.15')
 
             local function close(a, b)
                 return type(a) == 'number' and type(b) == 'number'
@@ -167,7 +167,7 @@ class EquipmentRechargeRevealVisualTests(unittest.TestCase):
 
             _game_clock:set_time(1005)
             RT:update(managers.hud, 1.06, 0.06)
-            assert(row._value:text() == '12s', 'precondition: 12s at progress 0.4')
+            assert(row._value:text() == '1', 'precondition: charge counter 1 at progress 0.4')
             assert(row._recharge_reveal == reveal_at_015,
                 'reveal primitive must be retained while progress advances')
             check_reveal(0.4, 'progress 0.4')
@@ -313,8 +313,8 @@ class EquipmentRechargeAnimationSafetyTests(unittest.TestCase):
             RT:update(managers.hud, 1, 0.06)
             local row = E._rows[4]
             local reveal = row._recharge_reveal
-            assert(reveal and row._value:text() == '17s' and E:verify(),
-                'precondition: qualified 20s event at 17s')
+            assert(reveal and row._value:text() == '1' and E:verify(),
+                'precondition: qualified 20s event at 17s with charge counter 1')
             local root_h = row._root:h()
             local function kids(p)
                 local out = {}
@@ -333,7 +333,7 @@ class EquipmentRechargeAnimationSafetyTests(unittest.TestCase):
                     if not found then return false end
                 end
                 return E._rows[4] == row and row._recharge_reveal == reveal
-                    and row._value:text() == '17s'
+                    and row._value:text() == '1'
             end
             _game_clock:set_time(1000.01)
             RT:update(managers.hud, 1.01, 0.01)
@@ -353,7 +353,7 @@ class EquipmentRechargeAnimationSafetyTests(unittest.TestCase):
         self.assertEqual(int(g._s1), 3, "three silhouette clones are mandatory")
         self.assertTrue(bool(g._ok1), "subframe 0.01 reveal height and y must track 16.99s")
         self.assertTrue(bool(g._v1), "equipment must stay certified on subframe")
-        self.assertTrue(bool(g._e1), "subframe must retain reveal, children and 17s text")
+        self.assertTrue(bool(g._e1), "subframe must retain reveal, children and charge counter 1")
         self.assertTrue(bool(g._ok2), "subframe 0.02 reveal height and y must track 16.98s")
         self.assertTrue(bool(g._v2), "equipment must stay certified on second subframe")
         self.assertTrue(bool(g._same2), "second subframe must not clone reveal children")

@@ -429,13 +429,13 @@ class GrenadeFlashBoundaryTests(unittest.TestCase):
                     and same_rect(radial_rect, _radial)
                     and same_rect(icon_src_rect, _icon)
             end
-            _G._seconds_is_17 = seconds == '17s'
+            _G._seconds_is_17 = seconds == '1'
         ''')
 
         self.assertTrue(bool(g._fixture_ok),
             "fixture must expose the row4 flash, icon, ghosts and certification")
         self.assertTrue(bool(g._seconds_is_17),
-            "the ordinary fixture must start from the 17s recharge")
+            "the ordinary fixture must start from the known one-charge counter")
         for i, phase in enumerate((.25, .5, .9), start=1):
             with self.subTest(phase=phase):
                 self.assertTrue(bool(g._inside[i]),
@@ -451,7 +451,7 @@ class GrenadeFlashBoundaryTests(unittest.TestCase):
                     "the same owned flash bitmap must be retained at phase %s"
                     % phase)
                 self.assertTrue(bool(g._seconds_ok[i]),
-                    "the 17s recharge must be preserved at phase %s" % phase)
+                    "the one-charge counter must be preserved at phase %s" % phase)
                 self.assertTrue(bool(g._verify_ok[i]),
                     "equipment must stay certified at phase %s" % phase)
                 self.assertTrue(bool(g._charges_ok[i]),

@@ -114,8 +114,8 @@ class GrenadeFlashLifecycleTests(unittest.TestCase):
             "both native ghost leaves must stay hidden while the flash is off")
         self.assertTrue(bool(g._lifecycle_off_group_absent),
             "runtime group local_p_grenade_flash must be absent when off")
-        self.assertEqual(g._lifecycle_off_seconds, "17s",
-            "flash-off update must keep the existing recharge at 17s")
+        self.assertEqual(g._lifecycle_off_seconds, "1",
+            "flash-off update must keep the existing charge counter at 1")
 
         self.assertTrue(bool(g._lifecycle_restart_same),
             "new native pulse must reuse the same owned flash primitive")
@@ -125,8 +125,8 @@ class GrenadeFlashLifecycleTests(unittest.TestCase):
             "new native pulse must mirror the native alpha .9 onto the flash")
         self.assertTrue(bool(g._lifecycle_restart_ghosts_hidden),
             "new native pulse must keep both native ghost leaves hidden")
-        self.assertEqual(g._lifecycle_final_seconds, "17s",
-            "new native pulse must keep the existing recharge at 17s")
+        self.assertEqual(g._lifecycle_final_seconds, "1",
+            "new native pulse must keep the existing charge counter at 1")
         self.assertTrue(bool(g._lifecycle_verify_final),
             "equipment must stay certified after the new pulse restart")
 

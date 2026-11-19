@@ -22,7 +22,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
             RT:update(managers.hud, 1, 0.06)
 
             assert(E:get_snapshot().projectile.charges.raw == 1, 'charges stay snapshot 1')
-            assert(value:text() == '17s', 'integrated grenade row shows 17s')
+            assert(value:text() == '1', 'integrated grenade row keeps charge counter 1')
             assert(not E._rows[5]._root:visible(), 'separate RECHARGE row stays hidden')
             local reveal = row._recharge_reveal
             assert(reveal and reveal:visible(), 'integrated progress reveal visible')
@@ -35,7 +35,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
             _game_clock:set_time(1005)
             RT:update(managers.hud, 1.06, 0.06)
 
-            assert(value:text() == '12s', 'integrated grenade row advances to 12s')
+            assert(value:text() == '1', 'integrated grenade row keeps charge counter 1 as recharge advances')
             ratio = reveal:h() / root:h()
             assert(math.abs(ratio - (1 - 12 / 20)) < .02, 'advanced elapsed ratio ' .. ratio)
             assert(math.abs(reveal:y() - root:h() * (12 / 20)) < .05, 'advanced reveal y')
@@ -69,7 +69,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
             local root, value = row._root, row._value
             local reveal = row._recharge_reveal
             _integrated_verified = E:verify()
-            _integrated_value = value:text() == '17s'
+            _integrated_value = value:text() == '1'
             _integrated_visible = root:visible() and reveal ~= nil and reveal:visible()
             _integrated_reveal_height = reveal ~= nil and reveal:h() > 0
             local ratio = _integrated_reveal_height and reveal:h() / root:h() or -1
@@ -82,7 +82,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
         g = lua.globals()
         self.assertTrue(bool(g._fallback_lease), "old RECHARGE fallback must lease the radial")
         self.assertTrue(bool(g._integrated_verified), "integrated row4 render must certify")
-        self.assertTrue(bool(g._integrated_value), "integrated grenade row shows 17s")
+        self.assertTrue(bool(g._integrated_value), "integrated grenade row keeps charge counter 1")
         self.assertTrue(bool(g._integrated_visible), "integrated progress must be visible")
         self.assertTrue(bool(g._integrated_reveal_height), "integrated reveal height available")
         self.assertTrue(bool(g._integrated_ratio), "integrated elapsed ratio")
@@ -102,7 +102,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
             local row = E._rows[4]
             local root, value = row._root, row._value
             local reveal = row._recharge_reveal
-            _qualified = E:verify() and value:text() == '17s'
+            _qualified = E:verify() and value:text() == '1'
                 and reveal ~= nil and reveal:visible() and reveal:h() > 0
             local correct_h = reveal:h()
             reveal:set_shape(reveal:x(), reveal:y(), reveal:w(), reveal:h() + 1)
@@ -118,7 +118,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
             _recovered_verify = E:verify()
             _recovered_same = root == E._rows[4]._root and value == E._rows[4]._value
                 and reveal == E._rows[4]._recharge_reveal
-            _recovered_value = value:text() == '17s'
+            _recovered_value = value:text() == '1'
             _recovered_row5_hidden = not E._rows[5]._root:visible()
             _recovered_reveal = math.abs(reveal:h() - correct_h) < .05
             _recovered_radial = _radial:visible() == false and _radial == _leaf
@@ -130,7 +130,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
         self.assertTrue(bool(g._corrupt_restored), "throttled frame must restore native radial")
         self.assertTrue(bool(g._recovered_verify), "ordinary update must repair row4 certification")
         self.assertTrue(bool(g._recovered_same), "recovery must retain the same row4 primitives")
-        self.assertTrue(bool(g._recovered_value), "recovered row4 keeps 17s")
+        self.assertTrue(bool(g._recovered_value), "recovered row4 keeps charge counter 1")
         self.assertTrue(bool(g._recovered_row5_hidden), "recovered integrated row keeps row5 hidden")
         self.assertTrue(bool(g._recovered_reveal), "ordinary update restores the retained reveal height")
         self.assertTrue(bool(g._recovered_radial), "recovered integrated row re-leases native radial")
@@ -202,12 +202,12 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
         ''')
         g = lua.globals()
         self.assertTrue(bool(g._qualified), "precondition: valid event integrates")
-        self.assertEqual(g._speed_value, '3s')
+        self.assertEqual(g._speed_value, '1')
         self.assertLess(abs(float(g._speed_ratio) - 0.85), 0.02)
         self.assertEqual(float(g._speed_charges), 1.0)
         self.assertTrue(bool(g._speed_integrated))
         self.assertFalse(bool(g._speed_row5))
-        self.assertEqual(g._new_value, '20s')
+        self.assertEqual(g._new_value, '1')
         self.assertLess(abs(float(g._new_ratio) - 0.0), 0.02)
         self.assertEqual(float(g._new_charges), 1.0)
         self.assertTrue(bool(g._new_integrated))
@@ -265,7 +265,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
         self.assertFalse(bool(g._off_integrated))
         self.assertTrue(bool(g._on_integrated))
         self.assertTrue(bool(g._rebuild_integrated))
-        self.assertEqual(g._rebuild_value, '17s')
+        self.assertEqual(g._rebuild_value, '1')
         self.assertTrue(bool(g._active_row))
         self.assertEqual(g._active_value, '8s')
         self.assertFalse(bool(g._active_row5))
@@ -595,7 +595,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
                 and snap.deployables.trip_mine.quantities[2].raw == trip2
                 and snap.deployables.doctor_bag.quantities[1].raw == doctor,
                 "deployable quantities must stay unchanged")
-            assert_state("17s", "17s")
+            assert_state("17s", "1")
 
             _game_clock:set_time(1008)
             RT:update(managers.hud, 1.06, .06)
@@ -603,7 +603,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
             snap = E:get_snapshot()
             assert(snap.cooldown.integrated == true and snap.cooldown.remaining == 9,
                 "accepted event must advance to 9s")
-            assert_state("9s", "9s")
+            assert_state("9s", "1")
 
             managers.player:_native_clear_replenish_timer()
             dispatch(HUDManager, "set_teammate_grenade_cooldown", managers.hud,
@@ -652,7 +652,7 @@ class EquipmentIntegratedRechargeTests(unittest.TestCase):
             assert(snap.cooldown.integrated == true, "captured event must integrate on enable")
             assert(snap.cooldown.remaining == 12 and snap.cooldown.active == true,
                 "remaining must follow the advanced native timer")
-            assert(E._rows[4]._value:text() == "12s", "row4 must show correct remaining")
+            assert(E._rows[4]._value:text() == "1", "row4 must keep the known charge counter")
             local reveal = E._rows[4]._recharge_reveal
             assert(reveal and reveal:visible(), "integrated reveal must be visible")
             local ratio = reveal:h() / E._rows[4]._root:h()

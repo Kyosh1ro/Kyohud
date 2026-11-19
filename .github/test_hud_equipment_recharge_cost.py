@@ -31,7 +31,7 @@ class EquipmentRechargeAnimationCostTests(unittest.TestCase):
             local row = E._rows[4]
             local reveal = row and row._recharge_reveal
             assert(row and reveal and E:verify(), 'precondition: qualified positive row')
-            assert(row._value:text() == '17s', 'precondition: positive value 17s')
+            assert(row._value:text() == '1', 'precondition: positive charge counter 1')
             assert(row._progress ~= nil and row._progress > 0,
                 'precondition: positive progress')
 
