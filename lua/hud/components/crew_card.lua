@@ -460,10 +460,38 @@ function Card:set_geometry(x, y, w, h, raster)
         self._geo = nil
         return
     end
-    self._geo = {x = x, y = y, w = w, h = h}
-    if type(raster) == "table" and finite(raster.scale) and raster.scale > 0
-        and finite(raster.x) and finite(raster.y) then
-        self._geo.raster = {scale = raster.scale, x = raster.x, y = raster.y}
+    local has_raster = type(raster) == "table" and finite(raster.scale) and raster.scale > 0
+        and finite(raster.x) and finite(raster.y)
+    local geo = self._geo
+    if geo and geo.x == x and geo.y == y and geo.w == w and geo.h == h then
+        if has_raster then
+            local r = geo.raster
+            if r and r.scale == raster.scale and r.x == raster.x and r.y == raster.y then
+                return
+            end
+        elseif geo.raster == nil then
+            return
+        end
+    end
+    if not geo then
+        geo = {}
+        self._geo = geo
+    end
+    geo.x = x
+    geo.y = y
+    geo.w = w
+    geo.h = h
+    if has_raster then
+        local r = geo.raster
+        if r then
+            r.scale = raster.scale
+            r.x = raster.x
+            r.y = raster.y
+        else
+            geo.raster = {scale = raster.scale, x = raster.x, y = raster.y}
+        end
+    else
+        geo.raster = nil
     end
     if live(self.root) then
         pcall(shape, self.root, x, y, w, h)
@@ -490,16 +518,28 @@ function Card:_all_live()
         and live(self._down_left) and live(self._down_right)
 end
 
-function Card:_rows()
+function Card:_rows(body_offset)
     local h = self._geo.h
-    local out = {}
-    local y = 0
+    local offset = finite(body_offset) and body_offset or 0
+    local rows = self._rows_table
+    if rows and self._rows_h == h and self._rows_offset == offset then
+        return rows
+    end
+    if not rows then
+        rows = {}
+        for i = 1, 6 do rows[i] = {y = 0, h = 0} end
+    end
+    local y = offset
     for i = 1, 6 do
         local rh = h * RH[i]
-        out[i] = {y = y, h = rh}
+        rows[i].y = y
+        rows[i].h = rh
         y = y + rh
     end
-    return out
+    self._rows_table = rows
+    self._rows_h = h
+    self._rows_offset = offset
+    return rows
 end
 
 function Card:_fit(p, key, text, size, allow_trim, suffix)
@@ -560,10 +600,7 @@ function Card:update(actor, t)
     local downed_decor = (actor.condition_icon == "mugshot_downed") and not_bot
     local body_offset = state_active and STATE_HEADER_E * e or 0
 
-    local rows = self:_rows()
-    for _, r in ipairs(rows) do
-        r.y = r.y + body_offset
-    end
+    local rows = self:_rows(body_offset)
 
     local left_w = (w - 12 * e) * 0.52
     local right_x = left_w + 12 * e
@@ -572,8 +609,8 @@ function Card:update(actor, t)
 
     local ok = pcall(function()
         shape(self.root, g.x, g.y - body_offset, w, g.h + body_offset)
-        self.root:set_visible(true)
-        self.root:set_alpha(1)
+        if self.root:visible() ~= true then self.root:set_visible(true) end
+        if self.root:alpha() ~= 1 then self.root:set_alpha(1) end
         exp.root = {x = g.x, y = g.y - body_offset, w = w, h = g.h + body_offset}
 
         local r0 = rows[1]
@@ -1685,6 +1722,9 @@ function Card:destroy()
     self._down_right = nil
     self._cache = nil
     self._geo = nil
+    self._rows_table = nil
+    self._rows_h = nil
+    self._rows_offset = nil
     self._exp = nil
 end
 

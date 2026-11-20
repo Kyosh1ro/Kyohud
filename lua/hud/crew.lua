@@ -174,7 +174,15 @@ function C:_apply_layout()
     local state_h = lc.state_h or 0
     local y = self._clearance_y or lc.y
     if self._root and panel_alive(self._root) then
-        safe_call(self._root, "set_shape", lc.x, y - state_h, lc.total_w, lc.card_h + state_h)
+        local tx, ty, tw, th = lc.x, y - state_h, lc.total_w, lc.card_h + state_h
+        local xok, rx = safe_call(self._root, "x")
+        local yok, ry = safe_call(self._root, "y")
+        local wok, rw = safe_call(self._root, "w")
+        local hok, rh = safe_call(self._root, "h")
+        if xok ~= CALL_OK or yok ~= CALL_OK or wok ~= CALL_OK or hok ~= CALL_OK
+            or rx ~= tx or ry ~= ty or rw ~= tw or rh ~= th then
+            safe_call(self._root, "set_shape", tx, ty, tw, th)
+        end
     end
     for i = 1, MAX_CARDS do
         local card = self._cards[i]
@@ -246,10 +254,9 @@ function C:_present_cards(snap, t)
         self._native_coverage = self._native_coverage or {}
         actors:write_crew_native_coverage(self._native_coverage, by_pos)
     end
-    if any_visible then
-        safe_call(self._root, "set_visible", true)
-    else
-        safe_call(self._root, "set_visible", false)
+    local vok, vis_now = safe_call(self._root, "visible")
+    if vok ~= CALL_OK or vis_now ~= any_visible then
+        safe_call(self._root, "set_visible", any_visible)
     end
 end
 
@@ -570,7 +577,10 @@ function C:update(manager, t, dt)
         self:_create_cards()
         self._clearance_y = nil
         self:_apply_layout()
-        safe_call(self._root, "set_alpha", 1)
+        local aok, alpha_now = safe_call(self._root, "alpha")
+        if aok ~= CALL_OK or alpha_now ~= 1 then
+            safe_call(self._root, "set_alpha", 1)
+        end
         self:_present_cards(snap, t)
         self._conflict = self:_combat_conflict()
         presented = true
@@ -586,7 +596,10 @@ function C:update(manager, t, dt)
     end
     if not presented then
         self:_apply_layout()
-        safe_call(self._root, "set_alpha", 1)
+        local aok, alpha_now = safe_call(self._root, "alpha")
+        if aok ~= CALL_OK or alpha_now ~= 1 then
+            safe_call(self._root, "set_alpha", 1)
+        end
         self:_present_cards(snap, t)
     end
     local verifier = self._verify_render
