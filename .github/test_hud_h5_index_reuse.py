@@ -312,12 +312,16 @@ class H4SemanticsTests(unittest.TestCase):
             common = _panel("common")
             crew_root = _panel("crew_root")
             player_root = _panel("player_root")
-            temp = _panel("temp")
-            bag = _panel("bag")
-            temp:add_child("bag_panel", bag)
-            bag:set_visible(false)
+            entry = _panel("entry")
+            native_player = _panel("player")
+            radial = _panel("radial_health_panel")
+            absorb_shield = _panel("radial_absorb_shield_active")
+            entry:add_child("player", native_player)
+            native_player:add_child("radial_health_panel", radial)
+            radial:add_child("radial_absorb_shield_active", absorb_shield)
+            absorb_shield:set_visible(false)
 
-            mgr = {_teammate_panels = {}, _hud_temp = {_temp_panel = temp}}
+            mgr = {_teammate_panels = {[1] = {_panel = entry, _special_equipment = {}}}}
             kyohud.hud.crew = {_root = crew_root}
             kyohud.hud.player = {_root = player_root}
             kyohud.hud.weapons = nil
@@ -332,8 +336,8 @@ class H4SemanticsTests(unittest.TestCase):
             first_local_visible = player_root:visible()
             index_created = R._h5_child_index ~= nil
 
-            temp:remove_child("bag_panel")
-            temp._throw_child = true
+            radial:remove_child("radial_absorb_shield_active")
+            radial._throw_child = true
             R:_apply_native_priority(2)
             _first_crew_visible = first_crew_visible
             _first_local_visible = first_local_visible

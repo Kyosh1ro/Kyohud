@@ -98,6 +98,70 @@ _frames, _safety, _health, _armor = frames, results, health, armor
 CASES = ("overflow_beyond_2_band", "zero_max_nonzero", "negative",
          "nan", "infinity", "source_nil")
 
+ARMOR_OVERSHOOT = r'''
+local chain, sent = mount_positive()
+RT:update(mgr, 1.0, 0.1)
+local root0, gauge0 = P._root, P._gauge
+local hmax, amax = 41.4, 7
+local entry = mgr._teammate_panels[PP]
+
+local function publish(h, a)
+    cd._health, cd._health_max = h, hmax
+    cd._armor, cd._armor_max = a, amax
+    cd._remaining_delayed = 60
+    entry._health_data = {current = hmax, total = hmax}
+    entry._armor_data = {current = amax, total = amax}
+    chain.radial_health:set_color(Color(1, 1, 0, 0))
+    chain.radial_shield:set_color(Color(1, 1, 0, 0))
+end
+
+local function capture()
+    local g = P._gauge
+    local dd = g and g._health_effects and g._health_effects.delayed_damage
+    return {
+        vis = P._root ~= nil and P._root:visible() == true,
+        ver = P:verify() == true,
+        same = rawequal(P._root, root0) and rawequal(P._gauge, gauge0)
+            and chain.armor == chain.delayed:child("radial_delayed_damage_armor")
+            and chain.health == chain.delayed:child("radial_delayed_damage_health"),
+        a0 = near(chain.armor:alpha(), 0, 0.0001),
+        h0 = near(chain.health:alpha(), 0, 0.0001),
+        a65 = near(chain.armor:alpha(), 0.65, 0.0001),
+        h85 = near(chain.health:alpha(), 0.85, 0.0001),
+        hp = g and g._health.current,
+        hpt = g and g._health.total,
+        hpr = g and g._health.ratio,
+        ar = g and g._armor.current,
+        art = g and g._armor.total,
+        arr = g and g._armor.ratio,
+        debt = dd and dd.known == true and dd.amount,
+    }
+end
+
+-- Client log 2026-11-20: real armor can transiently exceed its maximum
+-- (10/7) while health stays coherent (41.4/41.4) and the Stoic debt is live.
+-- The ratio must clamp to 1 and the leased native leaves must stay at alpha 0.
+publish(hmax, 10)
+RT:update(mgr, 1.1, 0.1)
+local frames = {overshoot = capture()}
+RT:update(mgr, 1.2, 0.1)
+frames.steady = capture()
+
+-- Negative real armor remains a safety rejection: release the two leaves to
+-- their exact .65/.85 alphas, then recover the same primitives afterwards.
+publish(hmax, amax)
+RT:update(mgr, 1.3, 0.1)
+local safety = {positive = capture()}
+cd._armor = -0.1
+RT:update(mgr, 1.4, 0.1)
+safety.rejected = capture()
+cd._armor = amax
+RT:update(mgr, 1.5, 0.1)
+safety.recovered = capture()
+
+_ao_frames, _ao_safety = frames, safety
+'''
+
 
 class DelayedSourcePrecisionTests(unittest.TestCase):
     def test_within_band_overflow_keeps_lease_and_safety_cases_recover(self):
@@ -130,3 +194,37 @@ class DelayedSourcePrecisionTests(unittest.TestCase):
                         ("recovered", ("vis", "ver", "a0", "h0", "same"))):
                     self.assertTrue(all(bool(r[phase][k]) for k in keys),
                                     f"{name}: {phase} state")
+
+    def test_armor_above_max_clamps_ratio_and_keeps_owned_block_visible(self):
+        lua, ok = _lua(setup=SETUP)
+        self.assertTrue(ok, "lua/hud/player.lua must exist")
+        if not ok:
+            return
+        lua.execute(PRELIM + ARMOR_OVERSHOOT)
+        g = lua.globals()
+        frames = g._ao_frames
+        for name in ("overshoot", "steady"):
+            with self.subTest(frame=name):
+                f = frames[name]
+                self.assertTrue(all(bool(f[k]) for k in
+                                    ("vis", "ver", "same", "a0", "h0")),
+                                f"{name}: armor above max must keep the certified lease")
+                self.assertEqual(
+                    tuple(float(f[k]) for k in
+                          ("hp", "hpt", "hpr", "ar", "art", "arr", "debt")),
+                    (41.4, 41.4, 1.0, 10.0, 7.0, 1.0, 60.0),
+                    f"{name}: armor ratio clamped to 1 while health stays exact")
+        safety = g._ao_safety
+        positive = safety["positive"]
+        self.assertTrue(all(bool(positive[k]) for k in
+                            ("vis", "ver", "a0", "h0", "same")),
+                        "coherent armor positive state")
+        rejected = safety["rejected"]
+        self.assertTrue(bool(rejected["a65"]) and bool(rejected["h85"]),
+                        "negative armor must still restore the exact .65/.85 alphas")
+        self.assertTrue(bool(rejected["same"]),
+                        "negative armor rejection must not replace the native leaves")
+        recovered = safety["recovered"]
+        self.assertTrue(all(bool(recovered[k]) for k in
+                            ("vis", "ver", "a0", "h0", "same")),
+                        "coherent armor recovery after negative rejection")

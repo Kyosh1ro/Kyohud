@@ -376,19 +376,16 @@ _recovered_same_primitives = chain.armor == chain.delayed:child("radial_delayed_
 OTHER_BLOCKERS = r'''
 local chain, sent = mount_positive()
 local pw, ph = chain.pw, chain.ph
-local carry = chain.player:panel({name = "carry_panel"})
-carry:set_shape(0, 0, pw, ph)
-carry:set_visible(false)
-carry:set_alpha(0.5)
-local custom = chain.radial:bitmap({name = "radial_custom"})
+-- carry_panel / interact_panel are transient utility leaves that no longer
+-- yield the owned block; reuse the still-blocking radial_absorb_shield_active
+-- primitive for the cases that used to exercise those leaves so no duplicate
+-- child is built.
+local custom = chain.radial:bitmap({name = "radial_absorb_shield_active"})
 custom:set_shape(0, 0, pw, ph)
 custom:set_visible(false)
 custom:set_alpha(0.5)
-local interact = chain.player:text({
-    name = "interact_panel", text = "X", font = "fonts/font_medium_mf"})
-interact:set_shape(0, 0, pw, ph)
-interact:set_visible(false)
-interact:set_alpha(0.5)
+local carry = custom
+local interact = custom
 local copr = chain.radial:panel({name = "copr_overlay_panel"})
 copr:set_shape(0, 0, pw, ph)
 copr:set_visible(true)

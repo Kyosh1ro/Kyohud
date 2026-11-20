@@ -4,7 +4,7 @@ The runtime priority pass must report, once per transition, the first native
 blocker it actually attributes:
 
   [KyoHUD][StoicTrace] PRIORITY cause=overlap_player_union
-      leaf=teammate_panels[<PP>]/condition_timer
+      leaf=teammate_panels[<PP>]/player/radial_health_panel/radial_absorb_shield_active
       native_bounds=x,y,w,h owned_bounds=x,y,w,h slot=<PP> local=true
 
 Bounds are full tuples in the common parent panel coordinates, derived from the
@@ -139,8 +139,8 @@ local function export_bounds(prefix, bounds)
     _G[prefix .. "_H"] = bounds.h
 end
 
-local function make_condition_timer(chain)
-    local timer = chain.entry:panel({name = "condition_timer"})
+local function make_absorb_shield(chain)
+    local timer = chain.radial:bitmap({name = "radial_absorb_shield_active"})
     timer:set_shape(0, 0, chain.pw, chain.ph)
     timer:set_visible(true)
     timer:set_alpha(1)
@@ -168,7 +168,7 @@ KYO_WARM_ARMOR = chain.armor:alpha()
 KYO_WARM_HEALTH = chain.health:alpha()
 KYO_TRACE_TEXT = ""
 
-local timer = make_condition_timer(chain)
+local timer = make_absorb_shield(chain)
 KYO_PP = slot_for_entry(chain.entry)
 export_bounds("KYO_NATIVE", bounds_in_common(timer))
 export_bounds("KYO_OWNED", union_bounds(P))
@@ -198,7 +198,7 @@ for i = 1, 8 do RT:update(mgr, 1.1 + 0.1 * i, 0.1) end
 KYO_STABLE_TEXT = KYO_TRACE_TEXT
 KYO_STABLE_VISIBLE = P._root:visible()
 
-chain.entry:remove(timer)
+chain.radial:remove(timer)
 RT:update(mgr, 3.0, 0.1)
 KYO_RECOVERY_TEXT = KYO_TRACE_TEXT
 KYO_RECOVERY_VISIBLE = P._root:visible()
@@ -208,7 +208,7 @@ KYO_RECOVERY_SAME_ROOT = rawequal(P._root, KYO_ROOT_BEFORE)
 KYO_RECOVERY_SAME_ARMOR = rawequal(chain.armor, KYO_ARMOR_BEFORE)
 KYO_RECOVERY_SAME_HEALTH = rawequal(chain.health, KYO_HEALTH_BEFORE)
 
-local second_timer = make_condition_timer(chain)
+local second_timer = make_absorb_shield(chain)
 RT:update(mgr, 3.1, 0.1)
 KYO_SECOND_TEXT = KYO_TRACE_TEXT
 KYO_SECOND_VISIBLE = P._root:visible()
@@ -221,14 +221,14 @@ local chain, sent = mount_positive()
 RT:update(mgr, 1.0, 0.1)
 KYO_TRACE_TEXT = ""
 
-local timer = make_condition_timer(chain)
+local timer = make_absorb_shield(chain)
 KYO_PP = slot_for_entry(chain.entry)
 export_bounds("KYO_NATIVE", bounds_in_common(timer))
 export_bounds("KYO_OWNED", union_bounds(P))
 
 -- Post-release priority runs again with the exact delayed leaves restored to
--- .65/.85; those leaves are inspected before condition_timer on the second
--- pass and must not replace the first cause captured on the first pass.
+-- .65/.85; the first cause captured on the first pass must not be replaced on
+-- the second pass by any other inspected native leaf.
 RT:update(mgr, 1.1, 0.1)
 KYO_CAUSE_TEXT = KYO_TRACE_TEXT
 KYO_CAUSE_VISIBLE = P._root:visible()
@@ -249,7 +249,7 @@ KYO_WARM_ARMOR = chain.armor:alpha()
 KYO_WARM_HEALTH = chain.health:alpha()
 KYO_TRACE_TEXT = ""
 
-local timer = make_condition_timer(chain)
+local timer = make_absorb_shield(chain)
 KYO_PP = slot_for_entry(chain.entry)
 local mode = KYO_UNKNOWN_MODE
 if mode == "unknown_visibility" then
@@ -300,7 +300,7 @@ local chain, sent = mount_positive()
 RT:update(mgr, 1.0, 0.1)
 KYO_TRACE_TEXT = ""
 
-local timer = make_condition_timer(chain)
+local timer = make_absorb_shield(chain)
 local name_calls = 0
 local function spy_name(panel)
     local original = panel.name
@@ -330,7 +330,7 @@ end
 
 local chain, sent = mount_positive()
 KYO_WARM_OK = pcall(RT.update, RT, mgr, 1.0, 0.1)
-local timer = make_condition_timer(chain)
+local timer = make_absorb_shield(chain)
 KYO_PRIORITY_OK = pcall(RT.update, RT, mgr, 1.1, 0.1)
 KYO_THROW_VISIBLE = P._root:visible()
 KYO_THROW_ARMOR = chain.armor:alpha()
@@ -359,7 +359,7 @@ end
 KYO_ORDINARY_TEXT = KYO_TRACE_TEXT
 KYO_TRACE_TEXT = ""
 
-local timer = make_condition_timer(chain)
+local timer = make_absorb_shield(chain)
 KYO_PP = slot_for_entry(chain.entry)
 RT:update(mgr, t, 0.1)
 t = t + 0.1
@@ -454,7 +454,7 @@ class PriorityTraceContractTests(unittest.TestCase):
         first = _priority_records(g.KYO_AFTER_FIRST_TEXT)
         self.assertEqual(len(first), 1,
                          "the first overlapping native leaf must emit one PRIORITY")
-        self._assert_contract(first[0], slot, "condition_timer")
+        self._assert_contract(first[0], slot, "player/radial_health_panel/radial_absorb_shield_active")
         self._assert_bounds(first[0], g)
         self.assertFalse(bool(g.KYO_FIRST_VISIBLE),
                          "the overlapping native leaf must hide the local player")
@@ -493,7 +493,7 @@ class PriorityTraceContractTests(unittest.TestCase):
         second = _priority_records(g.KYO_SECOND_TEXT)
         self.assertEqual(len(second), len(first) + 1,
                          "recovery must allow another PRIORITY transition")
-        self._assert_contract(second[-1], slot, "condition_timer")
+        self._assert_contract(second[-1], slot, "player/radial_health_panel/radial_absorb_shield_active")
         self.assertFalse(bool(g.KYO_SECOND_VISIBLE),
                          "the second overlap must hide the local player again")
         self.assertAlmostEqual(float(g.KYO_SECOND_ARMOR), 0.65, places=5)
@@ -512,7 +512,7 @@ class PriorityTraceContractTests(unittest.TestCase):
         records = _priority_records(g.KYO_CAUSE_TEXT)
         self.assertEqual(len(records), 1,
                          "one frame must report a single first PRIORITY cause")
-        self._assert_contract(records[0], slot, "condition_timer")
+        self._assert_contract(records[0], slot, "player/radial_health_panel/radial_absorb_shield_active")
         self._assert_bounds(records[0], g)
         self.assertFalse(bool(g.KYO_CAUSE_VISIBLE),
                          "the first cause must hide the local player")
@@ -522,7 +522,7 @@ class PriorityTraceContractTests(unittest.TestCase):
         stable = _priority_records(g.KYO_CAUSE_STABLE_TEXT)
         self.assertEqual(len(stable), 1,
                          "the later blocker must not replace the first cause")
-        self._assert_contract(stable[0], slot, "condition_timer")
+        self._assert_contract(stable[0], slot, "player/radial_health_panel/radial_absorb_shield_active")
 
     def test_unknown_inputs_keep_fallback_and_restore_the_same_roots(self):
         modes = ("unknown_visibility", "unknown_alpha",
@@ -571,7 +571,8 @@ class PriorityTraceContractTests(unittest.TestCase):
                     self.assertEqual(observed, mode,
                                      f"{mode} must report its own cause")
                     self.assertEqual(leaf.group(1),
-                                     f"teammate_panels[{slot}]/condition_timer")
+                                     f"teammate_panels[{slot}]"
+                                     f"/player/radial_health_panel/radial_absorb_shield_active")
                 relevant = ("owned_bounds"
                             if mode == "unknown_player_union"
                             else "native_bounds")
@@ -668,7 +669,8 @@ class PriorityTraceContractTests(unittest.TestCase):
         after_cap = _priority_records(g.KYO_AFTER_CAP_TEXT)
         self.assertEqual(len(after_cap), 1,
                          "ordinary budget exhaustion must not suppress PRIORITY")
-        self._assert_contract(after_cap[0], str(g.KYO_PP), "condition_timer")
+        self._assert_contract(after_cap[0], str(g.KYO_PP),
+                              "player/radial_health_panel/radial_absorb_shield_active")
 
         capped = _priority_records(g.KYO_CAPPED_TEXT)
         self.assertEqual(len(capped), 16,

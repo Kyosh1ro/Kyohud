@@ -2256,18 +2256,16 @@ function RT:_apply_native_priority_unprofiled(t, post_release)
             local pp_path = path_of("player")
             local pp = known_child(entry_panel, "player", nil, pp_path)
             if pp and panel_alive(pp) then
-                local carry_path = path_of("player/carry_panel")
-                local carry = known_child(pp, "carry_panel", nil, carry_path)
-                if carry and panel_alive(carry) then check_leaf(carry, carry_path) end
-                local interact_path = path_of("player/interact_panel")
-                local interact = known_child(pp, "interact_panel", nil, interact_path)
-                if interact and panel_alive(interact) then check_leaf(interact, interact_path) end
+                -- Transient utility leaves (carry/interact) no longer yield the
+                -- owned block: they are centred on the radial health panel and
+                -- their AABB overlap with the bottom block is a false positive;
+                -- the radial health-effect leaves below still yield.
                 local radial_path = path_of("player/radial_health_panel")
                 local radial = known_child(pp, "radial_health_panel", nil, radial_path)
                 if radial and panel_alive(radial) then
-                    local rc_path = path_of("player/radial_health_panel/radial_custom")
-                    local rc = known_child(radial, "radial_custom", nil, rc_path)
-                    if rc and panel_alive(rc) then check_leaf(rc, rc_path) end
+                    -- radial_custom (dodge indicator) no longer yields the owned
+                    -- block: it is transient per-deck info our HUD does not
+                    -- replace, and its AABB overlap is a false positive.
                     local ra_path = path_of("player/radial_health_panel/radial_ability")
                     local ra = known_child(radial, "radial_ability", nil, ra_path)
                     if ra and panel_alive(ra) then
@@ -2347,31 +2345,15 @@ function RT:_apply_native_priority_unprofiled(t, post_release)
                     end
                 end
             end
-            local ct_path = path_of("condition_timer")
-            local ct = known_child(entry_panel, "condition_timer", nil, ct_path)
-            if ct and panel_alive(ct) then check_leaf(ct, ct_path) end
+            -- Transient utility leaf (condition_timer) no longer yields the owned
+            -- block: it is centred on the radial health panel and its AABB
+            -- overlap with the bottom block is a false positive; the radial
+            -- health-effect leaves still yield.
         end
-        local special_equip = entry._special_equipment
-        if type(special_equip) == "table" then
-            for j = 1, SPECIAL_EQUIP_MAX do
-                local se = special_equip[j]
-                if se == nil then break end
-                local se_path
-                if collect and S._priority_first == nil and prefix ~= nil then
-                    se_path = prefix .. "/_special_equipment[" .. j .. "]"
-                end
-                check_leaf(se, se_path)
-            end
-            if special_equip[SPECIAL_EQUIP_MAX + 1] ~= nil then
-                S.hide_crew = true
-                local overflow_path
-                if collect and S._priority_first == nil and prefix ~= nil then
-                    overflow_path = prefix .. "/_special_equipment["
-                        .. (SPECIAL_EQUIP_MAX + 1) .. "]"
-                end
-                set_hide_local("special_overflow", overflow_path, nil, nil)
-            end
-        end
+        -- Transient utility leaves (special equipment) no longer yield the owned
+        -- block: they are centred on the radial health panel and their AABB
+        -- overlap with the bottom block is a false positive; the radial
+        -- health-effect leaves still yield.
     end
     local teammate_panels = mgr._teammate_panels
     if type(teammate_panels) == "table" then
@@ -2382,23 +2364,10 @@ function RT:_apply_native_priority_unprofiled(t, post_release)
         end
         active_slot = nil
     end
-    local hud_temp = mgr._hud_temp
-    if type(hud_temp) == "table" then
-        local temp_panel = hud_temp._temp_panel
-        if temp_panel and panel_alive(temp_panel) then
-            local temp_names = { "bag_panel", "throw_instruction" }
-            for _, cn in ipairs(temp_names) do
-                local child_path
-                if collect and S._priority_first == nil then
-                    child_path = "_hud_temp/_temp_panel/" .. cn
-                end
-                local child = known_child(temp_panel, cn, nil, child_path)
-                if child and panel_alive(child) then
-                    check_leaf(child, child_path)
-                end
-            end
-        end
-    end
+    -- Transient utility leaves (_hud_temp: bag_panel/throw_instruction) no longer
+    -- yield the owned block: they are centred on the radial health panel and
+    -- their AABB overlap with the bottom block is a false positive; the radial
+    -- health-effect leaves still yield.
     local hud_interaction = mgr._hud_interaction
     if type(hud_interaction) == "table" then
         local ip = hud_interaction._hud_panel
@@ -5198,6 +5167,12 @@ function RT:_delayed_source_state(mgr, chain)
     local debt = dr_read_number(damage, "remaining_delayed_damage")
     local health_ratio = dr_ratio(health, health_max)
     local armor_ratio = dr_ratio(armor, armor_max)
+    if armor_ratio == nil and finite(armor) and finite(armor_max)
+        and armor_max > 0 and armor > armor_max then
+        -- Client transient armor overshoot above its max is not corruption:
+        -- clamp the ratio to full instead of rejecting the delayed source.
+        armor_ratio = 1
+    end
     local detail
     if trace then
         detail = {

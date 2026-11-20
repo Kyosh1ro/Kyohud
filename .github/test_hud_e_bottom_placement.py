@@ -3,7 +3,7 @@
 Three tests validating actual visually drawn positions:
 1. Player bottom-right: shared owned backdrop bottom == parent_h - 24e, P._root right == w - 40e
 2. Crew cards bottom: each visible card._backdrop world-relative bottom == parent_h - 24e
-3. Native HUDTemp bag_panel overlap: P/W/E/backdrop verified visible, native unchanged, fallback when overlapping
+3. Native HUDTemp bag_panel overlap: P/W/E/backdrop verified visible, native unchanged, no fallback (removed leaves no longer yield)
 
 Uses real _radial_runtime from test_hud_e_native_replacement and mounted() from test_hud_crew_acceptance.
 Native primitives are tables with x/y/w/h, no shape() accessor.
@@ -229,7 +229,7 @@ class CrewCardsBottomPlacementTests(unittest.TestCase):
 
 
 class NativeHUDTempBagPanelOverlapTests(unittest.TestCase):
-    """Native HUDTemp bag_panel overlap: fallback when overlapping foreground."""
+    """Native HUDTemp bag_panel overlap: removed leaves no longer yield the block."""
 
     def test_native_bag_panel_overlap_fallback(self):
         """Native HUDTemp bag_panel at x=w-360e, y=h-300e, w=320e, h=110e with throw_instruction above.
@@ -239,7 +239,8 @@ class NativeHUDTempBagPanelOverlapTests(unittest.TestCase):
         Monotonically update 2.2.
         P/W/E roots/backdrop remain verified visible and native bag/throw unchanged.
         While all visible bottom/right assertions hold.
-        Native truly overlapping actual drawn foreground still yields fallback.
+        These transient utility leaves no longer yield the owned block, even when
+        moved onto the actual drawn foreground.
         """
         lua = _radial_runtime()
         lua.execute(r'''
@@ -335,7 +336,7 @@ class NativeHUDTempBagPanelOverlapTests(unittest.TestCase):
             local original_player = P._root
             bag_panel:set_shape(P._root:x(), P._root:y()+P._gauge.root:y(),100*e,24*e)
             RT:update(mgr,2.8,.05)
-            _real_overlap_falls_back = not P._root:visible() and not W._root:visible()
+            _real_overlap_keeps_visible = P._root:visible() and W._root:visible()
             bag_panel:set_visible(false)
             throw_instruction:set_visible(false)
             RT:update(mgr,3.4,.05)
@@ -347,14 +348,15 @@ class NativeHUDTempBagPanelOverlapTests(unittest.TestCase):
         self.assertTrue(bool(g._w_vis), "W._root must remain visible")
         self.assertTrue(bool(g._e_vis), "E._root must remain visible")
         self.assertTrue(bool(g._backdrop_vis), "backdrop must remain verified")
-        self.assertTrue(bool(g._bag_unchanged), "RED: native bag_panel must be unchanged")
-        self.assertTrue(bool(g._throw_unchanged), "RED: native throw_instruction must be unchanged")
-        self.assertTrue(bool(g._p_right_within), "RED: P._root right must still be w - 40e")
-        self.assertTrue(bool(g._backdrop_within), "RED: backdrop bottom must still be parent_h - 24e")
+        self.assertTrue(bool(g._bag_unchanged), "native bag_panel must be unchanged")
+        self.assertTrue(bool(g._throw_unchanged), "native throw_instruction must be unchanged")
+        self.assertTrue(bool(g._p_right_within), "P._root right must still be w - 40e")
+        self.assertTrue(bool(g._backdrop_within), "backdrop bottom must still be parent_h - 24e")
         self.assertTrue(bool(g._p_verify), "P must still verify")
         self.assertTrue(bool(g._w_verify), "W must still verify")
         self.assertTrue(bool(g._e_verify), "E must still verify")
-        self.assertTrue(g._real_overlap_falls_back)
+        self.assertTrue(g._real_overlap_keeps_visible,
+            "removed bag_panel/throw_instruction overlap must not hide the block")
         self.assertTrue(g._recovers_same)
 
 

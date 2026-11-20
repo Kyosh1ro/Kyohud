@@ -174,7 +174,7 @@ def _local_runtime():
         carry:set_alpha(.7)
         local interact = label(_LOCAL_PLAYER, "interact_panel", "X",
             0, 0, 50, 20, .7, false)
-        local custom = bitmap(_LOCAL_RADIAL, "radial_custom", 0, 0, 50, 20, .7, false)
+        local custom = bitmap(_LOCAL_RADIAL, "radial_absorb_shield_active", 0, 0, 50, 20, .7, false)
         local ability = container(_LOCAL_RADIAL, "radial_ability", 0, 0, 50, 20, false)
         ability:set_alpha(.7)
         local rip = bitmap(_LOCAL_RADIAL, "radial_rip", 0, 0, 50, 20, .7, false)
@@ -684,12 +684,12 @@ class LocalPlayerH5LifecycleTests(unittest.TestCase):
                          "local recovery must not write parent setters")
 
 
-    def test_remote_teammate_interaction_leaf_hides_and_releases_crew(self):
-        """Remote teammate interaction hides crew, then releases and recovers it.
+    def test_remote_teammate_absorb_shield_hides_and_releases_crew(self):
+        """Remote teammate radial health-effect hides crew, then releases and recovers it.
 
         A distant ally entry panel is placed at the crew band with an active
-        interact_panel (visible, alpha > 0) so _apply_native_priority hides the
-        owned crew root and H5 releases crew_2, restoring the native crew
+        radial_absorb_shield_active leaf (visible, alpha > 0) so _apply_native_priority hides
+        the owned crew root and H5 releases crew_2, restoring the native crew
         alphas. The interaction is then ended through the genuine
         HUDManager:teammate_progress channel installed by the wrapping fixture,
         which hides the native leaf. Bounded updates must show the crew root
@@ -727,10 +727,10 @@ class LocalPlayerH5LifecycleTests(unittest.TestCase):
             _REMOTE_PLAYER = _REMOTE:panel({name = "player"})
             _REMOTE_PLAYER:set_shape(0, 0, crew_w, crew_h)
             _REMOTE_PLAYER:set_visible(true)
-            _REMOTE_INTERACT = _REMOTE_PLAYER:text({
-                name = "interact_panel", text = "Revive",
-                font = "fonts/font_medium_mf",
-            })
+            _REMOTE_RADIAL = _REMOTE_PLAYER:panel({name = "radial_health_panel"})
+            _REMOTE_RADIAL:set_shape(0, 0, crew_w, crew_h)
+            _REMOTE_RADIAL:set_visible(true)
+            _REMOTE_INTERACT = _REMOTE_RADIAL:bitmap({name = "radial_absorb_shield_active"})
             _REMOTE_INTERACT:set_shape(10, 10, 120, 30)
             _REMOTE_INTERACT:set_alpha(.7)
             _REMOTE_INTERACT:set_visible(true)
@@ -862,10 +862,10 @@ class LocalPlayerH5LifecycleTests(unittest.TestCase):
         self.assertTrue(bool(g._progress_started),
                         "the genuine interaction start must reach the native channel")
         self.assertTrue(bool(g._interact_active),
-                        "the remote interaction leaf must start visible")
+                        "the remote radial_absorb_shield_active leaf must start visible")
 
         self.assertTrue(bool(g._crew_hidden),
-                        "remote interaction must hide the owned crew root")
+                        "remote radial_absorb_shield_active must hide the owned crew root")
         self.assertTrue(bool(g._crew_group_released),
                         "H5 must release crew_2 while the crew root is hidden")
         self.assertTrue(bool(g._crew_name_restored),

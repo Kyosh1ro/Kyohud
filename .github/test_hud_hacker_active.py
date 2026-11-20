@@ -642,7 +642,7 @@ _G._t2_verify = (_E:_verify_hacker_activity(_E:get_hacker_activity_source()) == 
             "precondition: equipment render must certify with ability hidden")
 
         lua.execute(r'''
-local blocker = _ability_health_parent:bitmap({name = "radial_custom"})
+local blocker = _ability_health_parent:bitmap({name = "radial_absorb_shield_active"})
 blocker:set_shape(0, 0, _ability_parent:w(), _ability_parent:h())
 blocker:set_color(Color(1, .3, .7, 1))
 blocker:set_alpha(.42)

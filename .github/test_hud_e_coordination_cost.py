@@ -366,7 +366,7 @@ class CoordinationCostTests(unittest.TestCase):
     def test_priority_reads_shared_ancestry_once_and_rechecks_next_pass(self):
         lua = _radial_runtime()
         lua.execute('''
-            for _, name in ipairs({"radial_custom", "radial_ability", "radial_rip"}) do
+            for _, name in ipairs({"radial_absorb_shield_active", "radial_ability", "radial_rip"}) do
                 local leaf = rad:bitmap({name = name})
                 leaf:set_shape(5, 5, 5, 5)
                 leaf:set_visible(true)
@@ -546,7 +546,7 @@ class CoordinationCostTests(unittest.TestCase):
         self.assertTrue(bool(g.same_root))
         self.assertTrue(bool(g.same_name))
 
-    def test_native_condition_timer_over_crew_hides_crew_and_restores_leaf_on_receipt_frame(self):
+    def test_native_absorb_shield_over_crew_hides_crew_and_restores_leaf_on_receipt_frame(self):
         lua = _radial_runtime()
         lua.execute(_SEED_CREW_NATIVE)
         lua.execute(r'''
@@ -556,7 +556,13 @@ class CoordinationCostTests(unittest.TestCase):
             t0_verified = (C._render_verified == true)
             t0_alpha = n_crew:alpha()
             saved_card = C._cards[crew_pos]
-            local ct = crew_ep:text({name = "condition_timer", text = "10"})
+            local crew_player = crew_ep:panel({name = "player"})
+            crew_player:set_shape(0, 0, 280, 120)
+            crew_player:set_visible(true)
+            local crew_radial = crew_player:panel({name = "radial_health_panel"})
+            crew_radial:set_shape(0, 0, 280, 120)
+            crew_radial:set_visible(true)
+            local ct = crew_radial:bitmap({name = "radial_absorb_shield_active"})
             ct:set_shape(C._root:x() + 10, C._root:y() + 10, 50, 20)
             ct:set_visible(true)
             R:update(m, tA, .05)
@@ -580,7 +586,7 @@ class CoordinationCostTests(unittest.TestCase):
         self.assertTrue(bool(g.receipt_frame_presented),
                         "the overlapping frame must still be presentation-due and produce its receipt")
         self.assertTrue(bool(g.crew_hidden),
-                        "an active native condition timer over the crew root must hide the crew")
+                        "an active native radial_absorb_shield_active over the crew root must hide the crew")
         self.assertAlmostEqual(float(g.timer_frame_alpha), .7, places=2,
                                msg="the crew native ordinary name leaf must be restored on the receipt frame")
         self.assertEqual(g.timer_h_alpha, 0,

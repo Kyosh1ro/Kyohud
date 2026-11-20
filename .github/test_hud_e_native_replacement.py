@@ -804,21 +804,20 @@ class NativeIdentityTests(unittest.TestCase):
         self.assertAlmostEqual(lua.globals()._native_alpha, .7)
         self.assertTrue(lua.globals()._recovered)
 
-    def test_condition_timer_overlap_releases_native(self):
+    def test_absorb_shield_overlap_releases_native(self):
         lua = _radial_runtime()
         lua.execute(r'''
             local slot = HUDManager.PLAYER_PANEL
-            local ep = m._teammate_panels[slot]._panel
             local P = kyohud.hud.player
             local owned_before = P._h5_id_label
-            local ct = ep:text({name="condition_timer", text="10"})
-            ct:set_shape(P._root:x(), P._root:y(), 50, 20)
-            ct:set_visible(true)
+            local rc = rad:bitmap({name="radial_absorb_shield_active"})
+            rc:set_shape(P._root:x(), P._root:y(), 50, 20)
+            rc:set_visible(true)
             _ha_before = h:alpha(); _na_before = n:alpha()
             R:update(m, 2.2, .05)
             _p_vis = P._root and P._root:visible() or false
             _ha_after = h:alpha(); _na_after = n:alpha()
-            ct:set_visible(false)
+            rc:set_visible(false)
             R:update(m, 2.8, .05)
             _p_vis2 = P._root and P._root:visible() or false
             local owned_name = P._h5_id_label
@@ -828,7 +827,7 @@ class NativeIdentityTests(unittest.TestCase):
             _ha_final = h:alpha(); _na_final = n:alpha()
         ''')
         g = lua.globals()
-        self.assertFalse(bool(g._p_vis), "P must be hidden when condition_timer present")
+        self.assertFalse(bool(g._p_vis), "P must be hidden when radial_absorb_shield_active present")
         self.assertAlmostEqual(float(g._ha_after), .7, places=2, msg="h alpha restored to .7")
         self.assertAlmostEqual(float(g._na_after), .7, places=2, msg="n alpha restored to .7")
         self.assertTrue(bool(g._p_vis2), "P must be visible after timer hidden")

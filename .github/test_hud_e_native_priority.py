@@ -1,20 +1,20 @@
 """_apply_native_priority -- real paths: only indispensable leaves block, not whole containers.
 
 Scope: native teammate panel structure mirrors PAYDAY 2 runtime (hudteammate.lua):
-  entry._panel -> child("player") -> carry_panel, interact_panel
   entry._panel -> child("player") -> radial_health_panel
-  radial_health_panel children: condition_timer (WRONG: actually under entry._panel),
-    radial_custom, radial_ability, radial_rip, radial_rip_bg (sibling of radial_rip),
-    radial_absorb_shield_active, radial_absorb_health_active, radial_info_meter,
-    radial_info_meter_bg, radial_delayed_damage (container, initially empty default-visible),
+  radial_health_panel children: radial_custom, radial_ability, radial_rip,
+    radial_rip_bg (sibling of radial_rip), radial_absorb_shield_active,
+    radial_absorb_health_active, radial_info_meter, radial_info_meter_bg,
+    radial_delayed_damage (container, initially empty default-visible),
     copr_overlay_panel (container, initially empty default-visible)
   radial_delayed_damage children: radial_delayed_damage_armor, radial_delayed_damage_health
-  entry._panel -> condition_timer (NOT under radial_health_panel)
 
-Only actual indispensable leaves with active geometry block KyoHUD crew/player when
-they overlap. Ordinary name/health/shield and empty containers (radial_delayed_damage,
-copr_overlay_panel without child 0) NEVER block. For copr_overlay_panel, only consider
-its rectangle if exact child "0" exists/alive (set_copr_indicator creates numeric 0).
+Only actual radial health-effect leaves with active geometry block KyoHUD crew/player
+when they overlap. The transient utility leaves (carry/interact/condition_timer/
+special/bag/throw) no longer yield the owned block. Ordinary name/health/shield and
+empty containers (radial_delayed_damage, copr_overlay_panel without child 0) NEVER
+block. For copr_overlay_panel, only consider its rectangle if exact child "0"
+exists/alive (set_copr_indicator creates numeric 0).
 
 Uses test_hud_final_integration._crew_lua fixture (returns 4 values).
 No production monkeypatch/certification. Setter spy counts installed AFTER fixture
@@ -35,11 +35,10 @@ class NativePanelPriorityTests(unittest.TestCase):
         """Real native paths: indispensable leaves block, containers do not.
 
         Constructs actual PAYDAY 2 native teammate panel structure:
-          entry._panel -> player -> carry_panel, interact_panel
-          entry._panel -> player -> radial_health_panel -> radial_custom, ...
-          entry._panel -> condition_timer (NOT under radial)
+          entry._panel -> player -> radial_health_panel -> radial_absorb_shield_active, ...
         The container (entry._panel, player child) being visible does NOT block.
-        Only condition_timer with active geometry overlapping crew/player blocks.
+        Only the radial health-effect leaves with active geometry overlapping
+        crew/player block.
         """
         lua, crew_ok, weapons_ok, equipment_ok = _crew_lua()
         self.assertTrue(crew_ok, "crew.lua must exist")
@@ -81,28 +80,10 @@ class NativePanelPriorityTests(unittest.TestCase):
             native_radial_health:set_shape(0, 0, 432, 120)
             native_radial_health:set_visible(true)
 
-            -- condition_timer under entry._panel (NOT radial_health_panel)
-            local condition_timer = native_entry_panel:text({
-                name="condition_timer",
-                text="timer",
-                font="fonts/font_medium_mf"
-            })
-            -- Position to overlap crew area (crew at x=44, y=918)
-            condition_timer:set_shape(100, 40, 200, 30)
-            condition_timer:set_visible(false)  -- initially inactive
-
-            -- Add other native leaves with inactive initial visibility
-            local carry_panel = native_player:panel({name="carry_panel"})
-            carry_panel:set_shape(50, 50, 100, 40)
-            carry_panel:set_visible(false)
-
-            local interact_panel = native_player:text({name="interact_panel", text="X", font="f"})
-            interact_panel:set_shape(60, 60, 80, 30)
-            interact_panel:set_visible(false)
-
-            local radial_custom = native_radial_health:bitmap({name="radial_custom"})
-            radial_custom:set_shape(0, 0, 432, 120)
-            radial_custom:set_visible(false)
+            -- radial_absorb_shield_active under radial_health_panel (indispensable leaf)
+            local radial_absorb_shield_active = native_radial_health:bitmap({name="radial_absorb_shield_active"})
+            radial_absorb_shield_active:set_shape(0, 0, 432, 120)
+            radial_absorb_shield_active:set_visible(false)  -- initially inactive
 
             local radial_ability = native_radial_health:panel({name="radial_ability"})
             radial_ability:set_shape(0, 0, 432, 120)
@@ -163,10 +144,10 @@ class NativePanelPriorityTests(unittest.TestCase):
             _p_gauge_before = P._gauge
             _p_health_text_before = P._gauge and P._gauge.health_text or nil
 
-            -- Activate condition_timer (the indispensable leaf)
-            condition_timer:set_visible(true)
+            -- Activate radial_absorb_shield_active (the indispensable radial leaf)
+            radial_absorb_shield_active:set_visible(true)
 
-            -- Update 1.6: crew root should be hidden due to condition_timer blocker
+            -- Update 1.6: crew root should be hidden due to radial_absorb_shield_active blocker
             kyohud.hud.runtime:update(mgr, 1.6, 0.05)
 
             _c_root_visible_1_6 = C._root and C._root:visible() or false
@@ -179,20 +160,19 @@ class NativePanelPriorityTests(unittest.TestCase):
             _native_entry_vis_1_6 = native_entry_panel:visible()
             _native_player_vis_1_6 = native_player:visible()
             _native_radial_vis_1_6 = native_radial_health:visible()
-            _native_timer_vis_1_6 = condition_timer:visible()
+            _native_custom_vis_1_6 = radial_absorb_shield_active:visible()
 
-            -- Deactivate condition_timer, activate carry_panel at crew area
-            condition_timer:set_visible(false)
-            carry_panel:set_shape(100, 40, 200, 30)  -- overlap crew
-            carry_panel:set_visible(true)
+            -- Deactivate radial_absorb_shield_active, activate radial_ability at crew area
+            radial_absorb_shield_active:set_visible(false)
+            radial_ability:set_visible(true)
 
-            -- Update 2.2: crew should still be hidden due to carry_panel
+            -- Update 2.2: crew should still be hidden due to radial_ability
             kyohud.hud.runtime:update(mgr, 2.2, 0.05)
             _c_root_visible_2_2 = C._root and C._root:visible() or false
-            _carry_vis_2_2 = carry_panel:visible()
+            _ability_vis_2_2 = radial_ability:visible()
 
             -- Deactivate all leaves
-            carry_panel:set_visible(false)
+            radial_ability:set_visible(false)
 
             -- Update 2.8: all recover
             kyohud.hud.runtime:update(mgr, 2.8, 0.05)
@@ -240,11 +220,11 @@ class NativePanelPriorityTests(unittest.TestCase):
         self.assertTrue(bool(g._e_root_visible_1_0),
             "equipment root must be visible under ordinary native containers")
 
-        # Update 1.6: crew root hidden when condition_timer (indispensable leaf) active
+        # Update 1.6: crew root hidden when radial_absorb_shield_active (indispensable leaf) active
         self.assertFalse(bool(g._c_root_visible_1_6),
-            "crew root must be hidden when condition_timer occupies crew geometry")
+            "crew root must be hidden when radial_absorb_shield_active occupies crew geometry")
         self.assertTrue(bool(g._p_root_visible_1_6),
-            "player root must remain visible at 1.6 (condition_timer not at P geometry)")
+            "player root must remain visible at 1.6 (radial_absorb_shield_active not at P geometry)")
         self.assertTrue(bool(g._weap_root_visible_1_6),
             "weapons root must remain visible at 1.6")
         self.assertTrue(bool(g._e_root_visible_1_6),
@@ -254,12 +234,12 @@ class NativePanelPriorityTests(unittest.TestCase):
         self.assertTrue(bool(g._native_entry_vis_1_6))
         self.assertTrue(bool(g._native_player_vis_1_6))
         self.assertTrue(bool(g._native_radial_vis_1_6))
-        self.assertTrue(bool(g._native_timer_vis_1_6))
+        self.assertTrue(bool(g._native_custom_vis_1_6))
 
-        # Update 2.2: crew still hidden due to carry_panel
+        # Update 2.2: crew still hidden due to radial_ability
         self.assertFalse(bool(g._c_root_visible_2_2),
-            "crew root must be hidden when carry_panel occupies crew geometry")
-        self.assertTrue(bool(g._carry_vis_2_2))
+            "crew root must be hidden when radial_ability occupies crew geometry")
+        self.assertTrue(bool(g._ability_vis_2_2))
 
         # Update 2.8: all recover when no active leaves
         self.assertTrue(bool(g._c_root_visible_2_8),
@@ -294,9 +274,9 @@ class NativePanelPriorityTests(unittest.TestCase):
         self.assertTrue(bool(g._sibling_alive_after))
 
     def test_native_read_failure_fail_closed_same_primitive_recovery(self):
-        """Indispensable leaf (condition_timer) getter failure: fail-closed, recover same primitives.
+        """Indispensable leaf (radial_absorb_shield_active) getter failure: fail-closed, recover same primitives.
 
-        Tests that when condition_timer (the actual indispensable leaf) fails to read,
+        Tests that when radial_absorb_shield_active (an indispensable radial leaf) fails to read,
         crew hides fail-closed. Recovers same primitives when leaf reader restored.
         Container (entry._panel, player) visibility/reads do not affect this test.
         """
@@ -318,12 +298,10 @@ class NativePanelPriorityTests(unittest.TestCase):
             native_radial:set_shape(0, 0, rw, rh)
             native_radial:set_visible(true)
 
-            -- condition_timer under entry._panel (NOT radial_health_panel)
-            local condition_timer = native_entry:text({
-                name="condition_timer", text="timer", font="f"
-            })
-            condition_timer:set_shape(0, 0, rw, rh)
-            condition_timer:set_visible(true)
+            -- radial_absorb_shield_active under radial_health_panel (indispensable radial leaf)
+            local absorb_shield = native_radial:bitmap({name="radial_absorb_shield_active"})
+            absorb_shield:set_shape(0, 0, rw, rh)
+            absorb_shield:set_visible(true)
 
             local mgr = managers.hud
             local old_tp = mgr._teammate_panels or {}
@@ -333,30 +311,30 @@ class NativePanelPriorityTests(unittest.TestCase):
             local sib = panel_double:panel({name="fail_closed_sib"})
             sib:set_shape(50, 50, 80, 80); sib:set_visible(true); local sib_x = sib:x()
 
-            -- Fail condition_timer visible reader (the indispensable leaf)
-            local orig_vis = condition_timer.visible
-            condition_timer.visible = function() error('getter unavailable') end
+            -- Fail radial_absorb_shield_active visible reader (the indispensable leaf)
+            local orig_vis = absorb_shield.visible
+            absorb_shield.visible = function() error('getter unavailable') end
             RT:update(mgr, 1.6, 0.05)
             _c_hidden_1_6 = not C._root:visible()
-            condition_timer.visible = orig_vis
+            absorb_shield.visible = orig_vis
 
             RT:update(mgr, 2.2, 0.05)
             _c_hidden_2_2 = not C._root:visible()
-            condition_timer:set_visible(false)
+            absorb_shield:set_visible(false)
             RT:update(mgr, 2.8, 0.05)
             _c_verify_2_8 = C:_verify_render()
             _same_root_2_8 = C._root == r
             _same_card_2_8 = C._cards[1] == card
             _same_name_2_8 = C._cards[1]._name_text == cardname
 
-            -- Fail condition_timer alpha reader
-            condition_timer:set_visible(true)
-            local orig_alpha = condition_timer.alpha
-            condition_timer.alpha = function() return 0/0 end
+            -- Fail radial_absorb_shield_active alpha reader
+            absorb_shield:set_visible(true)
+            local orig_alpha = absorb_shield.alpha
+            absorb_shield.alpha = function() return 0/0 end
             RT:update(mgr, 3.4, 0.05)
             _c_hidden_3_4 = not C._root:visible()
-            condition_timer.alpha = orig_alpha
-            condition_timer:set_visible(false)
+            absorb_shield.alpha = orig_alpha
+            absorb_shield:set_visible(false)
             RT:update(mgr, 4.0, 0.05)
             _c_verify_4_0 = C:_verify_render()
             _same_root_4_0 = C._root == r
@@ -378,9 +356,9 @@ class NativePanelPriorityTests(unittest.TestCase):
     def test_native_special_carry_interaction_priority(self):
         """Native special-equipment / hud_temp / hud_interaction priority over crew.
 
-        Tests that special equipment, bag panels, throw instructions, and interaction
-        panels (when overlapping) take priority over crew. Retains original assertions
-        for backward compatibility.
+        The transient utility sources (special equipment, bag panel, throw
+        instruction) no longer yield the owned crew block. The interaction
+        channel (_hud_interaction) is still observed and must still hide crew.
         """
         for case in ('special', 'bag_panel', 'throw_instruction', 'interaction'):
             with self.subTest(case=case):
@@ -422,8 +400,20 @@ class NativePanelPriorityTests(unittest.TestCase):
                     _v40=C._root:visible(); _s40=C._root==r
                 ''')
                 g = lua.globals()
-                for k in ('_h16', '_nk', '_v22', '_s22', '_v28', '_h34', '_v40', '_s40'):
-                    self.assertTrue(bool(g[k]), f"{case}:{k}")
+                if case == "interaction":
+                    for k in ('_h16', '_nk', '_v22', '_s22', '_v28', '_h34', '_v40', '_s40'):
+                        self.assertTrue(bool(g[k]), f"{case}:{k}")
+                else:
+                    self.assertFalse(bool(g._h16),
+                        f"{case}: removed transient leaf must not hide crew")
+                    self.assertTrue(bool(g._nk), f"{case}:_nk")
+                    self.assertTrue(bool(g._v22), f"{case}:_v22")
+                    self.assertTrue(bool(g._s22), f"{case}:_s22")
+                    self.assertTrue(bool(g._v28), f"{case}:_v28")
+                    self.assertFalse(bool(g._h34),
+                        f"{case}: removed transient leaf must not hide crew again")
+                    self.assertTrue(bool(g._v40), f"{case}:_v40")
+                    self.assertTrue(bool(g._s40), f"{case}:_s40")
 
     def test_leaf_activation_cycles_both_overlaps_recovery(self):
         """Table-driven leaf activation cycles: separate crew and local phases per leaf.
@@ -474,21 +464,23 @@ class NativePanelPriorityTests(unittest.TestCase):
 
             local leaves = {}
 
-            leaves.condition_timer = native_entry:text({name="condition_timer", text="T", font="f"})
-            leaves.condition_timer:set_shape(100, 40, 200, 30)
-            leaves.condition_timer:set_visible(false)
+            -- Removed transient utility leaves: constructed for characterization
+            -- only; production no longer yields the owned block for them.
+            local condition_timer = native_entry:text({name="condition_timer", text="T", font="f"})
+            condition_timer:set_shape(100, 40, 200, 30)
+            condition_timer:set_visible(false)
 
-            leaves.carry_panel = native_player:panel({name="carry_panel"})
-            leaves.carry_panel:set_shape(100, 40, 200, 30)
-            leaves.carry_panel:set_visible(false)
+            local carry_panel = native_player:panel({name="carry_panel"})
+            carry_panel:set_shape(100, 40, 200, 30)
+            carry_panel:set_visible(false)
 
-            leaves.interact_panel = native_player:text({name="interact_panel", text="X", font="f"})
-            leaves.interact_panel:set_shape(100, 40, 200, 30)
-            leaves.interact_panel:set_visible(false)
+            local interact_panel = native_player:text({name="interact_panel", text="X", font="f"})
+            interact_panel:set_shape(100, 40, 200, 30)
+            interact_panel:set_visible(false)
 
-            leaves.radial_custom = native_radial:bitmap({name="radial_custom"})
-            leaves.radial_custom:set_shape(100, 40, 200, 30)
-            leaves.radial_custom:set_visible(false)
+            leaves.radial_absorb_shield_active = native_radial:bitmap({name="radial_absorb_shield_active"})
+            leaves.radial_absorb_shield_active:set_shape(100, 40, 200, 30)
+            leaves.radial_absorb_shield_active:set_visible(false)
 
             leaves.radial_ability = native_radial:panel({name="radial_ability"})
             leaves.radial_ability:set_shape(100, 40, 200, 30)
@@ -501,10 +493,6 @@ class NativePanelPriorityTests(unittest.TestCase):
             leaves.radial_rip_bg = native_radial:bitmap({name="radial_rip_bg", color=Color(0,0,0)})
             leaves.radial_rip_bg:set_shape(100, 40, 200, 30)
             leaves.radial_rip_bg:set_visible(false)
-
-            leaves.radial_absorb_shield_active = native_radial:bitmap({name="radial_absorb_shield_active"})
-            leaves.radial_absorb_shield_active:set_shape(100, 40, 200, 30)
-            leaves.radial_absorb_shield_active:set_visible(false)
 
             leaves.radial_absorb_health_active = native_radial:bitmap({name="radial_absorb_health_active"})
             leaves.radial_absorb_health_active:set_shape(100, 40, 200, 30)
@@ -597,6 +585,39 @@ class NativePanelPriorityTests(unittest.TestCase):
                 t = t + 0.6
             end
 
+            -- Removed transient utility leaves must no longer hide the owned
+            -- block at either crew or player geometry.
+            local removed_leaves = {
+                condition_timer = condition_timer,
+                carry_panel = carry_panel,
+                interact_panel = interact_panel,
+            }
+            _removed_results = {}
+            for leaf_name, leaf_prim in pairs(removed_leaves) do
+                native_entry:set_shape(crew_x, crew_y, crew_w, crew_h)
+                leaf_prim:set_visible(true)
+                kyohud.hud.runtime:update(mgr, t, 0.05)
+                _removed_results[leaf_name .. "_crew_c_vis"] = C._root:visible()
+                _removed_results[leaf_name .. "_crew_p_vis"] = P._root:visible()
+                t = t + 0.6
+
+                leaf_prim:set_visible(false)
+                kyohud.hud.runtime:update(mgr, t, 0.05)
+                t = t + 0.6
+
+                native_entry:set_shape(player_x, player_y, player_w, player_h)
+                leaf_prim:set_visible(true)
+                kyohud.hud.runtime:update(mgr, t, 0.05)
+                _removed_results[leaf_name .. "_local_c_vis"] = C._root:visible()
+                _removed_results[leaf_name .. "_local_p_vis"] = P._root:visible()
+                t = t + 0.6
+
+                leaf_prim:set_visible(false)
+                native_entry:set_shape(crew_x, crew_y, crew_w, crew_h)
+                kyohud.hud.runtime:update(mgr, t, 0.05)
+                t = t + 0.6
+            end
+
             native_entry:set_shape(crew_x, crew_y, crew_w, crew_h)
             local copr_child0 = copr_overlay_panel:polygon({
                 name="0", layer=0, color=Color(0.6, 0, 0, 0),
@@ -619,7 +640,7 @@ class NativePanelPriorityTests(unittest.TestCase):
             _empty_copr_recovered = C._root:visible()
             t = t + 0.6
 
-            leaves.condition_timer:set_visible(true)
+            leaves.radial_absorb_shield_active:set_visible(true)
             native_entry:set_visible(false)
             kyohud.hud.runtime:update(mgr, t, 0.05)
             _ancestor_hidden_recovered = C._root:visible()
@@ -630,7 +651,7 @@ class NativePanelPriorityTests(unittest.TestCase):
             kyohud.hud.runtime:update(mgr, t, 0.05)
             _ancestor_alpha0_recovered = C._root:visible()
             native_entry:set_alpha(1)
-            leaves.condition_timer:set_visible(false)
+            leaves.radial_absorb_shield_active:set_visible(false)
             t = t + 0.6
 
             kyohud.hud.runtime:update(mgr, t, 0.05)
@@ -664,8 +685,7 @@ class NativePanelPriorityTests(unittest.TestCase):
             "empty copr_overlay_panel must be visible by default")
 
         indispensable_leaves = [
-            "condition_timer", "carry_panel", "interact_panel", "radial_custom",
-            "radial_ability", "radial_rip", "radial_rip_bg",
+            "radial_absorb_shield_active", "radial_ability", "radial_rip", "radial_rip_bg",
             "radial_absorb_shield_active", "radial_absorb_health_active",
             "radial_info_meter", "radial_info_meter_bg",
             "radial_delayed_damage_armor", "radial_delayed_damage_health"
@@ -704,6 +724,16 @@ class NativePanelPriorityTests(unittest.TestCase):
                 f"{leaf_name} inactive2 must recover crew")
             self.assertTrue(bool(g._leaf_results[leaf_name + "_recov2_player"]),
                 f"{leaf_name} inactive2 must recover player")
+
+        for leaf_name in ("condition_timer", "carry_panel", "interact_panel"):
+            self.assertTrue(bool(g._removed_results[leaf_name + "_crew_c_vis"]),
+                f"{leaf_name} at crew must NOT hide crew")
+            self.assertTrue(bool(g._removed_results[leaf_name + "_crew_p_vis"]),
+                f"{leaf_name} at crew: player must remain visible")
+            self.assertTrue(bool(g._removed_results[leaf_name + "_local_c_vis"]),
+                f"{leaf_name} at player: crew must remain visible")
+            self.assertTrue(bool(g._removed_results[leaf_name + "_local_p_vis"]),
+                f"{leaf_name} at player must NOT hide player")
 
         self.assertTrue(bool(g._nonempty_copr_hidden_crew),
             "nonempty copr at crew must hide crew")
@@ -985,7 +1015,7 @@ class NativePanelPriorityTests(unittest.TestCase):
             native_radial:set_shape(0, 0, 432, 120)
             native_radial:set_visible(true)
 
-            local leaf = native_entry:text({name="condition_timer", text="T", font="f"})
+            local leaf = native_radial:bitmap({name="radial_absorb_shield_active"})
             leaf:set_shape(100, 40, 200, 30)
             leaf:set_visible(false)
 
@@ -1098,32 +1128,40 @@ class NativePanelPriorityTests(unittest.TestCase):
         self.assertTrue(bool(g._c_vis_4), "crew visible after recovery")
         self.assertTrue(bool(g._p_vis_4), "player visible after recovery")
 
-    def test_condition_timer_child_lookup_fail_closes_restores(self):
-        """condition_timer entry:child failure: fail-closed, same primitives on recovery."""
+    def test_absorb_shield_child_lookup_fail_closes_restores(self):
+        """radial_absorb_shield_active child lookup failure: fail-closed, same primitives on recovery."""
         lua = mounted()
         lua.execute('''
             local r = C._root; local card = C._cards[1]; local nm = card._name_text
             local rx, ry, rw, rh = r:x(), r:y(), r:w(), r:h()
 
-            local native_entry = panel_double:panel({name="ct_fail_entry"})
+            local native_entry = panel_double:panel({name="rc_fail_entry"})
             native_entry:set_shape(rx, ry, rw, rh)
             native_entry:set_visible(true)
 
-            local ct = native_entry:text({name="condition_timer", text="T", font="f"})
-            ct:set_shape(0, 0, rw, rh)
-            ct:set_visible(true)
+            local native_player = native_entry:panel({name="player"})
+            native_player:set_shape(0, 0, rw, rh)
+            native_player:set_visible(true)
+
+            local native_radial = native_player:panel({name="radial_health_panel"})
+            native_radial:set_shape(0, 0, rw, rh)
+            native_radial:set_visible(true)
+
+            local rc = native_radial:bitmap({name="radial_absorb_shield_active"})
+            rc:set_shape(0, 0, rw, rh)
+            rc:set_visible(true)
 
             managers.hud._teammate_panels = {[1] = {_panel = native_entry, _special_equipment = {}}}
 
-            local orig_child = native_entry.child
-            native_entry.child = function() error('child unavailable') end
+            local orig_child = native_radial.child
+            native_radial.child = function() error('child unavailable') end
             RT:update(managers.hud, 1.6, 0.05)
             _fail_hidden = not C._root:visible()
 
-            native_entry.child = orig_child
+            native_radial.child = orig_child
             RT:update(managers.hud, 2.2, 0.05)
             _restored_still_blocked = not C._root:visible()
-            ct:set_visible(false)
+            rc:set_visible(false)
             RT:update(managers.hud, 2.8, 0.05)
             _recover_vis = C._root:visible()
             _same_root = C._root == r
@@ -1139,7 +1177,7 @@ class NativePanelPriorityTests(unittest.TestCase):
         self.assertIs(bool(g._same_name), True)
 
     def test_special_registry_blocks_without_entry_panel(self):
-        """Special equipment panel blocks crew even when entry._panel is nil."""
+        """Special equipment panel no longer blocks crew when entry._panel is nil."""
         lua = mounted()
         lua.execute('''
             local r = C._root; local rx, ry, rw, rh = r:x(), r:y(), r:w(), r:h()
@@ -1151,7 +1189,8 @@ class NativePanelPriorityTests(unittest.TestCase):
             managers.hud._teammate_panels = {[1] = {_panel = nil, _special_equipment = {obs}}}
 
             RT:update(managers.hud, 1.6, 0.05)
-            _blocked = not C._root:visible()
+            _still_visible = C._root:visible()
+            _same_root_during = C._root == r
 
             obs:set_visible(false)
             RT:update(managers.hud, 2.2, 0.05)
@@ -1159,7 +1198,8 @@ class NativePanelPriorityTests(unittest.TestCase):
             _same_root = C._root == r
         ''')
         g = lua.globals()
-        self.assertIs(bool(g._blocked), True)
+        self.assertIs(bool(g._still_visible), True)
+        self.assertIs(bool(g._same_root_during), True)
         self.assertIs(bool(g._recovered), True)
         self.assertIs(bool(g._same_root), True)
 
