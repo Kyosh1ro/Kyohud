@@ -196,6 +196,9 @@ function RT:_residual_load()
             kingpin_reject_postverify = {count = 0, sum = 0, max = 0},
             kingpin_reject_other = {count = 0, sum = 0, max = 0},
             harmony_duplicates = {count = 0, sum = 0, max = 0},
+            harmony_duplicates_sig = {count = 0, sum = 0, max = 0},
+            harmony_duplicates_collect = {count = 0, sum = 0, max = 0},
+            harmony_duplicates_validate = {count = 0, sum = 0, max = 0},
             combat_draw = {count = 0, sum = 0, max = 0},
             objectives_anim = {count = 0, sum = 0, max = 0},
             objectives_anim_idle = {count = 0, sum = 0, max = 0},
@@ -589,7 +592,7 @@ function RT:_residual_finish()
     p.done = true
     p.active = false
     local ph = p.phases
-    local label = "HUD intervals, not GPU; os.clock quantized; runtime inclusive; nested under assault; mission_feed outside runtime; mission_sync/layout/verify inclusive all callers incl recovery; mission_title_sync inclusive title sync/fitting nested under mission_sync for all callers and mission_labels_verify inclusive label measurement/certification nested under mission_layout/_update_layout changed predicate AND mission_verify for all callers, neither pure text_rect nor translation time; do not add nested mission totals to module totals; objectives_anim runtime inclusive; objectives_anim_idle/active split eligible animate only (early returns unclassified) and the finishing frame counts active; objectives_callback nested/overlapping, no sum totals"
+    local label = "HUD intervals, not GPU; os.clock quantized; runtime inclusive; nested under assault; mission_feed outside runtime; mission_sync/layout/verify inclusive all callers incl recovery; mission_title_sync inclusive title sync/fitting nested under mission_sync for all callers and mission_labels_verify is inclusive on all _verify_labels callers; since the layout optimization the _update_layout branch runs only when the state is not verified (_render_verified ~= true), so on stable certified feeds only the _verify_render call counts, neither pure text_rect nor translation time; do not add nested mission totals to module totals; objectives_anim runtime inclusive; objectives_anim_idle/active split eligible animate only (early returns unclassified) and the finishing frame counts active; objectives_callback nested/overlapping, no sum totals"
         .. "; harmony_delayed_sync/priority/delayed_post/duplicates nested under harmony but all callers count (overlaps possible); reserve aggregates pre-priority sync and post-priority release checks, nested under harmony, all callers count; copr aggregates pre-priority sync and post-priority release checks, nested under harmony, all callers count; hacker_active is nested-inclusive around the hacker-active event plus its pre-priority sync and post-priority checks for all callers and stays distinct from the separate harmony_priority checks; kingpin_active is nested-inclusive around the Kingpin activity event plus its pre-priority sync, post-priority checks and terminal/invalid branch for all callers, overlaps generic equipment phases, and is never summed with them; backdrop work unclassified residue; combat_draw outside runtime"
         .. "; equipment_collect/equipment_snapshot/equipment_present/equipment_verify are nested-inclusive overlapping equipment phases (snapshot and verify inside present, H5 certification verify, HUD transition callers included) and equipment_throttled counts equipment update throttle early returns; they overlap each other and the overall equipment bucket, so never sum them"
         .. "; player_capture/player_render/player_verify are nested inclusive overlapping player phases (render and verify nest under capture through the real player path) and player_native_acquire/crew_native_acquire time only the real _h5_acquire_group native acquisition for local_ prefixed and crew_ groups respectively, excluding coordination and target collection; never sum them"
@@ -597,6 +600,7 @@ function RT:_residual_finish()
         .. "; kingpin_publication_total is nested-inclusive only around the native HUD set_player_ability_radial relay plus the nested set_teammate_ability_radial capture/seam it triggers; it excludes pre-call PlayerDamage work, later same-method PostHooks and outer wrappers; it is wall elapsed, not CPU or presented frames; overlapping inner scopes do not add"
         .. "; kingpin_publication_capture times only the two publication capture callbacks (_capture_activity and _capture_kingpin_activity), excluding the local rejection fallback, the pre-seam gate and the native setter/event seam; kingpin_throttle_full times the full throttled equipment update including render and all certification but not the equipment_throttled preamble; both are wall elapsed, not CPU or presented frames; publication includes capture/event and throttle includes verification/render; runtime/event scopes overlap and independent maxima must never be added or subtracted"
         .. "; kingpin_prepare_attempt/fast/full and kingpin_reject_dirty/cache/activation/snapshot/layout/identity/cooldown/verify/render/source/exception/postverify/other are count-only counters, not timings; only count is emitted, sum/max remain zero"
+        .. "; harmony_duplicates_sig/collect/validate are nested-inclusive sub-phases under harmony_duplicates and are never additive: sig covers the crew coverage signature build, its prev/new compare and the memo store; collect covers every coordination target collection (crew per position plus the local player/weapons/equipment/cooldown collections); validate covers the per-position validation reads (card visibility, seen_slots, has_pos, owner_matches and entry_panel resolution) excluding collection and native acquisition"
     if p.mode == "completion" then
         label = label .. "; mode=completion"
     elseif p.mode == "kingpin" then
@@ -640,6 +644,9 @@ function RT:_residual_finish()
         .. "kingpin_reject_source %d; kingpin_reject_exception %d; kingpin_reject_postverify %d; "
         .. "kingpin_reject_other %d; "
         .. "harmony_duplicates %d %.3f %.3f; "
+        .. "harmony_duplicates_sig %d %.3f %.3f; "
+        .. "harmony_duplicates_collect %d %.3f %.3f; "
+        .. "harmony_duplicates_validate %d %.3f %.3f; "
         .. "combat_draw %d %.3f %.3f; "
         .. "gaps >16.7ms %d >33.3ms %d >50ms %d max_ms %.3f; %s%s",
         ph.alerts.count, ph.alerts.sum * 1000, ph.alerts.max * 1000,
@@ -709,6 +716,9 @@ function RT:_residual_finish()
         ph.kingpin_reject_postverify.count,
         ph.kingpin_reject_other.count,
         ph.harmony_duplicates.count, ph.harmony_duplicates.sum * 1000, ph.harmony_duplicates.max * 1000,
+        ph.harmony_duplicates_sig.count, ph.harmony_duplicates_sig.sum * 1000, ph.harmony_duplicates_sig.max * 1000,
+        ph.harmony_duplicates_collect.count, ph.harmony_duplicates_collect.sum * 1000, ph.harmony_duplicates_collect.max * 1000,
+        ph.harmony_duplicates_validate.count, ph.harmony_duplicates_validate.sum * 1000, ph.harmony_duplicates_validate.max * 1000,
         ph.combat_draw.count, ph.combat_draw.sum * 1000, ph.combat_draw.max * 1000,
         p.gap_16, p.gap_33, p.gap_50, p.gap_max,
         label, inconclusive)
@@ -2782,15 +2792,92 @@ local function h5_player_downs_known(P)
     return vis_s == CALL_OK and vis == true
 end
 
-local function h5_collect_player_targets(entry_panel, P)
+local function h5_collect_player_targets(entry_panel, P, rt)
     local targets = {}
     if not entry_panel or not panel_alive(entry_panel) then return targets end
     local label, label_text, id_evidence = nil, nil, nil
     local identity_ok = false
-    if P and P._root and panel_alive(P._root) then
-        label, label_text, id_evidence = h5_ensure_local_identity(P, entry_panel)
-        if label then
-            identity_ok = h5_verify_local_identity(P, label, label_text, id_evidence)
+    -- The owned identity certification is stable between source mutations. Its
+    -- key is rebuilt every update from fresh reads: the entry leaf text/color
+    -- (one each), the owned root width and label primitive, plus the held local
+    -- group state. A dead or reparented label misses the cache and repairs.
+    local cache = rt and rt._h5_coord_cache
+    local cached = cache and cache.identity
+    local source_text, root_w = nil, nil
+    local r, g, b = nil, nil, nil
+    local has_root = P and P._root and panel_alive(P._root)
+    if has_root then
+        source_text = h5_read_native_name_text(entry_panel)
+        r, g, b = h5_read_native_name_color(entry_panel)
+        local rws, rw = safe_call(P._root, "w")
+        if rws == CALL_OK and finite(rw) and rw > 0 then root_w = rw end
+    end
+    local label_now = P and P._h5_id_label or nil
+    local label_text_ok = false
+    if cached and label_now and cached.label == label_now
+        and panel_alive(label_now) then
+        -- The mirror text is re-read fresh on every update: the native name
+        -- leaf stays hidden while we own the identity, so an in-place text
+        -- corruption of our label would otherwise survive until the next cache
+        -- invalidation. Hostile reparenting of the same live label object is
+        -- NOT re-read each frame to stay within the two-getter budget: it is
+        -- detected at the latest on the next invalidation (release, event,
+        -- structural change), and the label belongs to P._root, which KyoHUD
+        -- never moves; p_root/root_gen cover replacement of the root itself.
+        local text_status, text_value = safe_call(label_now, "text")
+        label_text_ok = text_status == CALL_OK and text_value == cached.text
+    end
+    local local_group_ok = false
+    if rt and rt._h5_groups then
+        local state = rt._h5_groups["local_p_p"]
+        local_group_ok = state ~= nil and state._release_pending ~= true
+    end
+    local cache_hit = false
+    if cached and has_root and source_text and root_w and label_now
+        and panel_alive(label_now)
+        and cached.entry_panel == entry_panel
+        and cached.root == P._root
+        and cached.label == label_now
+        and label_text_ok == true
+        and cached.source_text == source_text
+        and cached.root_w == root_w
+        and cached.r == r and cached.g == g and cached.b == b
+        and cached.local_group_ok == local_group_ok then
+        -- One fresh text() read above is the only label getter on a hit: the
+        -- visibility write in _sync_h5_id_label_visibility may read one more.
+        cache_hit = true
+        label = label_now
+        label_text = cached.text
+        identity_ok = cached.ok == true
+    end
+    if not cache_hit then
+        if has_root then
+            label, label_text, id_evidence = h5_ensure_local_identity(P, entry_panel)
+            if label then
+                identity_ok = h5_verify_local_identity(P, label, label_text, id_evidence)
+            end
+        end
+        if rt then
+            local write_cache = rt._h5_coord_cache
+            if write_cache then
+                -- A pass that attempted any write is never memoized: the next
+                -- update must run the full verifier again before stabilizing.
+                if identity_ok and id_evidence ~= nil then
+                    write_cache.identity = {
+                        entry_panel = entry_panel,
+                        root = P._root,
+                        label = label,
+                        source_text = source_text,
+                        root_w = root_w,
+                        r = r, g = g, b = b,
+                        local_group_ok = local_group_ok,
+                        ok = true,
+                        text = label_text,
+                    }
+                else
+                    write_cache.identity = nil
+                end
+            end
         end
     end
     if P then P._h5_identity_verified = identity_ok end
@@ -2804,19 +2891,15 @@ local function h5_collect_player_targets(entry_panel, P)
     if player then
         local radial = h5_child(player, "radial_health_panel")
         if radial then
+            -- Read the live actor registry directly instead of re-snapshotting
+            -- it: the player module already ran ACT:refresh/get_actor this frame
+            -- and these booleans are always observed fresh, never retained.
             local ACT = kyohud.hud.actors
-            local actor_snap = nil
-            if ACT and type(ACT.get_actor) == "function" then
-                local slot = h5_player_slot()
-                if slot then
-                    local snap_ok, snap = pcall(ACT.get_actor, ACT, slot)
-                    if snap_ok and type(snap) == "table" then
-                        actor_snap = snap
-                    end
-                end
-            end
-            local health_valid = actor_snap and actor_snap.health and actor_snap.health.valid == true
-            local armor_valid = actor_snap and actor_snap.armor and actor_snap.armor.valid == true
+            local actor_reg = ACT and ACT._store and ACT._store[h5_player_slot()] or nil
+            local health_valid = actor_reg ~= nil
+                and actor_reg.health ~= nil and actor_reg.health.valid == true
+            local armor_valid = actor_reg ~= nil
+                and actor_reg.armor ~= nil and actor_reg.armor.valid == true
             for _, name in ipairs(H5_RADIAL_LEAVES) do
                 if name == "radial_health" and not health_valid then
                 elseif name == "radial_shield" and not armor_valid then
@@ -3434,6 +3517,10 @@ end
 function RT:_h5_release_group(group_key)
     local state = self._h5_groups and self._h5_groups[group_key]
     if not state then return true end
+    -- Any real release (or failed acquisition, which funnels here) invalidates
+    -- the coordination memo so the next pass re-collects fresh targets instead
+    -- of reusing a cached leaf set that may contain a dead primitive.
+    self._h5_coord_cache = nil
     if group_key == H5_FLASH_GROUP then h5_reconcile_flash_terminal(state) end
     local nv = kyohud.hud.native_visibility
     if state.generation > 0 and nv and type(nv.release) == "function" then
@@ -3817,7 +3904,178 @@ function RT:_sync_damage_feedback(p_ok, p_vis, mgr, entry, handled_keys)
     handled_keys[H5_DAMAGE_GROUP] = true
 end
 
+-- Crew coverage memo key. Rebuilt from fresh live fields on every update: the
+-- roster entries, the actor registry generations and the publication records
+-- that write_crew_native_coverage consumes. Equal signatures mean the cached
+-- row set is still authoritative for this update.
+function RT:_h5_crew_coverage_signature()
+    local nil_token = self._h5_sig_nil
+    if not nil_token then
+        nil_token = {}
+        self._h5_sig_nil = nil_token
+    end
+    local sig_a = self._h5_sig_a
+    if not sig_a then
+        sig_a = {}
+        self._h5_sig_a = sig_a
+    end
+    local sig_b = self._h5_sig_b
+    if not sig_b then
+        sig_b = {}
+        self._h5_sig_b = sig_b
+    end
+    local prev = self._h5_coord_cache and self._h5_coord_cache.crew_sig or nil
+    local sig
+    if prev == sig_a then
+        sig = sig_b
+    elseif prev == sig_b then
+        sig = sig_a
+    else
+        local alt = not self._h5_sig_alt
+        self._h5_sig_alt = alt
+        sig = alt and sig_b or sig_a
+    end
+    local n = 0
+    local function push(value)
+        if value == nil then value = nil_token end
+        n = n + 1
+        sig[n] = value
+    end
+    local ACT = kyohud.hud.actors
+    local C = kyohud.hud.crew
+    push(ACT)
+    push(C)
+    push(self._manager)
+    if not ACT then
+        local tail = #sig
+        for i = n + 1, tail do sig[i] = nil end
+        return sig
+    end
+    push(ACT._crew_source_session)
+    push(ACT._crew_source_criminals)
+    push(ACT._crew_source_mgr)
+    local net = managers and managers.network or nil
+    local session_ok, live_session = safe_call(net, "session")
+    if session_ok ~= CALL_OK then live_session = nil end
+    push(live_session)
+    push(managers and managers.criminals)
+    push(managers and managers.hud)
+    local entries = ACT._crew_entries
+    local reg = ACT._store
+    local player_mgr = managers and managers.player or nil
+    local pm_global = nil
+    if type(player_mgr) == "table" or type(player_mgr) == "userdata" then
+        pm_global = player_mgr._global
+    end
+    -- Wholesale replacement of the live sources consumed by
+    -- crew_publication_current must change this key even when the per-peer
+    -- records are kept: the player manager itself and the four live registry
+    -- tables it exposes. push() maps nil to the shared nil token.
+    push(player_mgr)
+    push(pm_global)
+    push(pm_global and pm_global.synced_deployables)
+    push(pm_global and pm_global.synced_cable_ties)
+    push(pm_global and pm_global.synced_grenades)
+    push(pm_global and pm_global.synced_ammo_info)
+    for pos = 1, 3 do
+        local live = entries and entries[pos]
+        if not live then
+            push(false)
+        else
+            push(true)
+            push(live.occupant_token)
+            push(live.slot)
+            push(live.peer_id)
+            push(live.ai == true)
+            push(live.name ~= nil)
+            push(live.position)
+            push(live._identity_key)
+            push(live.phase)
+            push(live.health and live.health.valid == true)
+            push(live.bleedout and live.bleedout.valid == true)
+            local w = live.weapon
+            push(w and w.selection_index)
+            push(w and w.unit_id)
+            local ammo = w and w.ammo
+            push(ammo and ammo.current_clip)
+            push(ammo and ammo.total_raw)
+            push(ammo and ammo.reserve)
+            local slots = live.ammo_slots
+            for si = 1, 2 do
+                local sa = slots and slots[si]
+                push(sa and sa.current_clip)
+                push(sa and sa.total_raw)
+                push(sa and sa.reserve)
+            end
+            local eq = live.equipment
+            local dep = eq and eq.deployable
+            push(dep and dep.id)
+            push(dep and dep.amount)
+            local ties = eq and eq.cable_ties
+            push(ties and ties.amount)
+            local proj = eq and eq.projectile
+            push(proj and proj.id)
+            push(proj and proj.amount)
+            push(proj and proj.kind)
+            local r = reg and reg[live.slot]
+            if r then
+                push(r.generation)
+                push(r.peer_id)
+                push(r.ai == true)
+                push(r.health and r.health.valid == true)
+                push(r.health and r.health.provenance)
+                push(r.armor and r.armor.valid == true)
+                push(r.armor and r.armor.provenance)
+                push(r.downs)
+            else
+                for _ = 1, 8 do push(false) end
+            end
+            if live.ai ~= true and type(live.peer_id) == "number" then
+                local peer_id = live.peer_id
+                local peer_ok, live_peer = safe_call(live_session, "peer", peer_id)
+                if peer_ok ~= CALL_OK then live_peer = nil end
+                push(live_peer)
+                local published = ACT._pm_published
+                for _, channel in ipairs({"deployable", "cable_ties", "grenade"}) do
+                    local rec = published and published[channel] and published[channel][peer_id]
+                    push(rec and rec.record)
+                    push(rec and rec.registry_source)
+                    push(rec and rec.session)
+                    push(rec and rec.pm)
+                    push(rec and rec.peer_obj)
+                end
+                for si = 1, 2 do
+                    local rec = published and published.ammo
+                        and published.ammo[peer_id * 1000 + si]
+                    push(rec and rec.record)
+                    push(rec and rec.registry_source)
+                    push(rec and rec.session)
+                    push(rec and rec.pm)
+                    push(rec and rec.peer_obj)
+                end
+                if pm_global then
+                    push(pm_global.synced_deployables and pm_global.synced_deployables[peer_id])
+                    push(pm_global.synced_cable_ties and pm_global.synced_cable_ties[peer_id])
+                    push(pm_global.synced_grenades and pm_global.synced_grenades[peer_id])
+                    local ammo_info = pm_global.synced_ammo_info and pm_global.synced_ammo_info[peer_id]
+                    push(ammo_info and ammo_info[1])
+                    push(ammo_info and ammo_info[2])
+                else
+                    for _ = 1, 5 do push(false) end
+                end
+            end
+        end
+    end
+    local tail = #sig
+    for i = n + 1, tail do sig[i] = nil end
+    return sig
+end
+
 function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
+    local probe = self._residual_probe
+    local sub = probe and not probe.done and probe.active
+        and type(self._residual_stamp) == "function"
+        and type(self._residual_record) == "function"
     local mgr = self._manager
     if not mgr then return {} end
     if self._disabled or self._freeflight then
@@ -3828,6 +4086,11 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
     if not nv or type(nv.acquire) ~= "function" then
         damage_feedback_hide_owned()
         return {}
+    end
+
+    local cache_pass = self._h5_coord_cache_pass == true
+    if not cache_pass then
+        self._h5_coord_cache = nil
     end
 
     local P = kyohud.hud.player
@@ -3849,6 +4112,62 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
         and self._mounted and panel_alive(E._root)
     local c_ok = c_enabled and C and C._mounted and C._manager == mgr
         and self._mounted and panel_alive(C._root)
+
+    -- Coordination memo: only ever reused while every structural source keeps
+    -- the identity it had when the memo was taken. Real group releases (and
+    -- failed acquisitions, which release) clear it unconditionally.
+    local coord_cache = cache_pass and self._h5_coord_cache or nil
+    if coord_cache then
+        if coord_cache.manager ~= mgr
+            or coord_cache.disabled ~= (self._disabled == true)
+            or coord_cache.freeflight ~= (self._freeflight == true)
+            or coord_cache.p_enabled ~= p_enabled
+            or coord_cache.w_enabled ~= w_enabled
+            or coord_cache.e_enabled ~= e_enabled
+            or coord_cache.c_enabled ~= c_enabled
+            or coord_cache.root_gen ~= self._generation
+            or coord_cache.p_root ~= (P and P._root)
+            or coord_cache.p_manager ~= (P and P._manager)
+            or coord_cache.p_mounted ~= (P ~= nil and P._mounted == true)
+            or coord_cache.w_root ~= (W and W._root)
+            or coord_cache.w_manager ~= (W and W._manager)
+            or coord_cache.w_mounted ~= (W ~= nil and W._mounted == true)
+            or coord_cache.e_root ~= (E and E._root)
+            or coord_cache.e_manager ~= (E and E._manager)
+            or coord_cache.e_mounted ~= (E ~= nil and E._mounted == true)
+            or coord_cache.c_root ~= (C and C._root)
+            or coord_cache.c_manager ~= (C and C._manager)
+            or coord_cache.c_mounted ~= (C ~= nil and C._mounted == true)
+        then
+            coord_cache = nil
+            self._h5_coord_cache = nil
+        end
+    end
+    if cache_pass and not coord_cache then
+        coord_cache = {
+            manager = mgr,
+            disabled = self._disabled == true,
+            freeflight = self._freeflight == true,
+            p_enabled = p_enabled,
+            w_enabled = w_enabled,
+            e_enabled = e_enabled,
+            c_enabled = c_enabled,
+            root_gen = self._generation,
+            p_root = P and P._root,
+            p_manager = P and P._manager,
+            p_mounted = P ~= nil and P._mounted == true,
+            w_root = W and W._root,
+            w_manager = W and W._manager,
+            w_mounted = W ~= nil and W._mounted == true,
+            e_root = E and E._root,
+            e_manager = E and E._manager,
+            e_mounted = E ~= nil and E._mounted == true,
+            c_root = C and C._root,
+            c_manager = C and C._manager,
+            c_mounted = C ~= nil and C._mounted == true,
+        }
+        self._h5_coord_cache = coord_cache
+    end
 
     -- Receipts belong only to this synchronous H5 -> backdrop pass. They are
     -- never retained across frames. Backdrop writes do not mutate P/W/E content.
@@ -3954,7 +4273,9 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
             if entry_panel and panel_alive(entry_panel) then
                 local key = "local_p"
                 if p_ok and p_vis then
-                    local p_targets = h5_collect_player_targets(entry_panel, P)
+                    local s0 = sub and self:_residual_stamp() or nil
+                    local p_targets = h5_collect_player_targets(entry_panel, P, self)
+                    if s0 then self:_residual_record("harmony_duplicates_collect", s0) end
                     if #p_targets > 0 then
                         self:_h5_acquire_group(key .. "_p", p_targets, {
                             entry_panel = entry_panel,
@@ -3969,7 +4290,9 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
                 end
                 handled_keys[key .. "_p"] = true
                 if w_ok and w_vis then
+                    local s0 = sub and self:_residual_stamp() or nil
                     local w_targets = h5_collect_weapon_targets(entry_panel, W)
+                    if s0 then self:_residual_record("harmony_duplicates_collect", s0) end
                     if #w_targets > 0 then
                         self:_h5_acquire_group(key .. "_w", w_targets, {
                             entry_panel = entry_panel,
@@ -3984,7 +4307,9 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
                 end
                 handled_keys[key .. "_w"] = true
                 if e_ok and e_vis then
+                    local s0 = sub and self:_residual_stamp() or nil
                     local e_targets = h5_collect_equipment_targets(entry_panel, E)
+                    if s0 then self:_residual_record("harmony_duplicates_collect", s0) end
                     if #e_targets > 0 then
                         self:_h5_acquire_group(key .. "_e", e_targets, {
                             entry_panel = entry_panel,
@@ -3999,7 +4324,9 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
                 end
                 handled_keys[key .. "_e"] = true
                 if cooldown_ok then
+                    local s0 = sub and self:_residual_stamp() or nil
                     local cooldown_targets = h5_collect_cooldown_targets(entry_panel)
+                    if s0 then self:_residual_record("harmony_duplicates_collect", s0) end
                     if #cooldown_targets > 0 then
                         self:_h5_acquire_group(H5_COOLDOWN_GROUP, cooldown_targets, {
                             entry_panel = entry_panel,
@@ -4147,13 +4474,47 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
     end
 
     if c_ok and c_vis and ACT and type(ACT.write_crew_native_coverage) == "function" then
-        self._h5_crew_coverage = self._h5_crew_coverage or {}
-        local snap_ok, rows = pcall(ACT.write_crew_native_coverage, ACT, self._h5_crew_coverage)
-        if snap_ok and type(rows) == "table" then
+        -- Recompute the row set only when the fresh signature differs from the
+        -- one that produced the memoized rows. The per-position validation,
+        -- card visibility and acquisition loop below always runs.
+        local s0 = sub and self:_residual_stamp() or nil
+        local crew_cache = self._h5_coord_cache
+        local crew_sig = self:_h5_crew_coverage_signature()
+        local rows = crew_cache and crew_cache.crew_rows
+        local crew_hit = false
+        if crew_cache and rows and self._h5_crew_coverage == rows then
+            local previous = crew_cache.crew_sig
+            if type(previous) == "table" and #previous == #crew_sig then
+                crew_hit = true
+                for i = 1, #crew_sig do
+                    if previous[i] ~= crew_sig[i] then crew_hit = false; break end
+                end
+            end
+        end
+        if not crew_hit then
+            self._h5_crew_coverage = self._h5_crew_coverage or {}
+            local snap_ok, written = pcall(ACT.write_crew_native_coverage, ACT, self._h5_crew_coverage)
+            if snap_ok and type(written) == "table" then
+                rows = written
+                if crew_cache then
+                    crew_cache.crew_sig = crew_sig
+                    crew_cache.crew_rows = written
+                end
+            else
+                rows = nil
+                if crew_cache then
+                    crew_cache.crew_sig = nil
+                    crew_cache.crew_rows = nil
+                end
+            end
+        end
+        if s0 then self:_residual_record("harmony_duplicates_sig", s0) end
+        if type(rows) == "table" then
             local seen_slots = {}
             for pos = 1, 3 do
                 local current = rows[pos]
                 local shown = C._native_coverage and C._native_coverage[pos]
+                local s0 = sub and self:_residual_stamp() or nil
                 if current and current.valid and shown and shown.valid
                     and current.occupant_token == shown.occupant_token and current.slot == shown.slot then
                     local slot = current.slot
@@ -4173,7 +4534,10 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
                                 if entry_panel and panel_alive(entry_panel) then
                                     local key = "crew_" .. pos
                                     handled_keys[key] = true
+                                    if s0 then self:_residual_record("harmony_duplicates_validate", s0) end
+                                    local s0 = sub and self:_residual_stamp() or nil
                                     local targets = h5_collect_crew_targets(entry_panel, current, shown)
+                                    if s0 then self:_residual_record("harmony_duplicates_collect", s0) end
                                     if #targets > 0 then
                                         self:_h5_acquire_group(key, targets, {
                                             entry_panel = entry_panel, manager = mgr, root_gen = self._generation,
@@ -6747,7 +7111,11 @@ function RT:_sync_local_backdrop(t, crew_receipt)
     self:_hacker_active_post_priority(t)
     if timed then self:_residual_record(active_phase, hacker_post_start) end
     if self._stoic_trace_enabled == true then self:_stoic_trace_record() end
+    -- Only a real timed update pass may reuse the coordination memo. Direct or
+    -- event-driven coordination invocations keep the full fresh certification.
+    self._h5_coord_cache_pass = t ~= nil
     local certifications = self:_coordinate_h5_native_duplicates(crew_receipt)
+    self._h5_coord_cache_pass = false
     if t ~= nil then
         if self._last_backdrop_sync ~= nil and t >= self._last_backdrop_sync
             and (t - self._last_backdrop_sync) < BG_THROTTLE then
