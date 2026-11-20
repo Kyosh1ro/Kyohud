@@ -33,10 +33,38 @@ local STROKE_CLR = Color(0.7, 0.2, 0.18)
 local STROKE_ALPHA = 0.3
 local COND_CLR = Color(0.9, 0.25, 0.2)
 
+local DECK_ORANGE = Color(1, 0.60, 0.10)
+local DECK_BLUE = Color(0.35, 0.70, 0.95)
+local DECK_PURPLE = Color(0.65, 0.40, 0.95)
+local DECK_YELLOW = Color(1, 0.85, 0.20)
+local DECK_RED = Color(1, 0.20, 0.15)
+local DECK_GREEN = Color(0.25, 0.85, 0.35)
+local DECK_CYAN = Color(0.20, 0.85, 0.90)
+local DECK_BAR_BG = Color(0.10, 0.10, 0.12)
+
+local DECK_PRIM_KEYS = {
+    "_deck_hacker_fill", "_deck_hacker_text",
+    "_deck_kingpin_shield", "_deck_kingpin_health",
+    "_deck_dodge", "_deck_dodge_text",
+    "_deck_maniac", "_deck_maniac_text",
+    "_deck_stoic_bg", "_deck_stoic_fill", "_deck_stoic_text",
+    "_deck_copr_bg", "_deck_copr_fill", "_deck_copr_text",
+    "_deck_delayed_armor", "_deck_delayed_health",
+    "_deck_damage_top", "_deck_damage_bottom",
+    "_deck_damage_left", "_deck_damage_right",
+}
+
 local RH = {0.20, 0.17, 0.16, 0.17, 0.15, 0.15}
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+end
+
+local function clamp01(v)
+    if not finite(v) then return 1 end
+    if v < 0 then return 0 end
+    if v > 1 then return 1 end
+    return v
 end
 
 local function live(p)
@@ -463,6 +491,27 @@ function CC.new(parent, name)
         self._down_bottom = self.root:rect({name = name .. "_dnb", layer = 4, color = STROKE_CLR, visible = false})
         self._down_left = self.root:rect({name = name .. "_dnl", layer = 4, color = STROKE_CLR, visible = false})
         self._down_right = self.root:rect({name = name .. "_dnr", layer = 4, color = STROKE_CLR, visible = false})
+
+        self._deck_hacker_fill = self.root:rect({name = name .. "_dhf", layer = 3, color = DECK_ORANGE, visible = false})
+        self._deck_hacker_text = self.root:text({name = name .. "_dht", font = FONT, layer = 4, text = ""})
+        self._deck_kingpin_shield = self.root:rect({name = name .. "_dks", layer = 3, color = DECK_BLUE, visible = false})
+        self._deck_kingpin_health = self.root:rect({name = name .. "_dkh", layer = 3, color = DECK_GREEN, visible = false})
+        self._deck_dodge = self.root:rect({name = name .. "_ddg", layer = 3, color = DECK_BLUE, visible = false})
+        self._deck_dodge_text = self.root:text({name = name .. "_ddgt", font = FONT, layer = 4, text = ""})
+        self._deck_maniac = self.root:rect({name = name .. "_dmn", layer = 3, color = DECK_PURPLE, visible = false})
+        self._deck_maniac_text = self.root:text({name = name .. "_dmnt", font = FONT, layer = 4, text = ""})
+        self._deck_stoic_bg = self.root:rect({name = name .. "_dsb", layer = 3, color = DECK_BAR_BG, visible = false})
+        self._deck_stoic_fill = self.root:rect({name = name .. "_dsf", layer = 3, color = DECK_YELLOW, visible = false})
+        self._deck_stoic_text = self.root:text({name = name .. "_dst", font = FONT, layer = 4, text = ""})
+        self._deck_copr_bg = self.root:rect({name = name .. "_dcb", layer = 3, color = DECK_BAR_BG, visible = false})
+        self._deck_copr_fill = self.root:rect({name = name .. "_dcf", layer = 3, color = DECK_CYAN, visible = false})
+        self._deck_copr_text = self.root:text({name = name .. "_dct", font = FONT, layer = 4, text = ""})
+        self._deck_delayed_armor = self.root:rect({name = name .. "_dda", layer = 3, color = DECK_RED, visible = false})
+        self._deck_delayed_health = self.root:rect({name = name .. "_ddh", layer = 3, color = DECK_RED, visible = false})
+        self._deck_damage_top = self.root:rect({name = name .. "_dmt", layer = 4, color = DECK_RED, visible = false})
+        self._deck_damage_bottom = self.root:rect({name = name .. "_dmb", layer = 4, color = DECK_RED, visible = false})
+        self._deck_damage_left = self.root:rect({name = name .. "_dml", layer = 4, color = DECK_RED, visible = false})
+        self._deck_damage_right = self.root:rect({name = name .. "_dmr", layer = 4, color = DECK_RED, visible = false})
     end)
 
     if not ok or not self.root then
@@ -534,6 +583,15 @@ function Card:_all_live()
         and live(self._state_bg) and live(self._condition_icon)
         and live(self._down_top) and live(self._down_bottom)
         and live(self._down_left) and live(self._down_right)
+        and live(self._deck_hacker_fill) and live(self._deck_hacker_text)
+        and live(self._deck_kingpin_shield) and live(self._deck_kingpin_health)
+        and live(self._deck_dodge) and live(self._deck_dodge_text)
+        and live(self._deck_maniac) and live(self._deck_maniac_text)
+        and live(self._deck_stoic_bg) and live(self._deck_stoic_fill) and live(self._deck_stoic_text)
+        and live(self._deck_copr_bg) and live(self._deck_copr_fill) and live(self._deck_copr_text)
+        and live(self._deck_delayed_armor) and live(self._deck_delayed_health)
+        and live(self._deck_damage_top) and live(self._deck_damage_bottom)
+        and live(self._deck_damage_left) and live(self._deck_damage_right)
 end
 
 function Card:_rows(body_offset)
@@ -595,6 +653,281 @@ function Card:_fit(p, key, text, size, allow_trim, suffix)
     if p:text() ~= c.text then p:set_text(c.text) end
     if p:font_size() ~= c.fsize then p:set_font_size(c.fsize) end
     return c
+end
+
+function Card:set_perkdeck(data)
+    self._perkdeck = type(data) == "table" and data or nil
+end
+
+function Card:_hide_perkdeck_prims()
+    for _, key in ipairs(DECK_PRIM_KEYS) do
+        local p = self[key]
+        if p ~= nil and live(p) then
+            pcall(function() p:set_visible(false) end)
+        end
+    end
+end
+
+-- Render the owned, per-deck remote indicators. All primitives live under the
+-- card root and are verified by Card:verify_deck; none of them participate in
+-- the actor-content normalization pass because they carry their own alpha.
+function Card:_render_perkdeck()
+    local g = self._geo
+    if not g then
+        self:_hide_perkdeck_prims()
+        self._deck_exp = nil
+        self._deck_hidden = nil
+        return false
+    end
+    local data = self._perkdeck
+    if not (type(data) == "table" and data.active == true)
+        and self._deck_hidden == true and self._deck_exp ~= nil then
+        if self:verify_deck() then return true end
+    end
+    local exp = {}
+    local rendered = pcall(function()
+        local w = g.w
+        local h = g.h
+        local e = h / 120
+        local left_w = (w - 12 * e) * 0.52
+        local r1_y = h * RH[2]
+        local r1_h = h * RH[3]
+        local r2_h = h * RH[4]
+        local ax = 4 * e
+        local aw = left_w - 8 * e
+        local ah = 18 * e
+        local ay = r1_y + (r1_h + r2_h - ah) * 0.5
+        local ix = ax + 2 * e
+        local iy = ay + 2 * e
+        local iw = aw - 4 * e
+        local ih = 14 * e
+
+        -- Record the actual post-write readback for the properties the engine
+        -- may normalize (color channel, alpha, text, font size). verify_deck
+        -- then compares like-for-like; geometry and visibility keep their
+        -- intended values so a silent setter failure is still detected.
+        local function read_color(p)
+            local applied = nil
+            pcall(function()
+                local c = p:color()
+                if c then
+                    applied = {r = c.r or 0, g = c.g or 0, b = c.b or 0}
+                end
+            end)
+            return applied
+        end
+
+        local function read_alpha(p, fallback)
+            local applied = fallback
+            pcall(function()
+                local v = p:alpha()
+                if finite(v) then applied = v end
+            end)
+            return applied
+        end
+
+        local function rect(key, p, x, y, ww, hh, color, alpha, visible)
+            if p == nil then return end
+            if not (finite(x) and finite(y) and finite(ww) and finite(hh)) then
+                x, y, ww, hh = 0, 0, 0, 0
+            end
+            if ww < 0 then ww = 0 end
+            if hh < 0 then hh = 0 end
+            shape(p, x, y, ww, hh)
+            if color then pcall(function() p:set_color(color) end) end
+            local a = finite(alpha) and alpha or 1
+            pcall(function() p:set_alpha(a) end)
+            p:set_visible(visible == true)
+            exp[key] = {
+                prim = p, kind = "rect",
+                geo = {x = x, y = y, w = ww, h = hh},
+                color = color and (read_color(p) or store_color(color)) or nil,
+                alpha = read_alpha(p, a), visible = visible == true,
+            }
+        end
+
+        local function text(key, p, value, size, x, y, ww, hh, color, alpha, visible)
+            if p == nil then return end
+            if not (finite(x) and finite(y) and finite(ww) and finite(hh)) then
+                x, y, ww, hh = 0, 0, 0, 0
+            end
+            if ww < 0 then ww = 0 end
+            if hh < 0 then hh = 0 end
+            shape(p, x, y, ww, hh)
+            local fit = self:_fit(p, key, value, size, false)
+            local a = finite(alpha) and alpha or 1
+            if color then pcall(function() p:set_color(color) end) end
+            pcall(function() p:set_alpha(a) end)
+            p:set_visible(visible == true)
+            local applied_text, applied_fsize = fit.text, fit.fsize
+            pcall(function() applied_text = p:text() end)
+            pcall(function()
+                local v = p:font_size()
+                if finite(v) then applied_fsize = v end
+            end)
+            exp[key] = {
+                prim = p, kind = "text",
+                geo = {x = x, y = y, w = ww, h = hh},
+                color = color and (read_color(p) or store_color(color)) or nil,
+                alpha = read_alpha(p, a), visible = visible == true,
+                text = applied_text, fsize = applied_fsize,
+            }
+        end
+
+        local hacker = type(data) == "table" and data.hacker or nil
+        local kingpin = type(data) == "table" and data.kingpin or nil
+        local dodge = type(data) == "table" and data.dodge or nil
+        local maniac = type(data) == "table" and data.maniac or nil
+        local stoic = type(data) == "table" and data.stoic or nil
+        local copr = type(data) == "table" and data.copr or nil
+        local delayed = type(data) == "table" and data.delayed or nil
+        local damage = type(data) == "table" and data.damage or nil
+
+        local hacker_active = type(hacker) == "table" and hacker.active == true
+        local hacker_ratio = clamp01(type(hacker) == "table" and hacker.ratio or 1)
+        rect("deck_hacker_fill", self._deck_hacker_fill,
+            ax, ay + ah * 0.55, aw * hacker_ratio, ah * 0.4, DECK_ORANGE, 0.9, hacker_active)
+        text("deck_hacker_text", self._deck_hacker_text,
+            hacker_active and hacker.text or "", 16 * e,
+            w * 0.60, r1_y, w * 0.40, r1_h, DECK_ORANGE, 1, hacker_active)
+
+        local shield_active = type(kingpin) == "table" and kingpin.shield == true
+        local absorb_health_active = type(kingpin) == "table" and kingpin.health == true
+        rect("deck_kingpin_shield", self._deck_kingpin_shield,
+            ix, iy, iw, ih, DECK_BLUE, 0.35, shield_active)
+        rect("deck_kingpin_health", self._deck_kingpin_health,
+            ix, iy, iw, ih, DECK_GREEN, 0.35, absorb_health_active)
+
+        local dodge_active = type(dodge) == "table" and dodge.active == true
+        rect("deck_dodge", self._deck_dodge,
+            ix, iy, iw * 0.28, ih, DECK_BLUE, 0.75, dodge_active)
+        text("deck_dodge_text", self._deck_dodge_text,
+            dodge_active and "DODGE" or "", 14 * e,
+            ix + iw * 0.30, iy, iw * 0.70, ih, DECK_BLUE, 1, dodge_active)
+
+        local maniac_active = type(maniac) == "table" and maniac.active == true
+        rect("deck_maniac", self._deck_maniac,
+            ix + iw * 0.32, iy, iw * 0.28, ih, DECK_PURPLE, 0.75, maniac_active)
+        text("deck_maniac_text", self._deck_maniac_text,
+            maniac_active and "MANIAC" or "", 14 * e,
+            ix + iw * 0.62, iy, iw * 0.38, ih, DECK_PURPLE, 1, maniac_active)
+
+        local stoic_active = type(stoic) == "table" and stoic.active == true
+        local stoic_ratio = clamp01(type(stoic) == "table" and stoic.ratio or 1)
+        local stoic_y = ay + ah + e
+        rect("deck_stoic_bg", self._deck_stoic_bg,
+            ax, stoic_y, aw, 3 * e, DECK_BAR_BG, 1, stoic_active)
+        rect("deck_stoic_fill", self._deck_stoic_fill,
+            ax, stoic_y, aw * stoic_ratio, 3 * e, DECK_YELLOW, 0.9, stoic_active)
+        text("deck_stoic_text", self._deck_stoic_text,
+            stoic_active and stoic.text or "", 14 * e,
+            ax + aw * 0.55, stoic_y - e, aw * 0.45, 12 * e, DECK_YELLOW, 1, stoic_active)
+
+        local copr_active = type(copr) == "table" and copr.active == true
+        local copr_ratio = clamp01(type(copr) == "table" and copr.ratio or 1)
+        local copr_y = ay + ah + 5 * e
+        rect("deck_copr_bg", self._deck_copr_bg,
+            ax, copr_y, aw, 3 * e, DECK_BAR_BG, 1, copr_active)
+        rect("deck_copr_fill", self._deck_copr_fill,
+            ax, copr_y, aw * copr_ratio, 3 * e, DECK_CYAN, 0.9, copr_active)
+        text("deck_copr_text", self._deck_copr_text,
+            copr_active and copr.text or "", 14 * e,
+            ax + aw * 0.55, copr_y - e, aw * 0.45, 12 * e, DECK_CYAN, 1, copr_active)
+
+        local delayed_armor = type(delayed) == "table" and finite(delayed.armor) and delayed.armor or nil
+        local delayed_health = type(delayed) == "table" and finite(delayed.health) and delayed.health or nil
+        rect("deck_delayed_armor", self._deck_delayed_armor,
+            ix, iy + ih - 2 * e, iw * clamp01(delayed_armor or 0), 2 * e,
+            DECK_RED, 0.85, delayed_armor ~= nil)
+        rect("deck_delayed_health", self._deck_delayed_health,
+            ix, iy + ih - 4 * e, iw * clamp01(delayed_health or 0), 2 * e,
+            DECK_RED, 0.85, delayed_health ~= nil)
+
+        local damage_active = type(damage) == "table" and damage.active == true
+        local damage_alpha = clamp01(type(damage) == "table" and damage.alpha or 1)
+        local thickness = 2 * e
+        rect("deck_damage_top", self._deck_damage_top,
+            0, 0, w, thickness, DECK_RED, damage_alpha, damage_active)
+        rect("deck_damage_bottom", self._deck_damage_bottom,
+            0, h - thickness, w, thickness, DECK_RED, damage_alpha, damage_active)
+        rect("deck_damage_left", self._deck_damage_left,
+            0, 0, thickness, h, DECK_RED, damage_alpha, damage_active)
+        rect("deck_damage_right", self._deck_damage_right,
+            w - thickness, 0, thickness, h, DECK_RED, damage_alpha, damage_active)
+    end)
+    if not rendered then
+        self:_hide_perkdeck_prims()
+        self._deck_exp = nil
+        self._deck_hidden = nil
+        return false
+    end
+    self._deck_exp = exp
+    self._deck_hidden = not (type(data) == "table" and data.active == true)
+    return true
+end
+
+function Card:verify_deck()
+    local data = self._perkdeck
+    local exp = self._deck_exp
+    if not exp then
+        return not (type(data) == "table" and data.active == true)
+    end
+    local result = true
+    local worked = pcall(function()
+        for _, ent in pairs(exp) do
+            local p = ent.prim
+            if not live(p) then
+                result = false
+                return
+            end
+            local geo = ent.geo
+            if not (near(p:x(), geo.x) and near(p:y(), geo.y)
+                and near(p:w(), geo.w) and near(p:h(), geo.h)) then
+                result = false
+                return
+            end
+            if p:visible() ~= ent.visible then
+                result = false
+                return
+            end
+            if not color_near(p:alpha(), ent.alpha) then
+                result = false
+                return
+            end
+            if ent.color then
+                local c = nil
+                pcall(function() c = p:color() end)
+                if not c or not color_near(c.r or 0, ent.color.r)
+                    or not color_near(c.g or 0, ent.color.g)
+                    or not color_near(c.b or 0, ent.color.b) then
+                    result = false
+                    return
+                end
+            end
+            if ent.kind == "text" then
+                if p:text() ~= ent.text then
+                    result = false
+                    return
+                end
+                if not near(p:font_size(), ent.fsize) then
+                    result = false
+                    return
+                end
+                if ent.visible then
+                    local tw, th = measure(p)
+                    if not tw then
+                        result = false
+                        return
+                    end
+                    if tw > p:w() + 0.5 or th > p:h() + 0.5 then
+                        result = false
+                        return
+                    end
+                end
+            end
+        end
+    end)
+    return worked and result
 end
 
 function Card:update(actor, t)
@@ -1432,6 +1765,10 @@ function Card:update(actor, t)
         end
     end
     if ok then
+        local deck_ok = pcall(self._render_perkdeck, self)
+        if not deck_ok then self._deck_exp = nil end
+    end
+    if ok then
         self._exp = exp
         return true
     end
@@ -1734,6 +2071,7 @@ function Card:verify()
     end)
 
     if not worked then return false end
+    if not self:verify_deck() then result = false end
     return result
 end
 
@@ -1779,6 +2117,29 @@ function Card:destroy()
     self._down_bottom = nil
     self._down_left = nil
     self._down_right = nil
+    self._deck_hacker_fill = nil
+    self._deck_hacker_text = nil
+    self._deck_kingpin_shield = nil
+    self._deck_kingpin_health = nil
+    self._deck_dodge = nil
+    self._deck_dodge_text = nil
+    self._deck_maniac = nil
+    self._deck_maniac_text = nil
+    self._deck_stoic_bg = nil
+    self._deck_stoic_fill = nil
+    self._deck_stoic_text = nil
+    self._deck_copr_bg = nil
+    self._deck_copr_fill = nil
+    self._deck_copr_text = nil
+    self._deck_delayed_armor = nil
+    self._deck_delayed_health = nil
+    self._deck_damage_top = nil
+    self._deck_damage_bottom = nil
+    self._deck_damage_left = nil
+    self._deck_damage_right = nil
+    self._perkdeck = nil
+    self._deck_exp = nil
+    self._deck_hidden = nil
     self._cache = nil
     self._geo = nil
     self._rows_table = nil

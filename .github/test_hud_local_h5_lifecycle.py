@@ -684,17 +684,18 @@ class LocalPlayerH5LifecycleTests(unittest.TestCase):
                          "local recovery must not write parent setters")
 
 
-    def test_remote_teammate_absorb_shield_hides_and_releases_crew(self):
-        """Remote teammate radial health-effect hides crew, then releases and recovers it.
+    def test_remote_teammate_absorb_shield_leases_and_keeps_crew(self):
+        """Remote absorb shield is leased by the crew deck port, never hides crew.
 
         A distant ally entry panel is placed at the crew band with an active
-        radial_absorb_shield_active leaf (visible, alpha > 0) so _apply_native_priority hides
-        the owned crew root and H5 releases crew_2, restoring the native crew
-        alphas. The interaction is then ended through the genuine
-        HUDManager:teammate_progress channel installed by the wrapping fixture,
-        which hides the native leaf. Bounded updates must show the crew root
-        again, certify its receipt, re-acquire the same crew native leaves at
-        alpha 0, and leave the local player and weapons groups untouched. No
+        radial_absorb_shield_active leaf (visible, alpha > 0). The crew deck
+        sync renders the owned kingpin shield on that remote card, certifies the
+        deck, and leases the native leaf to alpha 0 through its own H5 group.
+        The guard must therefore leave the owned crew root visible and keep
+        crew_2 acquired instead of releasing and restoring it. Ending the
+        interaction through the genuine HUDManager:teammate_progress channel
+        hides the native leaf, the deck group releases, and the crew leaves stay
+        leased. Local player and weapons groups remain untouched throughout. No
         parent setters and no crew snapshot deep copies are allowed.
         """
         lua = _local_runtime()
@@ -766,13 +767,27 @@ class LocalPlayerH5LifecycleTests(unittest.TestCase):
             R:update(mgr, 1.2, .1)
             R:update(mgr, 1.3, .1)
 
-            _crew_hidden = not C._root:visible()
+            _crew_visible_during = C._root:visible()
+            _crew_verify_during = C:_verify_render()
+            _crew_hidden = not _crew_visible_during
             _crew_group_released = (R._h5_groups == nil)
                 or (R._h5_groups["crew_2"] == nil)
-            _crew_name_restored = _CREW_NAME:alpha() == .7
-            _crew_amount_restored = _CREW_REVIVE_AMOUNT:alpha() == .7
-            _crew_arrow_restored = _CREW_REVIVE_ARROW:alpha() == .7
-            _crew_bg_restored = _CREW_REVIVE_BG:alpha() == .7
+            _crew_group_held = not _crew_group_released
+            _crew_name_masked = _CREW_NAME:alpha() == 0
+            _crew_amount_masked = _CREW_REVIVE_AMOUNT:alpha() == 0
+            _crew_arrow_masked = _CREW_REVIVE_ARROW:alpha() == 0
+            _crew_bg_masked = _CREW_REVIVE_BG:alpha() == 0
+            _deck_group_held = R._h5_groups
+                and R._h5_groups["crew_deck_3"] ~= nil
+            _remote_shield_alpha = _REMOTE_INTERACT:alpha()
+            local owned_card = C._cards[3]
+            _owned_kingpin_exists = owned_card ~= nil
+                and owned_card._deck_kingpin_shield ~= nil
+            _owned_kingpin_visible = _owned_kingpin_exists
+                and owned_card._deck_kingpin_shield:visible() == true
+            _deck_certified = owned_card ~= nil
+                and type(owned_card.verify_deck) == "function"
+                and owned_card:verify_deck() == true
             _local_p_same = R._h5_groups
                 and R._h5_groups["local_p_p"] == _local_p_state
             _local_w_same = R._h5_groups
@@ -842,6 +857,12 @@ class LocalPlayerH5LifecycleTests(unittest.TestCase):
                 and _LOCAL_REVIVE_ARROW:alpha() == 0
             _writes_recovery = _parent_writes
             _remote_writes_recovery = _remote_writes
+            _deck_group_released_after = (R._h5_groups == nil)
+                or (R._h5_groups["crew_deck_3"] == nil)
+            _remote_shield_alpha_after = _REMOTE_INTERACT:alpha()
+            _owned_kingpin_hidden_after = (C._cards[3] ~= nil)
+                and (C._cards[3]._deck_kingpin_shield ~= nil)
+                and (C._cards[3]._deck_kingpin_shield:visible() == false)
 
             local original_snapshot = ACT.get_crew_snapshot
             _snapshot_calls = 0
@@ -864,53 +885,75 @@ class LocalPlayerH5LifecycleTests(unittest.TestCase):
         self.assertTrue(bool(g._interact_active),
                         "the remote radial_absorb_shield_active leaf must start visible")
 
-        self.assertTrue(bool(g._crew_hidden),
-                        "remote radial_absorb_shield_active must hide the owned crew root")
-        self.assertTrue(bool(g._crew_group_released),
-                        "H5 must release crew_2 while the crew root is hidden")
-        self.assertTrue(bool(g._crew_name_restored),
-                        "native crew name alpha must be restored")
-        self.assertTrue(bool(g._crew_amount_restored),
-                        "native crew revive amount alpha must be restored")
-        self.assertTrue(bool(g._crew_arrow_restored),
-                        "native crew revive arrow alpha must be restored")
-        self.assertTrue(bool(g._crew_bg_restored),
-                        "native crew revive background alpha must be restored")
+        self.assertIs(bool(g._crew_visible_during), True,
+                      "the remote absorb shield must leave the crew root visible")
+        self.assertIs(bool(g._crew_verify_during), True,
+                      "crew render must certify with the leased remote absorb shield")
+        self.assertIs(bool(g._crew_hidden), False,
+                      "the guard must not hide the crew root for a leased absorb shield")
+        self.assertIs(bool(g._crew_group_released), False,
+                      "H5 must not release crew_2 while the crew stays visible")
+        self.assertIs(bool(g._crew_group_held), True,
+                      "crew_2 must remain acquired while the crew stays visible")
+        self.assertIs(bool(g._crew_name_masked), True,
+                      "native crew name must stay leased at alpha 0")
+        self.assertIs(bool(g._crew_amount_masked), True,
+                      "native crew revive amount must stay leased at alpha 0")
+        self.assertIs(bool(g._crew_arrow_masked), True,
+                      "native crew revive arrow must stay leased at alpha 0")
+        self.assertIs(bool(g._crew_bg_masked), True,
+                      "native crew revive background must stay leased at alpha 0")
+        self.assertIs(bool(g._deck_group_held), True,
+                      "the crew deck group must lease the remote absorb shield")
+        self.assertAlmostEqual(float(g._remote_shield_alpha), 0.0, places=4,
+                               msg="the crew deck group must lease the native absorb shield to alpha 0")
+        self.assertIs(bool(g._owned_kingpin_exists), True,
+                      "the remote crew card must own _deck_kingpin_shield")
+        self.assertIs(bool(g._owned_kingpin_visible), True,
+                      "the owned kingpin shield must render for the remote absorb state")
+        self.assertIs(bool(g._deck_certified), True,
+                      "the remote crew deck render must certify")
         self.assertTrue(bool(g._local_p_same),
-                        "local player group state must survive the crew hide")
+                        "local player group state must survive the remote lease")
         self.assertTrue(bool(g._local_w_same),
-                        "local weapons group state must survive the crew hide")
+                        "local weapons group state must survive the remote lease")
         self.assertTrue(bool(g._local_root_visible_during),
-                        "local player root must stay visible during the crew hide")
+                        "local player root must stay visible during the remote lease")
         self.assertTrue(bool(g._weapons_root_visible_during),
-                        "local weapons root must stay visible during the crew hide")
+                        "local weapons root must stay visible during the remote lease")
         self.assertTrue(bool(g._player_verify_during),
-                        "player verifier must stay positive during the crew hide")
+                        "player verifier must stay positive during the remote lease")
         self.assertTrue(bool(g._weapons_verify_during),
-                        "weapons verifier must stay positive during the crew hide")
+                        "weapons verifier must stay positive during the remote lease")
         self.assertEqual(float(g._writes_hidden), 0.0,
-                         "the crew hide must not write parent setters")
+                         "the remote lease must not write parent setters")
         self.assertEqual(float(g._remote_writes_hidden), 0.0,
-                         "the crew hide must not write remote parent setters")
+                         "the remote lease must not write remote parent setters")
 
         self.assertTrue(bool(g._progress_ended),
                         "the genuine interaction end must reach the native channel")
         self.assertTrue(bool(g._interact_hidden),
                         "the genuine interaction end must hide the native leaf")
         self.assertTrue(bool(g._crew_visible),
-                        "crew root must be visible after the interaction ends")
+                        "crew root must stay visible after the interaction ends")
         self.assertTrue(bool(g._crew_verify),
                         "crew render must recertify after the interaction ends")
         self.assertTrue(bool(g._crew_receipt_ok),
                         "the crew receipt must be valid for H5 re-acquisition")
         self.assertTrue(bool(g._crew_group_back),
-                        "H5 must re-acquire crew_2 after the interaction ends")
+                        "crew_2 must remain acquired after the interaction ends")
         self.assertTrue(bool(g._crew_root_same),
                         "crew root identity must be preserved")
         self.assertTrue(bool(g._same_crew),
                         "crew recovery must reuse the same native leaves")
         self.assertTrue(bool(g._crew_masked),
-                        "recovered crew native leaves must return to alpha 0")
+                        "crew native leaves must remain at alpha 0")
+        self.assertIs(bool(g._deck_group_released_after), True,
+                      "the crew deck group must release once the absorb leaf is hidden")
+        self.assertAlmostEqual(float(g._remote_shield_alpha_after), 0.7, places=4,
+                               msg="releasing the deck group must restore the native absorb alpha")
+        self.assertIs(bool(g._owned_kingpin_hidden_after), True,
+                      "the owned kingpin shield must hide once the absorb leaf is hidden")
 
         self.assertTrue(bool(g._local_p_back_same),
                         "local player group state must stay unchanged")

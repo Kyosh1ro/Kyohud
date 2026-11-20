@@ -1778,6 +1778,8 @@ end
 local NATIVE_DEPTH = 6
 local SPECIAL_EQUIP_MAX = 64
 local COPR_CHILD_MAX = 64
+local CREW_DECK_MAX = 3
+local CREW_DECK_GROUP_PREFIX = "crew_deck_"
 
 local READ_SLOTS = {visible = 1, alpha = 3, parent = 5, x = 7, y = 9, w = 11, h = 13, text = 15}
 
@@ -2096,6 +2098,47 @@ function RT:_apply_native_priority_unprofiled(t, post_release)
         end
         return leaves
     end
+    -- Remote crew COPR: the crew port leases only the numeric notch leaves, so
+    -- the container itself stays natively visible. Treat it as replaced only
+    -- while the exact crew binding for this slot still holds every numeric
+    -- child at alpha 0. Any mismatch falls back to the historical container
+    -- observation.
+    local function crew_copr_replaced_leaves(entry_panel, radial, copr, slot)
+        local decks = self._crew_perkdeck
+        local binding = type(decks) == "table" and decks[slot] or nil
+        if type(binding) ~= "table" or binding.leased ~= true then return nil end
+        if binding.entry_panel ~= entry_panel or binding.radial ~= radial then
+            return nil
+        end
+        local data = binding.data
+        if type(data) ~= "table" or type(data.copr) ~= "table"
+            or data.copr.active ~= true then
+            return nil
+        end
+        local leaves = binding.leaves
+        if type(leaves) ~= "table" then return nil end
+        local leased = {}
+        for i = 1, #leaves do leased[leaves[i]] = true end
+        local replaced = {}
+        local leased_any = false
+        local index = 0
+        while index < COPR_CHILD_MAX do
+            local child = known_child(copr, tostring(index), true, nil)
+            if not child or not panel_alive(child) then break end
+            local ps, parent = safe_call(child, "parent")
+            if ps ~= CALL_OK or parent ~= copr then return nil end
+            local as, alpha = safe_call(child, "alpha")
+            if as ~= CALL_OK or not finite(alpha)
+                or math.abs(alpha) > 0.0001 then
+                return nil
+            end
+            if leased[child] == true then leased_any = true end
+            replaced[#replaced + 1] = child
+            index = index + 1
+        end
+        if not leased_any then return nil end
+        return replaced
+    end
     -- Local Hacker ACTIVE: replace only the native radial_ability container
     -- observation with its two owned, held bitmap leaves. Everything is proved
     -- fresh on every call; any invalid proof restores the leaves and falls back
@@ -2327,6 +2370,10 @@ function RT:_apply_native_priority_unprofiled(t, post_release)
                         local c0 = known_child(copr, "0", true, c0_path)
                         if c0 and panel_alive(c0) then
                             local replaced = local_copr_replaced_leaves(entry_panel, radial)
+                            if not replaced then
+                                replaced = crew_copr_replaced_leaves(
+                                    entry_panel, radial, copr, slot)
+                            end
                             if replaced then
                                 -- Observe each replaced notch instead of the now-empty
                                 -- dedicated parent, which stays natively visible.
@@ -4534,6 +4581,15 @@ function RT:_coordinate_h5_native_duplicates_unprofiled(crew_receipt)
         end
     end
     if self._h5_groups then
+        local crew_decks = self._crew_perkdeck
+        if crew_decks then
+            for slot = 1, CREW_DECK_MAX do
+                local binding = crew_decks[slot]
+                if binding and binding.leased == true and binding.group_key then
+                    handled_keys[binding.group_key] = true
+                end
+            end
+        end
         for key, state in pairs(self._h5_groups) do
             if not handled_keys[key] then
                 self:_h5_release_group(key)
@@ -4604,6 +4660,7 @@ end
 function RT:_release_all_h5()
     h5_child_index_reset()
     damage_feedback_hide_owned()
+    self:_release_crew_perkdeck()
     if not self._h5_groups then
         local hacker_binding = self._hacker_active_binding
         if not hacker_binding or hacker_binding.release_pending ~= true then
@@ -7060,6 +7117,443 @@ function RT:_hacker_active_post_priority(t)
     end
 end
 
+local function crew_deck_clamp01(v)
+    if not finite(v) then return 1 end
+    if v < 0 then return 0 end
+    if v > 1 then return 1 end
+    return v
+end
+
+-- Read one remote native leaf without mutating it. The color red channel is the
+-- native radial progress for meter-shaped leaves; it stays readable while the
+-- alpha lease hides the leaf.
+local function crew_deck_leaf_read(leaf)
+    if not leaf or not panel_alive(leaf) then return nil end
+    local vs, visible = safe_call(leaf, "visible")
+    local as, alpha = safe_call(leaf, "alpha")
+    if vs ~= CALL_OK or as ~= CALL_OK then return nil end
+    local ratio
+    local cs, color = safe_call(leaf, "color")
+    if cs == CALL_OK and color ~= nil then
+        local ok, r = pcall(function() return color.r end)
+        if ok and finite(r) and r >= 0 and r <= 1 then ratio = r end
+    end
+    return {
+        visible = visible == true,
+        alpha = finite(alpha) and alpha or 0,
+        ratio = ratio,
+    }
+end
+
+local function crew_deck_leaf_active(state, held)
+    if type(state) ~= "table" then return false end
+    if state.visible ~= true then return false end
+    if finite(state.alpha) and state.alpha > 0 then return true end
+    return held == true
+end
+
+local function crew_deck_held(binding, leaf)
+    if type(binding) ~= "table" or binding.leased ~= true
+        or type(binding.leaves) ~= "table" or leaf == nil then
+        return false
+    end
+    for i = 1, #binding.leaves do
+        if binding.leaves[i] == leaf then return true end
+    end
+    return false
+end
+
+local function crew_deck_child_fresh(parent, name)
+    if not parent or not panel_alive(parent) then return nil end
+    local st, child = safe_call(parent, "child", name)
+    if st ~= CALL_OK or not child or not panel_alive(child) then return nil end
+    local ps, immediate = safe_call(child, "parent")
+    if ps ~= CALL_OK or immediate ~= parent then return nil end
+    return child
+end
+
+local function crew_deck_push(leaves, seen, leaf)
+    if leaf == nil or not panel_alive(leaf) then return false end
+    if seen[leaf] then return false end
+    seen[leaf] = true
+    leaves[#leaves + 1] = leaf
+    return true
+end
+
+function RT:_release_crew_perkdeck(slot)
+    local decks = self._crew_perkdeck
+    if not decks then return end
+    if slot ~= nil then
+        local binding = decks[slot]
+        if binding then
+            if binding.group_key then self:_h5_release_group(binding.group_key) end
+            decks[slot] = nil
+        end
+        return
+    end
+    for key, binding in pairs(decks) do
+        if binding and binding.group_key then
+            self:_h5_release_group(binding.group_key)
+        end
+        decks[key] = nil
+    end
+    self._crew_perkdeck = nil
+end
+
+-- Port the local per-deck H5 replacement subsystems to every remote crew card.
+-- Native leaves are read first, the owned deck primitives are rendered and
+-- certified on the exact card, and only then is their alpha leased through the
+-- H5 group. The priority guard is unchanged: it still inspects the same leaves,
+-- but a certified alpha-0 lease makes them non-blocking exactly like the local
+-- delayed/reserve/COPR groups. Any proof failure releases and fails closed.
+function RT:_sync_crew_perkdeck(mgr, t)
+    if t ~= nil and self._crew_deck_last_t == t then return end
+    if t ~= nil then self._crew_deck_last_t = t end
+    local C = kyohud.hud.crew
+    local settings = kyohud.settings
+    if not mgr or settings.enable_hud_foundation ~= true
+        or settings.enable_crew ~= true or is_vr()
+        or self._disabled or self._freeflight or not self._mounted
+        or not C or C._mounted ~= true or C._manager ~= mgr then
+        self:_release_crew_perkdeck()
+        return
+    end
+    local panels = mgr._teammate_panels
+    if type(panels) ~= "table" then
+        self:_release_crew_perkdeck()
+        return
+    end
+    for slot = 1, CREW_DECK_MAX do
+        local card = C._cards and C._cards[slot]
+        local binding = self._crew_perkdeck and self._crew_perkdeck[slot] or nil
+        local group_key = CREW_DECK_GROUP_PREFIX .. slot
+        local card_ready = false
+        if card ~= nil and type(card._all_live) == "function" then
+            local live_ok, live_now = pcall(card._all_live, card)
+            card_ready = live_ok and live_now == true
+        end
+        -- The local player's dedicated panel is owned by the local per-deck
+        -- subsystems and is never treated as a remote crew slot.
+        if slot == h5_player_slot() then card_ready = false end
+        if not card_ready then
+            if binding then self:_release_crew_perkdeck(slot) end
+            if card and type(card.set_perkdeck) == "function" then
+                card:set_perkdeck(nil)
+                pcall(card._render_perkdeck, card)
+            end
+        else
+            local entry = panels[slot]
+            local entry_panel = type(entry) == "table" and entry._panel or nil
+            local player_panel
+            local radial
+            if entry_panel and panel_alive(entry_panel) then
+                player_panel = h5_child_verified(entry_panel, "player")
+                if player_panel then
+                    radial = h5_child_verified(player_panel, "radial_health_panel")
+                end
+            end
+            local data = {active = false}
+            local leaves = {}
+            local seen = {}
+            -- Only a positively identified remote human is replaced. Unknown
+            -- occupancy (nil AI flag) and bots keep the native leaf untouched,
+            -- so the existing fail-closed guard behavior is preserved.
+            local eligible = type(entry) == "table" and entry._ai == false
+            if not eligible or not radial or not panel_alive(radial) then
+                if binding then self:_release_crew_perkdeck(slot) end
+                card:set_perkdeck(data)
+                pcall(card._render_perkdeck, card)
+            else
+                -- Hacker ACTIVE / Kingpin ACTIVE container.
+                local ability = h5_child_verified(radial, "radial_ability")
+                local hacker_active = false
+                local hacker_ratio = 1
+                if ability then
+                    local state = crew_deck_leaf_read(ability)
+                    hacker_active = crew_deck_leaf_active(state, crew_deck_held(binding, ability))
+                    local meter = h5_child_verified(ability, "ability_meter")
+                    local meter_state = crew_deck_leaf_read(meter)
+                    if type(meter_state) == "table" and finite(meter_state.ratio) then
+                        hacker_ratio = meter_state.ratio
+                    elseif type(state) == "table" and finite(state.ratio) then
+                        hacker_ratio = state.ratio
+                    end
+                    if hacker_active then
+                        crew_deck_push(leaves, seen, ability)
+                        data.active = true
+                    end
+                end
+                data.hacker = {
+                    active = hacker_active,
+                    ratio = crew_deck_clamp01(hacker_ratio),
+                    text = hacker_active
+                        and (math.floor(crew_deck_clamp01(hacker_ratio) * 100 + 0.5) .. "%")
+                        or "",
+                }
+
+                -- Kingpin absorb shield/health bitmaps.
+                local shield = h5_child_verified(radial, "radial_absorb_shield_active")
+                local shield_state = crew_deck_leaf_read(shield)
+                local shield_active = crew_deck_leaf_active(shield_state,
+                    crew_deck_held(binding, shield))
+                if shield_active then
+                    crew_deck_push(leaves, seen, shield)
+                    data.active = true
+                end
+                local absorb_health = h5_child_verified(radial, "radial_absorb_health_active")
+                local absorb_state = crew_deck_leaf_read(absorb_health)
+                local absorb_active = crew_deck_leaf_active(absorb_state,
+                    crew_deck_held(binding, absorb_health))
+                if absorb_active then
+                    crew_deck_push(leaves, seen, absorb_health)
+                    data.active = true
+                end
+                data.kingpin = {
+                    active = shield_active or absorb_active,
+                    shield = shield_active,
+                    health = absorb_active,
+                }
+
+                -- Dodge indicator (radial_custom).
+                local custom = h5_child_verified(radial, "radial_custom")
+                local custom_state = crew_deck_leaf_read(custom)
+                local dodge_active = crew_deck_leaf_active(custom_state,
+                    crew_deck_held(binding, custom))
+                if dodge_active then
+                    crew_deck_push(leaves, seen, custom)
+                    data.active = true
+                end
+                data.dodge = {active = dodge_active}
+
+                -- Maniac damage stacks (radial_info_meter foreground/background).
+                local info_meter = h5_child_verified(radial, "radial_info_meter")
+                local info_meter_bg = h5_child_verified(radial, "radial_info_meter_bg")
+                local info_state = crew_deck_leaf_read(info_meter)
+                local info_bg_state = crew_deck_leaf_read(info_meter_bg)
+                local maniac_active = crew_deck_leaf_active(info_state,
+                        crew_deck_held(binding, info_meter))
+                    or crew_deck_leaf_active(info_bg_state,
+                        crew_deck_held(binding, info_meter_bg))
+                if crew_deck_leaf_active(info_state, crew_deck_held(binding, info_meter)) then
+                    crew_deck_push(leaves, seen, info_meter)
+                end
+                if crew_deck_leaf_active(info_bg_state, crew_deck_held(binding, info_meter_bg)) then
+                    crew_deck_push(leaves, seen, info_meter_bg)
+                end
+                if maniac_active then data.active = true end
+                local maniac_ratio = 1
+                if type(info_state) == "table" and finite(info_state.ratio) then
+                    maniac_ratio = info_state.ratio
+                end
+                data.maniac = {
+                    active = maniac_active,
+                    ratio = crew_deck_clamp01(maniac_ratio),
+                    text = maniac_active
+                        and (math.floor(crew_deck_clamp01(maniac_ratio) * 100 + 0.5) .. "%")
+                        or "",
+                }
+
+                -- Stoic stored-health reserve (radial_rip / radial_rip_bg).
+                local rip = h5_child_verified(radial, "radial_rip")
+                local rip_bg = h5_child_verified(radial, "radial_rip_bg")
+                local rip_state = crew_deck_leaf_read(rip)
+                local rip_bg_state = crew_deck_leaf_read(rip_bg)
+                local stoic_active = crew_deck_leaf_active(rip_state,
+                        crew_deck_held(binding, rip))
+                    or crew_deck_leaf_active(rip_bg_state,
+                        crew_deck_held(binding, rip_bg))
+                if crew_deck_leaf_active(rip_state, crew_deck_held(binding, rip)) then
+                    crew_deck_push(leaves, seen, rip)
+                end
+                if crew_deck_leaf_active(rip_bg_state, crew_deck_held(binding, rip_bg)) then
+                    crew_deck_push(leaves, seen, rip_bg)
+                end
+                if stoic_active then data.active = true end
+                local stoic_ratio = 1
+                if type(rip_state) == "table" and finite(rip_state.ratio) then
+                    stoic_ratio = rip_state.ratio
+                end
+                data.stoic = {
+                    active = stoic_active,
+                    ratio = crew_deck_clamp01(stoic_ratio),
+                    text = stoic_active
+                        and (math.floor(crew_deck_clamp01(stoic_ratio) * 100 + 0.5) .. "%")
+                        or "",
+                }
+
+                -- COPR ratio (copr_overlay_panel numeric notches).
+                local copr = h5_child_verified(radial, "copr_overlay_panel")
+                local copr_active = false
+                local copr_ratio = 1
+                local copr_count = 0
+                if copr then
+                    for i = 0, COPR_CHILD_MAX - 1 do
+                        local notch = crew_deck_child_fresh(copr, tostring(i))
+                        if not notch then break end
+                        copr_count = copr_count + 1
+                        local notch_state = crew_deck_leaf_read(notch)
+                        if crew_deck_leaf_active(notch_state,
+                            crew_deck_held(binding, notch)) then
+                            copr_active = true
+                            crew_deck_push(leaves, seen, notch)
+                            if type(notch_state) == "table" and finite(notch_state.ratio) then
+                                copr_ratio = notch_state.ratio
+                            end
+                        end
+                    end
+                    if copr_active then data.active = true end
+                end
+                data.copr = {
+                    active = copr_active,
+                    ratio = crew_deck_clamp01(copr_ratio),
+                    count = copr_count,
+                    text = copr_active
+                        and (math.floor(crew_deck_clamp01(copr_ratio) * 100 + 0.5) .. "%")
+                        or "",
+                }
+
+                -- Delayed damage armor/health leaves.
+                local delayed = h5_child_verified(radial, "radial_delayed_damage")
+                local delayed_armor_ratio
+                local delayed_health_ratio
+                local delayed_active = false
+                local armor_state
+                local health_state
+                if delayed then
+                    local armor_leaf = h5_child_verified(delayed, "radial_delayed_damage_armor")
+                    local health_leaf = h5_child_verified(delayed, "radial_delayed_damage_health")
+                    armor_state = crew_deck_leaf_read(armor_leaf)
+                    health_state = crew_deck_leaf_read(health_leaf)
+                    local armor_active = crew_deck_leaf_active(armor_state,
+                        crew_deck_held(binding, armor_leaf))
+                    local health_active = crew_deck_leaf_active(health_state,
+                        crew_deck_held(binding, health_leaf))
+                    if armor_active then
+                        delayed_active = true
+                        crew_deck_push(leaves, seen, armor_leaf)
+                        delayed_armor_ratio = crew_deck_clamp01(
+                            type(armor_state) == "table" and armor_state.alpha or 1)
+                    end
+                    if health_active then
+                        delayed_active = true
+                        crew_deck_push(leaves, seen, health_leaf)
+                        delayed_health_ratio = crew_deck_clamp01(
+                            type(health_state) == "table" and health_state.alpha or 1)
+                    end
+                end
+                if delayed_active then data.active = true end
+                if binding and type(binding.data) == "table"
+                    and type(binding.data.delayed) == "table" then
+                    if type(armor_state) == "table" and armor_state.alpha <= 0.0001
+                        and finite(binding.data.delayed.armor) then
+                        delayed_armor_ratio = crew_deck_clamp01(binding.data.delayed.armor)
+                    end
+                    if type(health_state) == "table" and health_state.alpha <= 0.0001
+                        and finite(binding.data.delayed.health) then
+                        delayed_health_ratio = crew_deck_clamp01(binding.data.delayed.health)
+                    end
+                end
+                data.delayed = {
+                    active = delayed_active,
+                    armor = delayed_armor_ratio,
+                    health = delayed_health_ratio,
+                }
+
+                -- Damage feedback rim (damage_indicator alpha). The native
+                -- leaf can stay visible while its alpha animates, so a bounded
+                -- retention avoids leaving a permanent remote edge.
+                local indicator = h5_child_verified(radial, "damage_indicator")
+                local indicator_state = crew_deck_leaf_read(indicator)
+                local indicator_held = crew_deck_held(binding, indicator)
+                local native_alpha = type(indicator_state) == "table"
+                    and indicator_state.alpha or nil
+                local damage_active = crew_deck_leaf_active(indicator_state, indicator_held)
+                local damage_alpha = 1
+                local damage_until = binding and binding.damage_until or nil
+                local damage_last_alpha = binding and binding.damage_alpha or nil
+                if type(indicator_state) == "table" and finite(native_alpha)
+                    and native_alpha > 0 then
+                    damage_alpha = crew_deck_clamp01(native_alpha)
+                    if finite(t) then
+                        damage_until = t + 0.5
+                        damage_last_alpha = damage_alpha
+                    end
+                elseif damage_active and indicator_held then
+                    if finite(t) and finite(damage_until) and t <= damage_until
+                        and finite(damage_last_alpha) then
+                        damage_alpha = crew_deck_clamp01(damage_last_alpha)
+                    elseif not finite(t) and finite(damage_last_alpha) then
+                        damage_alpha = crew_deck_clamp01(damage_last_alpha)
+                    else
+                        damage_active = false
+                        damage_until = nil
+                        damage_last_alpha = nil
+                    end
+                end
+                if damage_active then
+                    crew_deck_push(leaves, seen, indicator)
+                    data.active = true
+                end
+                data.damage = {
+                    active = damage_active,
+                    alpha = damage_alpha,
+                }
+
+                card:set_perkdeck(data)
+                local render_ok = pcall(card._render_perkdeck, card)
+                local certified = render_ok
+                    and type(card.verify_deck) == "function"
+                    and card:verify_deck() == true
+
+                local acquired = false
+                if certified and #leaves > 0 then
+                    self:_h5_acquire_group(group_key, leaves, {
+                        entry_panel = entry_panel,
+                        manager = mgr,
+                        root_gen = self._generation,
+                    })
+                    local state = self._h5_groups and self._h5_groups[group_key]
+                    acquired = state ~= nil and state._release_pending ~= true
+                        and state.property == "alpha"
+                        and h5_same_targets(state.targets, leaves)
+                    if acquired then
+                        for i = 1, #leaves do
+                            local as, alpha = safe_call(leaves[i], "alpha")
+                            if as ~= CALL_OK or not finite(alpha) or alpha > 0.0001 then
+                                acquired = false
+                                break
+                            end
+                        end
+                    end
+                    if not acquired then
+                        self:_h5_release_group(group_key)
+                    end
+                else
+                    if binding then self:_h5_release_group(group_key) end
+                end
+
+                if acquired then
+                    self._crew_perkdeck = self._crew_perkdeck or {}
+                    self._crew_perkdeck[slot] = {
+                        manager = mgr,
+                        entry_panel = entry_panel,
+                        player = player_panel,
+                        radial = radial,
+                        leaves = leaves,
+                        group_key = group_key,
+                        data = data,
+                        damage_until = damage_until,
+                        damage_alpha = damage_last_alpha,
+                        leased = true,
+                    }
+                else
+                    if self._crew_perkdeck then self._crew_perkdeck[slot] = nil end
+                end
+            end
+        end
+    end
+end
+
 function RT:_sync_local_backdrop(t, crew_receipt)
     self:_sync_delayed_replacement(self._manager)
     self:_sync_reserve_replacement(self._manager)
@@ -7078,6 +7572,7 @@ function RT:_sync_local_backdrop(t, crew_receipt)
     local hacker_start = timed and self:_residual_stamp() or nil
     self:_sync_hacker_active()
     if timed then self:_residual_record(active_phase, hacker_start) end
+    self:_sync_crew_perkdeck(self._manager, t)
     self:_apply_native_priority(t)
     self:_delayed_replacement_post_priority(t)
     self:_reserve_replacement_post_priority(t)

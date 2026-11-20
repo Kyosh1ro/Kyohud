@@ -581,6 +581,10 @@ function C:update(manager, t, dt)
         if aok ~= CALL_OK or alpha_now ~= 1 then
             safe_call(self._root, "set_alpha", 1)
         end
+        local RT = kyohud.hud.runtime
+        if RT and type(RT._sync_crew_perkdeck) == "function" then
+            RT:_sync_crew_perkdeck(mgr, t)
+        end
         self:_present_cards(snap, t)
         self._conflict = self:_combat_conflict()
         presented = true
@@ -599,6 +603,10 @@ function C:update(manager, t, dt)
         local aok, alpha_now = safe_call(self._root, "alpha")
         if aok ~= CALL_OK or alpha_now ~= 1 then
             safe_call(self._root, "set_alpha", 1)
+        end
+        local RT = kyohud.hud.runtime
+        if RT and type(RT._sync_crew_perkdeck) == "function" then
+            RT:_sync_crew_perkdeck(mgr, t)
         end
         self:_present_cards(snap, t)
     end
