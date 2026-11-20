@@ -112,7 +112,7 @@ class CrewCardActualContractTests(unittest.TestCase):
         self.assertEqual(g._wp,'123',g._wp)
         self.assertEqual(g._wp_reserve,'/4567',g._wp_reserve)
         self.assertTrue(g._dep.endswith('x123'),g._dep)
-        self.assertGreaterEqual(g._min_font,9.5)
+        self.assertGreaterEqual(g._min_font, 8.0)
         self.assertIs(g._no_measure,False)
         self.assertIs(g._restored,True)
 

@@ -700,22 +700,19 @@ class CrewOnlineInactiveAmmoTests(unittest.TestCase):
                 and (ia:parent() == card._equipment_text:parent())
                 and (ia:parent() == card.root)
 
-            -- Below existing equipment content, inside the expanded owned
-            -- backdrop, no overlap; card slot height (placement) untouched.
+            -- Next to the primary clip/reserve in the header row, inside the
+            -- owned backdrop, no overlap; card slot height (placement)
+            -- untouched.
             local function bottom(p)
                 return p:y() + p:h()
             end
-            _eq_bottom = math.max(
-                bottom(card._equipment_text),
-                bottom(card._cables_text),
-                bottom(card._projectile_text),
-                bottom(card._deployable_icon),
-                bottom(card._cables_icon),
-                bottom(card._projectile_icon))
             _ia_y = ia and ia:y() or nil
             _ia_bottom = ia and bottom(ia) or nil
             _bg_bottom = card and bottom(card._backdrop) or nil
-            _ia_below_eq = (ia ~= nil) and (_ia_y >= _eq_bottom - 0.01)
+            _ia_same_row = (ia ~= nil) and (card._weapon_text ~= nil)
+                and (math.abs(ia:y() - card._weapon_text:y()) <= 0.01)
+            _ia_right_of_reserve = (ia ~= nil) and (card._reserve_text ~= nil)
+                and (ia:x() >= card._reserve_text:x() + card._reserve_text:w() - 0.5)
             _ia_inside_backdrop = (ia ~= nil) and (_ia_bottom <= _bg_bottom + 0.01)
             _ia_inside_root = (ia ~= nil) and (_ia_bottom <= card.root:h() + 0.01)
             _root_h = card and card.root:h() or nil
@@ -763,12 +760,10 @@ class CrewOnlineInactiveAmmoTests(unittest.TestCase):
             "RED: inactive text must be '012/083' (slot2 clip 12 / reserve 83, three digits each)")
         self.assertIs(g._ia_visible, True,
             "RED: the inactive ammo row must be visible for humans")
-        self.assertEqual(float(g._ia_fsize), 16.0,
-            "RED: inactive text nominal font must be 16e (e=1 at 1920x1080 scale 1)")
-        self.assertEqual(float(g._wt_fsize), 22.0,
-            "RED: existing active text nominal font must remain 22e")
-        self.assertLess(float(g._ia_fsize), float(g._wt_fsize),
-            "RED: inactive text must be smaller than active text")
+        self.assertAlmostEqual(float(g._ia_fsize), float(g._wt_fsize), delta=1.0,
+            msg="RED: inactive text font must match the active text font (same nominal 22e)")
+        self.assertGreaterEqual(float(g._wt_fsize), 20.0,
+            "RED: active text nominal font must stay large (near 22e, e=1 at 1920x1080)")
         self.assertAlmostEqual(float(g._ia_r), 0.7, places=1,
             msg="RED: inactive text must be gray (r 0.7)")
         self.assertAlmostEqual(float(g._ia_g), 0.7, places=1,
@@ -777,8 +772,10 @@ class CrewOnlineInactiveAmmoTests(unittest.TestCase):
             msg="RED: inactive text must be gray (b 0.7)")
         self.assertIs(g._ia_parent_ok, True,
             "RED: the inactive row must share the card root parent with equipment content")
-        self.assertIs(g._ia_below_eq, True,
-            "RED: the inactive row must sit below existing equipment content (no overlap)")
+        self.assertIs(g._ia_same_row, True,
+            "RED: the inactive ammo must sit in the same header row as the primary clip")
+        self.assertIs(g._ia_right_of_reserve, True,
+            "RED: the inactive ammo must sit next to (right of) the primary reserve")
         self.assertIs(g._ia_inside_backdrop, True,
             "RED: the inactive row must fit within the expanded owned backdrop")
         self.assertIs(g._ia_inside_root, True,

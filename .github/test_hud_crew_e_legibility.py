@@ -226,8 +226,8 @@ class CrewCardLegibilityTests(unittest.TestCase):
                 self.assertAlmostEqual(float(g._dot_cy), float(g._nm_ink_cy), delta=1.0,
                     msg="RED: peer dot must be vertically centered on measured name ink (text_rect)")
 
-                self.assertAlmostEqual(float(g._right_margin), 4.0 * e, delta=1.0,
-                    msg="RED: heart+downs right-anchored with fixed 4e right padding")
+                self.assertAlmostEqual(float(g._right_margin), 7.0 * e, delta=1.0,
+                    msg="RED: heart+downs right-anchored with fixed 7e right padding")
 
                 self.assertAlmostEqual(float(g._clip_sz), float(g._res_sz), places=1,
                     msg="RED: clip and reserve font sizes must be equal")
@@ -283,8 +283,8 @@ class CrewCardLegibilityTests(unittest.TestCase):
                 self.assertAlmostEqual(float(g2._clip_sz2), float(g2._res_sz2), places=1,
                     msg="RED: clip/reserve same font at 999/1234")
 
-                self.assertAlmostEqual(float(g2._right_margin2), 4.0 * e, delta=1.0,
-                    msg="RED: right margin stays 4e at 999/1234")
+                self.assertAlmostEqual(float(g2._right_margin2), 7.0 * e, delta=1.0,
+                    msg="RED: right margin stays 7e at 999/1234")
 
                 self.assertTrue(bool(g2._ok2), "verify true at 999/1234")
                 self.assertTrue(bool(g2._same_after_trans),

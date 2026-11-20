@@ -697,8 +697,8 @@ function Card:update(actor, t)
             hp_bg_x = 2; hp_bg_y = bar_y; hp_bg_w = bar_w; hp_bg_h = bar_h
             ar_fill_w = 0
         else
-            local outer_x = 2 * e
-            local outer_w = left_w - 4 * e
+            local outer_x = 4 * e
+            local outer_w = left_w - 8 * e
             local outer_h = 18 * e
             local region_y = r1.y
             local region_h = r1.h + r2.h
@@ -801,6 +801,17 @@ function Card:update(actor, t)
         local clip_str = fmt_ammo_value(clip_val)
         local res_str = "/" .. fmt_ammo_value(res_val)
 
+        -- Secondary weapon slot ammo (humans only): shown next to the primary
+        -- clip/reserve at the same nominal font, never invented.
+        local ia_str = ""
+        if not_bot then
+            local wp_sel = wp and wp.selection_index
+            local other = (wp_sel == 1 and 2) or (wp_sel == 2 and 1) or nil
+            local ia_data = other and actor.ammo_slots and actor.ammo_slots[other] or nil
+            ia_str = fmt_ammo_value(ia_data and ia_data.current_clip)
+                .. "/" .. fmt_ammo_value(ia_data and ia_data.reserve)
+        end
+
         local ammo_y = r0.y
         local ammo_h = r0.h
         local desired_sz = 22 * e
@@ -840,7 +851,7 @@ function Card:update(actor, t)
         local count_ink_w = measure(self._downs_text)
         if not count_ink_w then count_ink_w = 20 * e end
 
-        local count_x = w - count_ink_w - 4.5 * e
+        local count_x = w - count_ink_w - 7.5 * e
         local heart_x = count_x - heart_sz_val - count_gap
         local heart_cy = ammo_y + ammo_h * 0.5
 
@@ -892,8 +903,11 @@ function Card:update(actor, t)
             self._reserve_text:set_font_size(desired_sz)
             self._reserve_text:set_text(res_str)
             local res_mw = measure(self._reserve_text)
-            if clip_mw and res_mw then
-                local total = clip_mw + clip_gap + res_mw
+            self._inactive_ammo_text:set_font_size(desired_sz)
+            self._inactive_ammo_text:set_text(ia_str)
+            local ia_mw = measure(self._inactive_ammo_text)
+            if clip_mw and res_mw and ia_mw then
+                local total = clip_mw + clip_gap + res_mw + clip_gap + ia_mw
                 if total > ammo_avail then
                     common_sz = desired_sz * ammo_avail / total
                 end
@@ -924,6 +938,20 @@ function Card:update(actor, t)
         if not res_ink_w then res_ink_w = res_avail end
         shape(self._reserve_text, res_x, ammo_y, res_ink_w + 0.5 * e, ammo_h)
         exp.reserve_text_geo = {x = res_x, y = ammo_y, w = res_ink_w + 0.5 * e, h = ammo_h}
+
+        local ia_x = res_x + res_ink_w + 0.5 * e + clip_gap
+        local ia_avail = ammo_right_budget - ia_x
+        if ia_avail < 10 * e then ia_avail = 10 * e end
+        shape(self._inactive_ammo_text, ia_x, ammo_y, ia_avail, ammo_h)
+        self._inactive_ammo_text:set_visible(not_bot)
+        exp.inactive_ammo_text = self:_fit(self._inactive_ammo_text, "iaw", ia_str, common_sz, false)
+        pcall(function() self._inactive_ammo_text:set_color(DIM) end)
+        exp.inactive_ammo_text_color = store_color(DIM)
+        local ia_ink_w = measure(self._inactive_ammo_text)
+        if not ia_ink_w then ia_ink_w = ia_avail end
+        shape(self._inactive_ammo_text, ia_x, ammo_y, ia_ink_w + 0.5 * e, ammo_h)
+        exp.inactive_ammo_text_geo = {x = ia_x, y = ammo_y, w = ia_ink_w + 0.5 * e, h = ammo_h}
+        exp.inactive_ammo_text_visible = not_bot
 
         shape(self._downs_icon, heart_x, heart_cy - heart_sz_val * 0.5, heart_sz_val, heart_sz_val)
         self._downs_icon:set_visible(heart_visible)
@@ -1128,38 +1156,7 @@ function Card:update(actor, t)
         local body_bottom = is_bot and (hp_bg_y + hp_bg_h)
             or math.max(ar_bg_y + ar_bg_h, eq_text_y + r1.h, icon_y + icon_sz)
 
-        -- Inactive weapon slot ammo row (humans only): the other slot's
-        -- clip/reserve, gray nominal 16e vs the active 22e, below existing
-        -- equipment content inside the owned backdrop. Bots hide the row and
-        -- add no height; unknown is shown as ---/---, never invented.
-        local ia_visible = not_bot
-        local ia_str = ""
-        local ia_sz = 16 * e
-        local ia_x = 2 * e
-        local ia_y = body_bottom
-        local ia_w = 0
-        local ia_h = 18 * e
-        if ia_visible then
-            local wp_sel = actor.weapon and actor.weapon.selection_index
-            local other = (wp_sel == 1 and 2) or (wp_sel == 2 and 1) or nil
-            local ia_data = other and actor.ammo_slots and actor.ammo_slots[other] or nil
-            ia_str = fmt_ammo_value(ia_data and ia_data.current_clip)
-                .. "/" .. fmt_ammo_value(ia_data and ia_data.reserve)
-            ia_y = body_bottom + 2 * e
-            ia_w = w - 4 * e
-        end
-        shape(self._inactive_ammo_text, ia_x, ia_y, ia_w, ia_h)
-        self._inactive_ammo_text:set_visible(ia_visible)
-        exp.inactive_ammo_text = self:_fit(self._inactive_ammo_text, "iaw", ia_str, ia_sz, false)
-        exp.inactive_ammo_text_geo = {x = ia_x, y = ia_y, w = ia_w, h = ia_h}
-        exp.inactive_ammo_text_visible = ia_visible
-        pcall(function() self._inactive_ammo_text:set_color(DIM) end)
-        exp.inactive_ammo_text_color = store_color(DIM)
-
         local content_bottom = math.max(r0.y + r0.h, body_bottom)
-        if ia_visible and ia_y + ia_h > content_bottom then
-            content_bottom = ia_y + ia_h
-        end
         local backdrop_w = w
         if is_bot then
             local name_ink = measure(self._name_text)
