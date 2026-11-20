@@ -68,6 +68,7 @@ class CrewCardAmmoPrimitiveTests(unittest.TestCase):
 
             _eq_cy = inst._equipment_text:y() + inst._equipment_text:h() * 0.5
             _ar_cy = inst._ar_bg:y() + inst._ar_bg:h() * 0.5
+            _ar_h = inst._ar_bg:h()
             _di_cy = inst._deployable_icon:y() + inst._deployable_icon:h() * 0.5
             _ci_cy = inst._cables_icon:y() + inst._cables_icon:h() * 0.5
             _pi_cy = inst._projectile_icon:y() + inst._projectile_icon:h() * 0.5
@@ -109,11 +110,11 @@ class CrewCardAmmoPrimitiveTests(unittest.TestCase):
         self.assertAlmostEqual(float(g._rg), 0.7, places=1)
         self.assertAlmostEqual(float(g._rb), 0.7, places=1)
 
-        self.assertAlmostEqual(float(g._eq_cy), float(g._ar_cy), delta=0.05,
-            msg="equipment text vertical center must match armor track center")
+        self.assertAlmostEqual(float(g._eq_cy), float(g._ar_cy) - float(g._ar_h) * 0.25, delta=0.05,
+            msg="equipment text vertical center must sit a quarter armor height above the armor center")
         for ic in ("_di_cy", "_ci_cy", "_pi_cy"):
-            self.assertAlmostEqual(float(g[ic]), float(g._ar_cy), delta=0.05,
-                msg=f"icon {ic} center must match armor track center")
+            self.assertAlmostEqual(float(g[ic]), float(g._ar_cy) - float(g._ar_h) * 0.25, delta=0.05,
+                msg=f"icon {ic} center must sit a quarter armor height above the armor center")
         self.assertTrue(bool(g._ammo_above_eq), "ammo must sit above equipment")
 
         self.assertTrue(bool(g._ok1), "clean verify must pass")

@@ -1026,7 +1026,10 @@ function Card:update(actor, t)
         if is_bot then
             eq_ref_cy = hp_bg_y + hp_bg_h * 0.5
         else
-            eq_ref_cy = ar_bg_y + ar_bg_h * 0.5
+            -- Anchor equipment at the TOP of the armor gauge instead of its
+            -- center, reserving the lower half for the Kingpin/Hacker ACTIVE
+            -- bar that appears in the ally HUD.
+            eq_ref_cy = ar_bg_y + ar_bg_h * 0.25
         end
         local eq_text_y = eq_ref_cy - r1.h * 0.5
         local icon_y = eq_ref_cy - icon_sz * 0.5
