@@ -1347,11 +1347,16 @@ function M:_sync_primitives()
         if status ~= CALL_OK or visible ~= true then safe_call(self._root_panel, "set_visible", true) end
     end
     self:_sync_timer_prim()
+    -- First title sync before the relayout guarantees a current fit, so the
+    -- layout is computed from the measured title width (fit-based convergence
+    -- within the same pass, ABA contract).
     self:_sync_title_prim()
     self:_sync_bags_label_prim()
     self:_sync_bags_prim()
-    self:_update_layout()
-    self:_sync_title_prim()
+    local wrote = self:_update_layout()
+    -- The fit depends on the geometry, so refit only when the layout actually
+    -- wrote. A stable feed therefore performs exactly one title sync.
+    if wrote then self:_sync_title_prim() end
     self:_sync_backgrounds()
     self:_sync_inks()
 end
@@ -1399,31 +1404,80 @@ function M:_update_gpc_display()
     end
 end
 
+-- Returns true only when this call effectively wrote the owned geometry
+-- (changed == true, after a successful root set_shape); false on every other
+-- path: early guard, unchanged layout, nil layout, or failed set_shape.
 function M:_update_layout()
-    if not self._root_panel or not panel_alive(self._root_panel) then return end
-    if not self._parent_panel or not panel_alive(self._parent_panel) then return end
+    if not self._root_panel or not panel_alive(self._root_panel) then return false end
+    if not self._parent_panel or not panel_alive(self._parent_panel) then return false end
     local pw_s, pw = safe_call(self._parent_panel, "w")
     local ph_s, ph = safe_call(self._parent_panel, "h")
-    if pw_s ~= CALL_OK or ph_s ~= CALL_OK then return end
-    if not is_finite_num(pw) or not is_finite_num(ph) then return end
-    if pw <= 0 or ph <= 0 then return end
+    if pw_s ~= CALL_OK or ph_s ~= CALL_OK then return false end
+    if not is_finite_num(pw) or not is_finite_num(ph) then return false end
+    if pw <= 0 or ph <= 0 then return false end
     local scale = kyohud.settings.hud_scale or 1
+    local objectives = kyohud.settings.enable_objectives == true
+    local cache = self._layout_cache
+    local function stamp_sources(target)
+        target._src_w = pw
+        target._src_h = ph
+        target._src_scale = scale
+        target._src_title_text = self._title_text
+        target._src_timer_text = self._timer_text
+        target._src_bags_label = self._bags_label_text
+        target._src_bags_count = self._bags_count
+        target._src_bags_known = self._bags_known == true
+        target._src_fit = self._title_fit
+        target._src_timer_prim = self._timer_prim
+        target._src_bags_label_prim = self._bags_label_prim
+        target._src_bags_prim = self._bags_prim
+        target._src_objectives = objectives
+    end
+    -- A live timer tick changes _timer_text every second, so this guard
+    -- intentionally breaks once per second: the layout is recomputed and
+    -- compared but, when the geometry is unchanged, neither labels nor shapes
+    -- are re-verified or rewritten. This removes the per-feed cost without
+    -- ever serving a layout computed from stale intrinsic inputs.
+    if cache and self._render_verified == true
+        and cache._src_w == pw and cache._src_h == ph
+        and cache._src_scale == scale
+        and cache._src_title_text == self._title_text
+        and cache._src_timer_text == self._timer_text
+        and cache._src_bags_label == self._bags_label_text
+        and cache._src_bags_count == self._bags_count
+        and cache._src_bags_known == (self._bags_known == true)
+        and cache._src_fit == self._title_fit
+        and cache._src_timer_prim == self._timer_prim
+        and cache._src_bags_label_prim == self._bags_label_prim
+        and cache._src_bags_prim == self._bags_prim
+        and cache._src_objectives == objectives then
+        return false
+    end
     local new_layout = self:_compute_layout(pw, ph, scale)
     if not new_layout then
         self._layout_cache = nil
-        return
+        self._render_verified = false
+        return false
     end
-    local changed = not self._layout_cache or
-        self._layout_cache.root_x ~= new_layout.root_x or
-        self._layout_cache.root_y ~= new_layout.root_y or
-        self._layout_cache.root_w ~= new_layout.root_w or
-        self._layout_cache.root_h ~= new_layout.root_h or
-        self._layout_cache.font_size ~= new_layout.font_size or not self:_verify_labels()
-    if not changed then return end
+    local changed = not cache or
+        cache.root_x ~= new_layout.root_x or
+        cache.root_y ~= new_layout.root_y or
+        cache.root_w ~= new_layout.root_w or
+        cache.root_h ~= new_layout.root_h or
+        cache.font_size ~= new_layout.font_size
+    if self._render_verified ~= true then
+        changed = changed or not self:_verify_labels()
+    end
+    if not changed then
+        stamp_sources(cache)
+        return false
+    end
+    stamp_sources(new_layout)
     local rs = safe_call(self._root_panel, "set_shape", new_layout.root_x, new_layout.root_y, new_layout.root_w, new_layout.root_h)
     if rs ~= CALL_OK then
         self._layout_cache = nil
-        return
+        self._render_verified = false
+        return false
     end
     if self._timer_prim and panel_alive(self._timer_prim) then
         safe_call(self._timer_prim, "set_shape", new_layout.timer.x, new_layout.timer.y, new_layout.timer.w, new_layout.timer.h)
@@ -1443,6 +1497,7 @@ function M:_update_layout()
     end
     self._cached_font_size = new_layout.font_size
     self._layout_cache = new_layout
+    return true
 end
 
 function M:mount(manager)
@@ -1998,7 +2053,7 @@ local function install_residual_phase_wrappers()
     end
     install("_sync_primitives", "mission_sync", false)
     install("_sync_title_prim", "mission_title_sync", false)
-    install("_update_layout", "mission_layout", false)
+    install("_update_layout", "mission_layout", true)
     install("_verify_render", "mission_verify", true)
     install("_verify_labels", "mission_labels_verify", true)
 end

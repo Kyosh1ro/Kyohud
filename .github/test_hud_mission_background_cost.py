@@ -9,7 +9,7 @@ _verify_labels production methods are wrapped the same way.
 
 RED contract: 20 identical feeds at 02:05 must not construct Color values
 and must not call set_color/set_alpha/set_visible/set_shape on the owned
-backgrounds. The panels, roots and verify counts (20 render, 40 labels)
+backgrounds. The panels, roots and verify counts (20 render, 20 labels)
 must stay stable. Production currently rewrites all three backgrounds on
 every feed, so the zero-setter assertions fail RED.
 """
@@ -226,9 +226,9 @@ class MissionBackgroundCostTests(unittest.TestCase):
 
         self.assertEqual(g._verify_render_observed, 20,
                          "20 stable feeds must verify the render 20 times")
-        self.assertEqual(g._verify_labels_observed, 40,
-                         "20 stable feeds must verify labels 40 times "
-                         "(once in _update_layout and once in _verify_render)")
+        self.assertEqual(g._verify_labels_observed, 20,
+                         "20 stable feeds must verify labels 20 times "
+                         "(once per feed, inside _verify_render)")
         self.assertIs(g._bg_roots_same, True,
                       "stable feeds must keep the same root and background root")
         self.assertTrue(

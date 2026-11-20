@@ -11,12 +11,13 @@ grow the production counters: mission_feed (outer feed hook only), mission_sync
 (all _sync_primitives callers), mission_layout (all _update_layout callers),
 mission_verify (all _verify_render callers), mission_title_sync (all
 _sync_title_prim callers) and mission_labels_verify (all _verify_labels
-callers). A healthy stable feed calls _sync_title_prim twice inside
-_sync_primitives, so three feeds grow mission_title_sync by six; _verify_labels
-runs once within _verify_render and once within _update_layout's changed
-predicate, so three feeds grow mission_labels_verify by six. These are
-inclusive stage times, not pure text_rect timings. Counts are read after
-mount/certification and warmup so mount and warmup work is excluded.
+callers). On a healthy stable feed, _sync_title_prim is called once and
+_verify_labels is called once (inside _verify_render); the duplicate call
+inside _update_layout's changed predicate no longer runs on stable feeds.
+Three feeds therefore grow both mission_title_sync and mission_labels_verify
+by three. These are inclusive stage times, not pure text_rect timings. Counts
+are read after mount/certification and warmup so mount and warmup work is
+excluded.
 
 The production buckets do not exist yet. Reading them directly is intentional
 RED: no counter, instrumentation method or substitute is defined here.
@@ -247,18 +248,17 @@ class MissionPhaseProbeTests(unittest.TestCase):
         )
 
         for name in BUCKETS:
-            expected = 6 if name in ("mission_title_sync", "mission_labels_verify") else 3
+            expected = 3
             self.assertEqual(
                 after[name] - before[name],
                 expected,
                 f"RED: three same-second feeds must grow the {name} bucket by "
                 f"exactly {expected} (mission_feed is the outer feed hook only; "
                 "mission_sync/mission_layout/mission_verify wrap all callers; "
-                "_sync_title_prim runs twice per healthy _sync_primitives so "
-                "mission_title_sync grows by six; _verify_labels runs once per "
-                "_verify_render and once per _update_layout changed predicate, "
-                "so mission_labels_verify also grows by six); these are "
-                "inclusive stage times, not pure text_rect timings",
+                "a healthy stable feed calls _sync_title_prim once and "
+                "_verify_labels once inside _verify_render, so both "
+                "mission_title_sync and mission_labels_verify grow by three); "
+                "these are inclusive stage times, not pure text_rect timings",
             )
 
     def test_absent_sentinel_feeds_have_no_diagnostics_and_retain_timer(self):
