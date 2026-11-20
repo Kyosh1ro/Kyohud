@@ -19,6 +19,8 @@ local BAR_BG = Color(0.15, 0.15, 0.15)
 local INNER_TRACK_CLR = Color(11 / 255, 12 / 255, 14 / 255)
 local RANK_CLR = Color(166 / 255, 171 / 255, 177 / 255)
 local FIXED_BLUE = Color(0.35, 0.70, 0.95)
+local INTERACT_FILL = Color(1, 0.60, 0.10)
+local INTERACT_FILL_ALPHA = 0.45
 
 local STATE_HEADER_E = 30
 local STATE_BG_H_E = 28
@@ -157,6 +159,20 @@ local function localized(key, fallback)
     return fallback or key
 end
 
+local function loc_interaction(td)
+    if type(td) ~= "string" or td == "" then return td or "?" end
+    local ok, text = pcall(function()
+        local it = type(tweak_data) == "table" and tweak_data.interaction or nil
+        local entry = type(it) == "table" and it[td] or nil
+        if type(entry) ~= "table" then return td end
+        local key = entry.action_text_id or entry.text_id
+        if type(key) ~= "string" or key == "" then return td end
+        return managers.localization:text(key)
+    end)
+    if ok and type(text) == "string" and text ~= "" then return text end
+    return td
+end
+
 local function fmt_name(actor)
     if actor.ai then
         local display = loc_name(actor.character_name) or actor.name
@@ -268,19 +284,20 @@ end
 
 local function fmt_interaction(actor, t)
     local inter = actor.interaction
-    if not inter then return "" end
-    if not inter.enabled then return "" end
-    if inter.success then return "" end
+    if not inter then return "", nil end
+    if not inter.enabled then return "", nil end
+    if inter.success then return "", nil end
     local td = inter.tweak_data_id or "?"
+    local label = loc_interaction(td)
     local dur = inter.duration
     local start = inter.started_t
-    if not finite(dur) or dur <= 0 then return td end
-    if not finite(start) then return td end
+    if not finite(dur) or dur <= 0 then return label, nil end
+    if not finite(start) then return label, nil end
     if not finite(t) then t = 0 end
     local elapsed = t - start
     local frac = math.min(1, math.max(0, elapsed / dur))
     local pct = math.floor(frac * 100)
-    return td .. " " .. pct .. "%"
+    return label .. " " .. pct .. "%", frac
 end
 
 local function fmt_status(actor)
@@ -433,6 +450,7 @@ function CC.new(parent, name)
         self._projectile_icon = self.root:bitmap({name = name .. "_pi", layer = 2, visible = false})
 
         self._interaction_text = self.root:text({name = name .. "_itx", font = FONT, layer = 2, text = ""})
+        self._interaction_fill = self.root:rect({name = name .. "_itfl", layer = 1, color = INTERACT_FILL, visible = false})
         self._status_text = self.root:text({name = name .. "_st", font = FONT, layer = 2, text = ""})
 
         self._downs_icon = self.root:bitmap({name = name .. "_dwni", layer = 2, visible = false})
@@ -511,7 +529,7 @@ function Card:_all_live()
         and live(self._inactive_ammo_text)
         and live(self._equipment_text) and live(self._cables_text) and live(self._projectile_text)
         and live(self._deployable_icon) and live(self._cables_icon) and live(self._projectile_icon)
-        and live(self._interaction_text) and live(self._status_text)
+        and live(self._interaction_text) and live(self._interaction_fill) and live(self._status_text)
         and live(self._downs_icon) and live(self._downs_text) and live(self._downs_label)
         and live(self._state_bg) and live(self._condition_icon)
         and live(self._down_top) and live(self._down_bottom)
@@ -592,7 +610,11 @@ function Card:update(actor, t)
     local e = g.h / 120
     local is_bot = actor.ai == true
     local not_bot = not is_bot
-    local int_str = not_bot and fmt_interaction(actor, t) or ""
+    local int_str = ""
+    local int_frac = nil
+    if not_bot then
+        int_str, int_frac = fmt_interaction(actor, t)
+    end
     local status_str = fmt_status(actor)
     local int_visible = int_str ~= ""
     local status_visible = status_str ~= ""
@@ -1196,6 +1218,21 @@ function Card:update(actor, t)
             exp.state_bg_geo = {x = 0, y = 0, w = w, h = STATE_BG_H_E * e}
             exp.state_bg_visible = true
 
+            -- Orange progress fill over the full black frame for the
+            -- interaction timer; hidden when only status is shown.
+            local fill_w = 0
+            if int_visible and finite(int_frac) and int_frac > 0 then
+                fill_w = int_frac * w
+            end
+            shape(self._interaction_fill, 0, 0, fill_w, STATE_BG_H_E * e)
+            self._interaction_fill:set_color(INTERACT_FILL)
+            self._interaction_fill:set_alpha(INTERACT_FILL_ALPHA)
+            self._interaction_fill:set_visible(fill_w > 0)
+            exp.interaction_fill_geo = {x = 0, y = 0, w = fill_w, h = STATE_BG_H_E * e}
+            exp.interaction_fill_visible = fill_w > 0
+            exp.interaction_fill_color = store_color(INTERACT_FILL)
+            exp.interaction_fill_alpha = INTERACT_FILL_ALPHA
+
             local st_str, st_x, st_w = status_str, 2 * e + icon_offset, 0
             local it_str, it_x, it_w = int_str, 2 * e, 0
             if status_visible and int_visible then
@@ -1325,6 +1362,13 @@ function Card:update(actor, t)
             shape(self._state_bg, 0, 0, 0, 0)
             exp.state_bg_geo = {x = 0, y = 0, w = 0, h = 0}
             exp.state_bg_visible = false
+            self._interaction_fill:set_visible(false)
+            self._interaction_fill:set_alpha(INTERACT_FILL_ALPHA)
+            shape(self._interaction_fill, 0, 0, 0, 0)
+            exp.interaction_fill_geo = {x = 0, y = 0, w = 0, h = 0}
+            exp.interaction_fill_visible = false
+            exp.interaction_fill_color = store_color(INTERACT_FILL)
+            exp.interaction_fill_alpha = INTERACT_FILL_ALPHA
             self._condition_icon:set_visible(false)
             shape(self._condition_icon, 0, 0, 0, 0)
             exp.condition_icon_geo = {x = 0, y = 0, w = 0, h = 0}
@@ -1613,6 +1657,20 @@ function Card:verify()
         chk(sbg_color ~= nil and color_near(sbg_color.r, 0.02)
             and color_near(sbg_color.g, 0.025) and color_near(sbg_color.b, 0.03))
 
+        local ifl = self._interaction_fill
+        local ifl_geo = exp.interaction_fill_geo
+        chk(ifl:parent() == self.root)
+        chk(ifl:visible() == exp.interaction_fill_visible)
+        chk(near(ifl:x(), ifl_geo.x))
+        chk(near(ifl:y(), ifl_geo.y))
+        chk(near(ifl:w(), ifl_geo.w))
+        chk(near(ifl:h(), ifl_geo.h))
+        chk(color_near(ifl:alpha(), exp.interaction_fill_alpha))
+        local ifl_color = ifl:color()
+        chk(ifl_color ~= nil and color_near(ifl_color.r, exp.interaction_fill_color.r)
+            and color_near(ifl_color.g, exp.interaction_fill_color.g)
+            and color_near(ifl_color.b, exp.interaction_fill_color.b))
+
         local ci = self._condition_icon
         local ci_geo = exp.condition_icon_geo
         chk(ci:parent() == self.root)
@@ -1708,6 +1766,7 @@ function Card:destroy()
     self._ci_ic = nil
     self._pj_ic = nil
     self._interaction_text = nil
+    self._interaction_fill = nil
     self._status_text = nil
     self._downs_icon = nil
     self._downs_text = nil
